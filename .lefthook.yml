@@ -3,15 +3,19 @@ pre-commit:
 
   commands:
     fmt:
+      root: backend
       run: gofumpt -w .
 
     lint:
+      root: backend
       run: golangci-lint run
 
 pre-push:
   commands:
     test:
+      root: backend
       run: go test -race ./...
 
     build:
+      root: backend
       run: go build ./...

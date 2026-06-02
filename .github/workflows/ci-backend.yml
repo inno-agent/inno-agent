@@ -26,8 +26,19 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Install dependencies
-        run: go mod download
+      # later will be separated into different CIs on each service
+      - name: Find and test services
+        run: |
+          for dir in backend/*/; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "Testing $dir"
+              cd $dir
+              go mod download
+              go test -race ./...
+              go build ./...
+              cd -
+            fi
+          done
 
       - name: Lint
         uses: golangci/golangci-lint-action@v6
@@ -35,9 +46,3 @@ jobs:
           version: latest
           working-directory: backend
           args: --config ../.golangci.yml
-
-      - name: Test
-        run: go test -race ./...
-
-      - name: Build
-        run: go build ./...

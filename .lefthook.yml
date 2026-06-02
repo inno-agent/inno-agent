@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+
+  commands:
+    fmt:
+      run: gofumpt -w .
+
+    lint:
+      run: golangci-lint run
+
+pre-push:
+  commands:
+    test:
+      run: go test -race ./...
+
+    build:
+      run: go build ./...

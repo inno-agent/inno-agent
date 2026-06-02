@@ -2,6 +2,7 @@ pre-commit:
   parallel: true
 
   commands:
+  # Go
     fmt:
       root: backend
       run: gofumpt -w .
@@ -10,8 +11,20 @@ pre-commit:
       root: backend
       run: golangci-lint run
 
+  # Python
+    ruff-fmt:
+      glob: "*.py"
+      root: "ai/"
+      run: ruff format --check {staged_files}
+
+    ruff-lint:
+      glob: "*.py"
+      root: "ai/"
+      run: ruff check --fix {staged_files}
+
 pre-push:
   commands:
+  # Go
     test:
       root: backend
       run: go test -race ./...
@@ -19,3 +32,16 @@ pre-push:
     build:
       root: backend
       run: go build ./...
+   
+  # Python
+    python-tests:
+      run: pytest
+
+    python-types:
+      run: mypy ai/
+
+    python-build:
+      run: python -m build
+
+    python-smoke:
+      run: cd ~/inno-agent && python -c "import ai"

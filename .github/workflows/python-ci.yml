@@ -1,0 +1,46 @@
+name: Python CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ai/**'
+  push:
+    branches: [main]
+    paths:
+      - 'ai/**'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ruff mypy pytest build
+          pip install -e .
+
+      - name: Lint & format check
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type check
+        run: mypy .
+
+      - name: Run tests
+        run: pytest
+
+      - name: Build & smoke test
+        run: |
+          python -m build
+          python -c "import ai"

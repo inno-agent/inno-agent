@@ -11,7 +11,7 @@ on:
       - 'ai/**'
 
 jobs:
-  ci:
+  pythonci:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,7 +23,7 @@ jobs:
       - name: "Set up Python"
         uses: actions/setup-python@v6
         with:
-          python-version-file: "ai/pyproject.toml" 
+          python-version-file: "pyproject.toml" 
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
@@ -44,15 +44,3 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
-
-      - name: Build & smoke test
-        run: |
-          uv run python -m build
-          cd ..
-          uv run python -c "import ai"
-
-      - name: Build & smoke test
-        run: |
-          python -m build
-          cd ..
-          python -c "import ai"

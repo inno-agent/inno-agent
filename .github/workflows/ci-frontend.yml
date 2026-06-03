@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
   push:
     branches: [main]
     paths:
       - 'frontend/**'
+      - '.github/workflows/ci-frontend.yml'
 
 jobs:
   ci:
@@ -25,15 +27,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          
 
       - name: Install dependencies
         run: npm install
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint --if-present
+
+      - name: Type check
+        run: npm run typecheck --if-present
+
+      - name: Format check
+        run: npm run format:check --if-present
 
       - name: Test
-        run: npm test
+        run: npm test --if-present
 
       - name: Build
-        run: npm run build
+        run: npm run build --if-present

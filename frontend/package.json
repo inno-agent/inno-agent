@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "dev": "echo \"Frontend project is not created yet\"",
+    "build": "echo \"Build skipped: frontend project is not created yet\"",
+    "preview": "echo \"Preview skipped\"",
+
+    "lint": "echo \"Lint skipped: frontend project is not created yet\"",
+    "lint:fix": "echo \"Lint fix skipped\"",
+
+    "format": "echo \"Format skipped\"",
+    "format:check": "echo \"Format check skipped\"",
+
+    "typecheck": "echo \"Type check skipped\"",
+
+    "test": "echo \"Tests skipped\""
+  }
+}

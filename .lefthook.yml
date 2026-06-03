@@ -20,7 +20,7 @@ pre-commit:
     ruff-lint:
       glob: "*.py"
       root: "ai/"
-      run: ruff check --fix {staged_files}
+      run: ruff check {staged_files}
 
 pre-push:
   commands:

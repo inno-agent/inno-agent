@@ -6,11 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "ai"
 version = "0.1.0"
 description = "AI module"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N"]
@@ -19,7 +19,7 @@ select = ["E", "F", "I", "N"]
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

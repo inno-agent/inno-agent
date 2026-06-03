@@ -2,6 +2,14 @@
 requires = ["setuptools>=64.0"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.15",
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "build>=1.0",
+]
+
 [project]
 name = "ai"
 version = "0.1.0"

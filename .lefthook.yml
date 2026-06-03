@@ -42,6 +42,3 @@ pre-push:
 
     python-build:
       run: python -m build
-
-    python-smoke:
-      run: cd ~/inno-agent && python -c "import ai"

@@ -4,11 +4,11 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'ai/**'
+      - "ai/**"
   push:
     branches: [main]
     paths:
-      - 'ai/**'
+      - "ai/**"
 
 jobs:
   pythonci:
@@ -23,17 +23,18 @@ jobs:
       - name: "Set up Python"
         uses: actions/setup-python@v6
         with:
-          python-version-file: "ai/pyproject.toml" 
+          python-version-file: "ai/pyproject.toml"
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
+          version: "0.11.18"
           enable-cache: true
-          cache-dependency-path: ai/pyproject.toml
+          cache-dependency-glob: "ai/uv.lock"
 
       - name: Install project and dev dependencies
-        run: uv sync --group dev
-        
+        run: uv sync --frozen
+
       - name: Lint & format check
         run: |
           uv run ruff check .

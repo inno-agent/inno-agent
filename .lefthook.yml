@@ -2,23 +2,30 @@ pre-commit:
   parallel: true
 
   commands:
-    fmt:
+    go-fmt:
+      glob: "**/*.go"
       root: backend
-      run: gofumpt -w .
+      run: gofumpt -d -l -e {staged_files}
 
-    lint:
+    go-lint:
+      glob: "**/*.go"
       root: backend
-      run: golangci-lint run
+      run: golangci-lint run {staged_files}
 
-    ruff-fmt:
+    python-fmt:
       glob: "**/*.py"
-      root: "ai/"
+      root: ai
       run: ruff format --check {staged_files}
 
-    ruff-lint:
+    python-lint:
       glob: "**/*.py"
-      root: "ai/"
+      root: ai
       run: ruff check {staged_files}
+
+    python-types:
+      glob: "**/*.py"
+      root: ai
+      run: uv run mypy .
 
 pre-push:
   parallel: true
@@ -33,16 +40,9 @@ pre-push:
       run: go build ./...
 
     python-tests:
-      glob: "**/*.py"
-      root: "ai/"
+      root: ai
       run: uv run pytest
 
-    python-types:
-      glob: "**/*.py"
-      root: "ai/"
-      run: uv run mypy .
-
     python-build:
-      glob: "**/*.py"
-      root: "ai/"
+      root: ai
       run: uv build

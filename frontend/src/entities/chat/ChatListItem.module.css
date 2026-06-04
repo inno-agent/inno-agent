@@ -1,0 +1,38 @@
+.item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease;
+    padding: 8px 4px;
+}
+
+.item:hover {
+    background: var(--color-bg-elevated);
+}
+
+.itemActive {
+    background: var(--color-bg-elevated);
+}
+
+.title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.menu {
+    opacity: 0;
+    flex-shrink: 0;
+    transition: opacity 0.2s ease;
+}
+
+.item:hover .menu,
+.itemActive .menu {
+    opacity: 1;
+}

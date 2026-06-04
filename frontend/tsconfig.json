@@ -3,5 +3,14 @@
   "references": [
     { "path": "./tsconfig.app.json"},
     { "path": "./tsconfig.node.json"}
-  ]
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@libs/*": ["libs/*"],
+      "@shared/*": ["libs/shared/*"],
+      "@images/*": ["libs/shared/images/*"]
+    }
+  }
 }

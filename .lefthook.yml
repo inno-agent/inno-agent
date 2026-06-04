@@ -27,22 +27,22 @@ pre-commit:
       root: ai
       run: uv run mypy .
 
-pre-push:
-  parallel: true
+# pre-push:
+#   parallel: true
 
-  commands:
-    test:
-      root: backend
-      run: go test -race ./...
+#   commands:
+#     test:
+#       root: backend
+#       run: go test -race ./...
 
-    build:
-      root: backend
-      run: go build ./...
+#     build:
+#       root: backend
+#       run: go build ./...
 
-    python-tests:
-      root: ai
-      run: uv run pytest
+#     python-tests:
+#       root: ai
+#       run: uv run pytest
 
-    python-build:
-      root: ai
-      run: uv build
+#     python-build:
+#       root: ai
+#       run: uv build

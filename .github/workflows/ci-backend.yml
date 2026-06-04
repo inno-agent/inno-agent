@@ -4,14 +4,14 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'backend/**'
+      - "backend/**"
   push:
     branches: [main]
     paths:
-      - 'backend/**'
+      - "backend/**"
 
 jobs:
-  ci:
+  ci-backend:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +21,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: "1.22"
 
       # later will be separated into different CIs on each service
       - name: Find and test services

@@ -1,4 +1,4 @@
-name: Python CI
+name: CI Python
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ on:
       - "ai/**"
 
 jobs:
-  pythonci:
+  ci-python:
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -12,12 +12,21 @@ const ChatListItem = ({ title, isActive, onClick, onMenuClick }: ChatListItemPro
     const className = [styles.item, isActive ? styles.itemActive : ''].join(' ')
 
     return (
-        <button className={className} onClick={onClick}>
+        <div
+            className={className}
+            onClick={onClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick?.()}
+        >
             <span className={styles.title}>{title}</span>
-            <button className={styles.menu} onClick={onMenuClick}>
+            <button
+                className={styles.menu}
+                onClick={(e) => { e.stopPropagation(); onMenuClick?.(); }}
+            >
                 <ThreePoints />
             </button>
-        </button>
+        </div>
     )
 }
 

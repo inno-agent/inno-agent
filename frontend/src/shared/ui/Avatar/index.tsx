@@ -7,13 +7,12 @@ interface AvatarProps {
 }
 
 const Avatar = ({ name, src, onClick }: AvatarProps) => {
-    const className = styles.avatar
+    const content = src ? <img src={src} alt={name[0]} /> : name[0]
 
-    return (
-        <button className={className} onClick={onClick}>
-            {src ? <img src={src} alt={name[0]} /> : name[0]}
-        </button>
-    )
+    if (onClick) {
+        return <button className={styles.avatar} onClick={onClick}>{content}</button>
+    }
+    return <div className={styles.avatar}>{content}</div>
 }
 
 export default Avatar

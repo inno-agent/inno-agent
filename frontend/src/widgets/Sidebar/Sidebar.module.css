@@ -1,0 +1,121 @@
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--color-bg-main);
+    border-right: 1px solid var(--color-muted);
+    overflow: hidden;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+}
+
+.logoIcon {
+    width: 55px;
+    height: 40px;
+    flex-shrink: 0;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    color: var(--color-text-primary);
+}
+
+.divider {
+    height: 1px;
+    background: var(--color-muted);
+    flex-shrink: 0;
+}
+
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 20px;
+}
+
+.navItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.2s ease;
+}
+
+.navItem:hover {
+    background: var(--color-bg-elevated);
+}
+
+.navIcon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.navIcon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.sectionTitle {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-muted);
+    display: block;
+    margin-bottom: 12px;
+}
+
+.chatList {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    gap: 4px;
+    padding: 20px;
+}
+
+.profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.profile:hover {
+    background: var(--color-bg-elevated);
+}
+
+.profileName {
+    flex: 1;
+    font-size: 16px;
+    color: var(--color-text-primary);
+}
+
+.profileMenu {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--color-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+}

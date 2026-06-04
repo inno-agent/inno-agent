@@ -9,7 +9,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { ChevronDownIcon, LoaderIcon } from "lucide-react";
-import { cva, type VariantProps } from "class-variance-authority";
+import type { VariantProps } from "class-variance-authority";
 import { useScrollLock } from "@assistant-ui/react";
 import {
   Collapsible,
@@ -17,19 +17,9 @@ import {
   CollapsibleTrigger,
 } from "@shared/ui/collapsible";
 import { cn } from "@shared/lib/utils";
+import { toolGroupVariants } from "./toolGroup.variants";
 
 const ANIMATION_DURATION = 200;
-
-const toolGroupVariants = cva("aui-tool-group-root group/tool-group w-full", {
-  variants: {
-    variant: {
-      outline: "rounded-lg border py-3",
-      ghost: "",
-      muted: "border-muted-foreground/30 bg-muted/30 rounded-lg border py-3",
-    },
-  },
-  defaultVariants: { variant: "outline" },
-});
 
 export type ToolGroupRootProps = Omit<
   React.ComponentProps<typeof Collapsible>,
@@ -227,5 +217,4 @@ export {
   ToolGroupRoot,
   ToolGroupTrigger,
   ToolGroupContent,
-  toolGroupVariants,
 };

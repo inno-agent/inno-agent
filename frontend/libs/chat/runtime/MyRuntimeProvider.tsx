@@ -4,20 +4,21 @@ import {
     useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import { useCallback, useState } from 'react'
-import { streamChatResponse } from '@libs/chat/api/chatApi'
+import { streamMessage } from '@libs/chat/api/chatApi'
 import {
     appendAssistantError,
-    appendAssistantToolCall,
-    applyAssistantToolResult,
     createUserTextMessage,
-    toChatRequestMessages,
     upsertAssistantText,
 } from '@libs/chat/model/messageMappers'
 
 export function MyRuntimeProvider({
-    children,
-}: Readonly<{
+     children,
+     chatId,
+     userId,
+     }: Readonly<{
     children: React.ReactNode
+    chatId: string
+    userId: string
 }>) {
     const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([])
     const [isRunning, setIsRunning] = useState(false)
@@ -37,23 +38,17 @@ export function MyRuntimeProvider({
             setIsRunning(true)
 
             try {
-                const stream = await streamChatResponse(toChatRequestMessages(nextMessages))
+                const stream = await streamMessage(chatId, userId, message.content[0].text)
                 let textContent = ''
 
                 for await (const event of stream) {
                     switch (event.type) {
-                        case 'text':
+                        case 'chunk':
                             textContent += event.content
                             setMessages((prev) => upsertAssistantText(prev, textContent))
                             break
-
-                        case 'tool_call':
-                            setMessages((prev) => appendAssistantToolCall(prev, event))
-                            break
-
-                        case 'tool_result':
-                            setMessages((prev) => applyAssistantToolResult(prev, event))
-                            break
+                        case 'error':
+                            throw new Error(event.message)
                     }
                 }
             } catch (error) {

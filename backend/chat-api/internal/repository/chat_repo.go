@@ -10,7 +10,7 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "go.uber.org/zap"
 
-    "github.com/inno-agent/inno-agent/backend/chat-api/internal/models"
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/entities"
 )
 
 type ChatRepo struct {
@@ -53,13 +53,13 @@ const (
     `
 )
 
-func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*models.Chat, error) {
+func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*entities.Chat, error) {
     log := r.logger.With(
         zap.String("operation", "Create"),
         zap.String("user_id", userID),
     )
 
-    var c models.Chat
+    var c entities.Chat
     if err := r.pool.QueryRow(ctx, queryCreateChat, userID, title).
         Scan(&c.ID, &c.Title, &c.UpdatedAt); err != nil {
         if errors.Is(err, pgx.ErrNoRows) {
@@ -72,7 +72,7 @@ func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*m
     return &c, nil
 }
 
-func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset int) ([]models.Chat, int, error) {
+func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset int) ([]entities.Chat, int, error) {
     log := r.logger.With(
         zap.String("operation", "ListByUser"),
         zap.String("user_id", userID),
@@ -87,7 +87,7 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
     }
 
     if total == 0 {
-        return []models.Chat{}, 0, nil
+        return []entities.Chat{}, 0, nil
     }
 
     rows, err := r.pool.Query(ctx, queryListChatsByUser, userID, limit, offset)
@@ -97,9 +97,9 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
     }
     defer rows.Close()
 
-    var chats []models.Chat
+    var chats []entities.Chat
     for rows.Next() {
-        var c models.Chat
+        var c entities.Chat
         if err := rows.Scan(&c.ID, &c.Title, &c.UpdatedAt, &c.LastMessage); err != nil {
             log.Error("scan chat row failed", zap.Error(err))
             return nil, 0, fmt.Errorf("list chats: scan: %w", err)

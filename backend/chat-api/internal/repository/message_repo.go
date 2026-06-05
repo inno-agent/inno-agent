@@ -8,7 +8,7 @@ import (
     "github.com/jackc/pgx/v5/pgxpool"
     "go.uber.org/zap"
 
-    "github.com/inno-agent/inno-agent/backend/chat-api/internal/models"
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/entities"
 )
 
 type MessageRepo struct {
@@ -47,7 +47,7 @@ const (
     `
 )
 
-func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role, content string) (*models.Message, error) {
+func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role, content string) (*entities.Message, error) {
     log := r.logger.With(
         zap.String("operation", "Create"),
         zap.String("user_id", userID),
@@ -55,7 +55,7 @@ func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUI
         zap.String("role", role),
     )
 
-    var m models.Message
+    var m entities.Message
     if err := r.pool.QueryRow(ctx, queryCreateMessage, userID, chatID, role, content).
         Scan(&m.ID, &m.UserID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
         log.Error("create message failed", zap.Error(err))
@@ -65,7 +65,7 @@ func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUI
     return &m, nil
 }
 
-func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]models.Message, int, error) {
+func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]entities.Message, int, error) {
     log := r.logger.With(
         zap.String("operation", "ListByChat"),
         zap.String("user_id", userID),
@@ -81,7 +81,7 @@ func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid
     }
 
     if total == 0 {
-        return []models.Message{}, 0, nil
+        return []entities.Message{}, 0, nil
     }
 
     rows, err := r.pool.Query(ctx, queryListMessagesByChat, chatID, userID, limit, offset)
@@ -91,9 +91,9 @@ func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid
     }
     defer rows.Close()
 
-    var msgs []models.Message
+    var msgs []entities.Message
     for rows.Next() {
-        var m models.Message
+        var m entities.Message
         if err := rows.Scan(&m.ID, &m.UserID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
             log.Error("scan message row failed", zap.Error(err))
             return nil, 0, fmt.Errorf("list messages: scan: %w", err)

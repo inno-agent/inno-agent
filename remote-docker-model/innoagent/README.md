@@ -1,0 +1,239 @@
+# InnoAgent
+
+AI orchestrator service built on Go + Ollama + Qwen, deployable to any Ubuntu 22.04 server with a single command.
+
+## Quick Start (Docker already installed)
+
+```bash
+git clone <your-repo-url>
+cd innoagent
+cp .env.example .env
+docker compose up -d
+```
+
+Wait until the model is downloaded:
+
+```bash
+docker compose logs -f model-loader
+```
+
+Test:
+
+```bash
+curl http://localhost:8080/health
+```
+
+---
+
+## Architecture
+
+```
+Client
+  ↓  POST /chat
+Orchestrator (Go, port 8080)
+  ↓  Simple chat API
+Ollama (port 11434)
+  ↓
+Qwen model (local)
+```
+
+---
+
+## Prerequisites
+
+- Ubuntu 22.04 server (fresh install is fine)
+- `sudo` access
+- Internet access (to pull Docker images and model)
+
+---
+
+## Fresh Server Deployment
+
+```bash
+git clone <your-repo-url> /opt/innoagent
+cd /opt/innoagent
+sudo bash install.sh
+```
+
+`install.sh` will:
+1. Install Docker and Docker Compose
+2. Configure the firewall (ports 22, 8080)
+3. Copy `.env.example` → `.env` if not present
+4. Pull base images, build, and start all services
+
+---
+
+## Configuration
+
+Edit `.env` before starting if you want to change model/hostname/ollama port/api port:
+
+| Variable | Default | Description |
+|---|---|---|
+| `MODEL_NAME` | `qwen2.5:0.5b` | Ollama model to pull and use |
+| `OLLAMA_HOST` | `ollama` | Ollama hostname (inside Docker network) |
+| `OLLAMA_PORT` | `11434` | Ollama port exposed on host |
+| `API_PORT` | `8080` | Orchestrator API port exposed on host |
+
+---
+
+## Local Development
+
+Run without Docker:
+
+```bash
+ollama serve
+go run cmd/server/main.go
+```
+
+Run tests:
+
+```bash
+go test ./...
+```
+
+---
+
+## API
+
+### Health check
+
+```bash
+curl http://localhost:8080/health
+```
+
+```json
+{"status":"ok","model":"qwen2.5:0.5b","base_url":"http://ollama:11434/v1"}
+```
+
+### Chat
+
+```bash
+curl -X POST http://localhost:8080/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message":"What is the capital of France?"}'
+```
+
+```json
+{"answer":"The capital of France is Paris."}
+```
+
+---
+
+## Update Deployment
+
+```bash
+cd /opt/innoagent
+bash deploy.sh
+```
+
+`deploy.sh` will:
+1. Pull latest git changes
+2. Pull latest Ollama base image
+3. Rebuild the orchestrator image (no cache)
+4. Restart all services
+
+---
+
+## Verification
+
+```bash
+bash verify.sh
+```
+
+Checks:
+- Ollama is reachable
+- Model is available
+- Orchestrator `/health` responds
+- Chat endpoint returns a valid response
+
+---
+
+## Service Management
+
+```bash
+# View status
+docker compose ps
+
+# View logs
+docker compose logs -f orchestrator
+docker compose logs -f ollama
+docker compose logs -f model-loader
+
+# Restart a service
+docker compose restart orchestrator
+
+# Stop everything
+docker compose down
+
+# Stop and remove all data (including model cache)
+docker compose down -v
+```
+
+---
+
+## Troubleshooting
+
+### Model not loading
+
+```bash
+docker compose logs model-loader
+```
+
+Check that Ollama is healthy before the model-loader runs. The model-loader polls until Ollama responds, then pulls the model. On a slow connection a large model can take several minutes.
+
+### Orchestrator exits with "model inference failed"
+
+```bash
+docker compose logs orchestrator
+docker compose logs ollama
+```
+
+Common causes:
+- Model pull did not complete (check `model-loader` logs)
+- `MODEL_NAME` in `.env` does not match what was pulled
+
+### Port already in use
+
+Change `API_PORT` or `OLLAMA_PORT` in `.env` then:
+
+```bash
+docker compose up -d
+```
+
+### Out of disk space
+
+Model files are stored in the `ollama_data` Docker volume. Check with:
+
+```bash
+docker system df
+```
+
+Remove unused data:
+
+```bash
+docker system prune
+```
+
+### Resetting everything
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+This removes the model cache; the model will be pulled again on startup.
+
+---
+
+## Important Files
+
+| File | Purpose |
+|---|---|
+| `docker-compose.yml` | Service definitions |
+| `Dockerfile` | Go orchestrator build |
+| `.env` | Runtime configuration |
+| `.env.example` | Configuration template |
+| `scripts/wait-for-model.sh` | Pulls Ollama, then pulls model |
+| `install.sh` | Bootstrap fresh Ubuntu server |
+| `deploy.sh` | Pull updates and rebuild |
+| `verify.sh` | End-to-end stack health check |

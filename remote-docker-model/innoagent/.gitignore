@@ -1,0 +1,4 @@
+.env
+*.log
+server
+__debug_bin

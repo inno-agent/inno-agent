@@ -15,12 +15,12 @@ pre-commit:
     python-fmt:
       glob: "**/*.py"
       root: ai
-      run: ruff format --check {staged_files}
+      run: uv run ruff format --check {staged_files}
 
     python-lint:
       glob: "**/*.py"
       root: ai
-      run: ruff check {staged_files}
+      run: uv run ruff check {staged_files}
 
     python-types:
       glob: "**/*.py"

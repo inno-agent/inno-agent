@@ -1,0 +1,35 @@
+DefaultInstance:
+  DefaultLanguage: en
+  Restrictions:
+    AllowedLanguages:
+      - ru
+      - en
+
+  PasswordComplexityPolicy:
+    MinLength: 8
+    HasSymbol: false
+    HasNumber: false
+    HasUppercase: false
+    HasLowercase: false
+
+  OIDCSettings:
+    AccessTokenLifetime: 1h
+    IdTokenLifetime: 1h
+    RefreshTokenExpiration: 2160h
+    RefreshTokenIdlExpiration: 720h
+
+  Features:
+    LoginV2:
+      Required: false
+    LoginDefaultOrg: true
+    DebugOIDCParentError: true
+    PermissionCheckV2: true
+    ConsoleUseV2UserAPI: true
+
+FirstInstance:
+  Org:
+    Human:
+      FirstName: Admin
+      LastName: Inno
+      Email:
+        IsEmailVerified: true

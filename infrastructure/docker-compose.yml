@@ -1,5 +1,23 @@
 name: zitadel
 
+configs:
+  # Генерируется из .env при старте — отдельный файл с секретами не нужен.
+  # ВАЖНО: Zitadel v4 принимает SMTP-креды только через PlainAuth subkey в YAML.
+  # Через env vars (любой вариант) и через SMTP.User/Password — не работает, credentials не сохраняются.
+  zitadel_secrets:
+    content: |
+      DefaultInstance:
+        SMTPConfiguration:
+          Description: ${ZITADEL_SMTP_DESCRIPTION}
+          SMTP:
+            Host: ${ZITADEL_SMTP_HOST}
+            PlainAuth:
+              User: ${ZITADEL_SMTP_USER}
+              Password: ${ZITADEL_SMTP_PASSWORD}
+          TLS: ${ZITADEL_SMTP_TLS}
+          From: ${ZITADEL_SMTP_FROM}
+          FromName: ${ZITADEL_SMTP_FROM_NAME}
+
 services:
   proxy:
     image: ${TRAEFIK_IMAGE}
@@ -19,8 +37,14 @@ services:
     image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION}
     restart: unless-stopped
     user: "0"
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}"
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --config /zitadel.yaml --config /zitadel-secrets.yaml
     env_file: .env
+    volumes:
+      - ./zitadel.yaml:/zitadel.yaml:ro
+    configs:
+      - source: zitadel_secrets
+        target: /zitadel-secrets.yaml
+        mode: 0400
     healthcheck:
       test:
         - CMD

@@ -1,0 +1,22 @@
+providers:
+  docker:
+    exposedByDefault: false
+    network: zitadel
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+api:
+  dashboard: false
+  insecure: false
+
+ping:
+  entryPoint: web
+
+log:
+  level: INFO
+
+accessLog: {}

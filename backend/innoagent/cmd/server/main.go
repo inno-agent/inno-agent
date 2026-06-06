@@ -49,7 +49,7 @@ func main() {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(HealthResponse{
+		_ = json.NewEncoder(w).Encode(HealthResponse{
 			Status:  "ok",
 			Model:   cfg.Model,
 			BaseURL: cfg.BaseURL,
@@ -85,7 +85,7 @@ func main() {
 			return
 		}
 
-		json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
+		_ = json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
 	})
 
 	srv := &http.Server{

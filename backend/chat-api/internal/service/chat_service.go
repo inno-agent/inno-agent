@@ -130,7 +130,11 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 				return
 			case chunk, ok := <-rawCh:
 				if !ok {
-					// stream completed naturally — save the full assistant message
+					// rawCh closed: could be natural completion OR goroutine1 exiting due to ctx cancellation.
+					// Both cases make this branch ready simultaneously with ctx.Done(), so check explicitly.
+					if ctx.Err() != nil {
+						return
+					}
 					saveCtx := context.Background()
 					if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
 						s.logger.Error("failed to save assistant message",

@@ -3,14 +3,13 @@ package main
 import (
     "context"
     "net/http"
-    "os"
-    "time"
 
     "github.com/go-chi/chi/v5"
     "github.com/jackc/pgx/v5/pgxpool"
     "github.com/joho/godotenv"
     "go.uber.org/zap"
 
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/config"
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/handler"
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/repository"
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/service"
@@ -19,22 +18,18 @@ import (
 func main() {
     _ = godotenv.Load()
 
+    cfg := config.Load()
+
     logger, _ := zap.NewProduction()
     defer func() { _ = logger.Sync() }()
 
-    databaseURL := os.Getenv("DATABASE_URL")
-    if databaseURL == "" {
+    if cfg.DatabaseURL == "" {
         logger.Fatal("DATABASE_URL is required")
-    }
-
-    serverPort := os.Getenv("SERVER_PORT")
-    if serverPort == "" {
-        serverPort = "8000"
     }
 
     ctx := context.Background()
 
-    pool, err := pgxpool.New(ctx, databaseURL)
+    pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
     if err != nil {
         logger.Fatal("failed to connect to database", zap.Error(err))
     }
@@ -53,13 +48,13 @@ func main() {
     handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler)
 
     server := &http.Server{
-        Addr:         ":" + serverPort,
+        Addr:         ":" + cfg.ServerPort,
         Handler:      router,
-        ReadTimeout:  10 * time.Second,
-        WriteTimeout: 0,
-        IdleTimeout:  120 * time.Second,
+        ReadTimeout:  cfg.ReadTimeout,
+        WriteTimeout: cfg.WriteTimeout,
+        IdleTimeout:  cfg.IdleTimeout,
     }
 
-    logger.Info("server starting", zap.String("port", serverPort))
+    logger.Info("server starting", zap.String("port", cfg.ServerPort))
     _ = server.ListenAndServe()
 }

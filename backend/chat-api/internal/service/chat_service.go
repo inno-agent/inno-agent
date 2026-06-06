@@ -103,7 +103,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
     go func() {
     var fullResponse string
     for chunk := range ch {
-        fullResponse += chunk
+        fullResponse += chunk + ". "
     }
     saveCtx := context.Background()
     _, err := s.messageRepo.Create(saveCtx, userID, chatID, "assistant", fullResponse)

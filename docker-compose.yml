@@ -7,9 +7,8 @@ volumes:
 
 services:
 
-  ollama:
+  innoagent-ollama:
     image: ollama/ollama:latest
-    container_name: innoagent-ollama
     restart: unless-stopped
     networks:
       - innoagent
@@ -19,36 +18,31 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
-    # healthcheck временно убран для Windows
-
-  model-loader:
-    build:
-      context: ./backend/innoagent
-    dockerfile: Dockerfile.model-loader
-
-    container_name: innoagent-model-loader
-
-    restart: "no"
-
-    networks:
-      - innoagent
-
-    depends_on:
-      - ollama
-
-    environment:
-      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
+      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        ollama pull ${MODEL_NAME:-qwen2.5:0.5b}
+        wait
+    healthcheck:
+        test: ["CMD", "ollama", "list"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 30s
 
   orchestrator:
     build:
       context: ./backend/innoagent
       dockerfile: Dockerfile
-    container_name: innoagent-orchestrator
     restart: unless-stopped
     networks:
       - innoagent
     depends_on:
-      - model-loader
+      innoagent-ollama:
+        condition: service_healthy
     ports:
       - "${API_PORT:-8080}:8080"
     environment:

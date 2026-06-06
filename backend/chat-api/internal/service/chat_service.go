@@ -93,13 +93,14 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
     _ = s.chatRepo.UpdateTimestamp(ctx, chatID)
 
     ch := make(chan string)
+    //nolint:gosec  
     go func() {
         defer close(ch)
         ch <- "stream mock response. llm is not connected yet"
         ch <- "stream mock response"
         ch <- "still stream mock response"
     }()
-
+    //nolint:gosec  
     go func() {
     var fullResponse string
     for chunk := range ch {

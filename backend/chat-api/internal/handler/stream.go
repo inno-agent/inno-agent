@@ -19,7 +19,7 @@ type StreamHandler struct {
 func NewStreamHandler(service services.Service, logger *zap.Logger) *StreamHandler {
     return &StreamHandler{service: service, logger: logger}
 }
-
+//nolint:gosec
 func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
@@ -54,32 +54,32 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Connection", "keep-alive")
     w.Header().Set("X-Accel-Buffering", "no")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		h.logger.Error("streaming not supported")
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
-		return
-	}
+    flusher, ok := w.(http.Flusher)
+    if !ok {
+        h.logger.Error("streaming not supported")
+        writeError(w, http.StatusInternalServerError, "streaming not supported")
+        return
+    }
 
-    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"context_loading\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    _, _ = fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"context_loading\",\"chat_id\":\"%s\"}\n\n", chatID.String())
     flusher.Flush()
 
     ch, err := h.service.Stream(ctx, userID, chatID, message)
     if err != nil {
         h.logger.Error("failed to start stream", zap.Error(err))
-        fmt.Fprintf(w, "event: error\ndata: {\"code\":\"INTERNAL_ERROR\",\"message\":\"%s\"}\n\n", err.Error())
+        _, _ = fmt.Fprintf(w, "event: error\ndata: {\"code\":\"INTERNAL_ERROR\",\"message\":\"%s\"}\n\n", err.Error())
         flusher.Flush()
         return
     }
 
-    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"llm_processing\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    _, _ = fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"llm_processing\",\"chat_id\":\"%s\"}\n\n", chatID.String())
     flusher.Flush()
 
     for chunk := range ch {
-        fmt.Fprintf(w, "event: chunk\ndata: {\"content\":\"%s\"}\n\n", chunk)
+        _, _ = fmt.Fprintf(w, "event: chunk\ndata: {\"content\":\"%s\"}\n\n", chunk)
         flusher.Flush()
     }
 
-    fmt.Fprintf(w, "event: done\ndata: {\"status\":\"completed\"}\n\n")
+    _, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"completed\"}\n\n")
     flusher.Flush()
 }

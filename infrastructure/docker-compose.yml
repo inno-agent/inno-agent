@@ -157,6 +157,9 @@ services:
       ZITADEL_ISSUER: "${ZITADEL_PUBLIC_SCHEME:-http}://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8080}"
     extra_hosts:
       - "${ZITADEL_DOMAIN:-localhost}:host-gateway"
+    volumes:
+      - ./setup:/setup:ro
+    entrypoint: ["sh", "-c", "set -a; [ -f /setup/auth.env ] && . /setup/auth.env; set +a; exec ./auth-server"]
     secrets:
       - auth_rsa_key
     ports:

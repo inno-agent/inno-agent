@@ -3,6 +3,8 @@ set -e
 
 KEY_FILE="/machinekey/terraform.json"
 
+rm -f /setup/auth.env
+
 echo "Waiting for machine key from Zitadel setup..."
 until [ -f "$KEY_FILE" ]; do
   sleep 2

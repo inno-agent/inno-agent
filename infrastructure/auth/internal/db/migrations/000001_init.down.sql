@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS user_context;
+DROP TABLE IF EXISTS user_identities;
+DROP TABLE IF EXISTS users;

@@ -1,3 +1,6 @@
+TLS:
+  Enabled: false
+
 DefaultInstance:
   DefaultLanguage: en
   Restrictions:
@@ -27,9 +30,4 @@ DefaultInstance:
     ConsoleUseV2UserAPI: true
 
 FirstInstance:
-  Org:
-    Human:
-      FirstName: Admin
-      LastName: Inno
-      Email:
-        IsEmailVerified: true
+  Skip: false

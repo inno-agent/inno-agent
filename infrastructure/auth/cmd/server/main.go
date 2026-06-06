@@ -1,0 +1,109 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+
+	"github.com/inno-agent/auth/internal/config"
+	"github.com/inno-agent/auth/internal/db"
+	"github.com/inno-agent/auth/internal/issuer"
+	"github.com/inno-agent/auth/internal/provider"
+	"github.com/inno-agent/auth/internal/transport"
+	"github.com/inno-agent/auth/internal/user"
+	authv1 "github.com/inno-agent/auth/proto/auth/v1"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	if err := db.EnsureDatabase(ctx, cfg.DatabaseDSN); err != nil {
+		log.Fatalf("ensure db: %v", err)
+	}
+
+	if err := db.Migrate(cfg.DatabaseDSN); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := db.NewPool(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		log.Fatalf("db pool: %v", err)
+	}
+	defer pool.Close()
+
+	keyPEM, err := os.ReadFile(cfg.JWTPrivateKeyPath)
+	if err != nil {
+		log.Fatalf("read private key: %v", err)
+	}
+
+	iss, err := issuer.New(keyPEM, cfg.JWTExpiry)
+	if err != nil {
+		log.Fatalf("issuer: %v", err)
+	}
+
+	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+	if err != nil {
+		log.Fatalf("zitadel provider: %v", err)
+	}
+
+	repo := user.NewRepository(pool)
+	svc := user.NewService(repo)
+
+	// gRPC server
+	grpcSrv := grpc.NewServer()
+	authv1.RegisterAuthServiceServer(grpcSrv, transport.NewGRPCServer(iss, svc))
+
+	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		log.Fatalf("grpc listen: %v", err)
+	}
+	go func() {
+		log.Printf("gRPC listening on :%s", cfg.GRPCPort)
+		if err := grpcSrv.Serve(grpcLis); err != nil {
+			log.Printf("gRPC serve: %v", err)
+		}
+	}()
+
+	// HTTP server
+	r := gin.New()
+	r.Use(gin.Recovery())
+	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+
+	httpSrv := &http.Server{
+		Addr:    ":" + cfg.HTTPPort,
+		Handler: r,
+	}
+	go func() {
+		log.Printf("HTTP listening on :%s", cfg.HTTPPort)
+		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("HTTP serve: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Println("shutting down...")
+
+	grpcSrv.GracefulStop()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown: %v", err)
+	}
+
+	log.Println("done")
+}

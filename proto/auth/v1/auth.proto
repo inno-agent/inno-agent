@@ -1,0 +1,39 @@
+// proto/auth/v1/auth.proto
+syntax = "proto3";
+
+package auth.v1;
+
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/inno-agent/auth/proto/auth/v1;authv1";
+
+service AuthService {
+  rpc ValidateToken(ValidateTokenRequest) returns (UserInfo);
+  rpc GetUserContext(GetUserContextRequest) returns (UserContext);
+  rpc UpdateUserContext(UpdateUserContextRequest) returns (google.protobuf.Empty);
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message UserInfo {
+  string user_id     = 1;
+  string tier        = 2;
+  int32  ctx_version = 3;
+}
+
+message GetUserContextRequest {
+  string user_id = 1;
+}
+
+message UserContext {
+  string user_id  = 1;
+  bytes  data     = 2;
+  int32  version  = 3;
+}
+
+message UpdateUserContextRequest {
+  string user_id = 1;
+  bytes  data    = 2;
+}

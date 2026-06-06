@@ -150,8 +150,7 @@ docker compose ps
 
 # View logs
 docker compose logs -f orchestrator
-docker compose logs -f ollama
-docker compose logs -f model-loader
+docker compose logs -f innoagent-ollama
 
 # Restart a service
 docker compose restart orchestrator
@@ -170,20 +169,20 @@ docker compose down -v
 ### Model not loading
 
 ```bash
-docker compose logs model-loader
+docker compose logs innoagent-ollama
 ```
 
-Check that Ollama is healthy before the model-loader runs. The model-loader polls until Ollama responds, then pulls the model. On a slow connection a large model can take several minutes.
+On a slow connection a large model can take several minutes to pull.
 
 ### Orchestrator exits with "model inference failed"
 
 ```bash
 docker compose logs orchestrator
-docker compose logs ollama
+docker compose logs innoagent-ollama
 ```
 
 Common causes:
-- Model pull did not complete (check `model-loader` logs)
+- Model pull did not complete
 - `MODEL_NAME` in `.env` does not match what was pulled
 
 ### Port already in use
@@ -227,7 +226,6 @@ This removes the model cache; the model will be pulled again on startup.
 | `Dockerfile` | Go orchestrator build |
 | `.env` | Runtime configuration |
 | `.env.example` | Configuration template |
-| `scripts/wait-for-model.sh` | Pulls Ollama, then pulls model |
 | `install.sh` | Bootstrap fresh Ubuntu server |
 | `deploy.sh` | Pull updates and rebuild |
 | `verify.sh` | End-to-end stack health check |

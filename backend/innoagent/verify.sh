@@ -84,8 +84,7 @@ echo "============================================"
 if [ "$FAIL" -gt 0 ]; then
   echo ""
   echo "Troubleshooting tips:"
-  echo "  docker compose logs ollama"
-  echo "  docker compose logs model-loader"
+  echo "  docker compose logs innoagent-ollama"
   echo "  docker compose logs orchestrator"
   exit 1
 fi

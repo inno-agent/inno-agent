@@ -9,7 +9,7 @@ until [ -f "$KEY_FILE" ]; do
 done
 
 echo "Machine key found. Running terraform..."
-terraform init -no-color
+terraform init -no-color -plugin-dir=/workspace/.terraform/providers
 
 set +e
 terraform apply -no-color -auto-approve -var="zitadel_jwt_profile_file=${KEY_FILE}"

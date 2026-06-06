@@ -40,5 +40,5 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v1.64
           working-directory: backend

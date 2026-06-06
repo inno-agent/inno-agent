@@ -16,7 +16,7 @@ secrets:
   auth_rsa_key:
     file: ./infrastructure/auth/dev-private-key.pem
 
-# ─── Configs (Zitadel SMTP, generated from infrastructure/.env) ─────────────
+# ─── Configs ──────────────────────────────────────────────────────────────────
 configs:
   zitadel_secrets:
     content: |
@@ -32,6 +32,67 @@ configs:
           From: ${ZITADEL_SMTP_FROM}
           FromName: ${ZITADEL_SMTP_FROM_NAME}
 
+  traefik_dynamic:
+    content: |
+      http:
+        middlewares:
+          strip-api:
+            stripPrefix:
+              prefixes:
+                - /api
+          zitadel-host:
+            headers:
+              customRequestHeaders:
+                Host: "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}"
+                X-Forwarded-Host: "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}"
+
+        services:
+          zitadel-api:
+            loadBalancer:
+              servers:
+                - url: "h2c://zitadel-api:8080"
+          chat-api:
+            loadBalancer:
+              servers:
+                - url: "http://chat-api:8000"
+          auth-service:
+            loadBalancer:
+              servers:
+                - url: "http://auth:8081"
+          frontend:
+            loadBalancer:
+              servers:
+                - url: "http://frontend:80"
+
+        routers:
+          zitadel-alias:
+            rule: "PathPrefix(`/api`)"
+            entryPoints: [zitadel]
+            middlewares: [strip-api, zitadel-host]
+            service: zitadel-api
+            priority: 200
+          zitadel-canonical:
+            rule: "PathPrefix(`/`)"
+            entryPoints: [zitadel]
+            middlewares: [zitadel-host]
+            service: zitadel-api
+            priority: 100
+          auth-service:
+            rule: "PathPrefix(`/auth/v1`)"
+            entryPoints: [web]
+            service: auth-service
+            priority: 300
+          chat-api:
+            rule: "PathPrefix(`/api/v1`)"
+            entryPoints: [web]
+            service: chat-api
+            priority: 200
+          frontend:
+            rule: "PathPrefix(`/`)"
+            entryPoints: [web]
+            service: frontend
+            priority: 100
+
 services:
 
   # ─── Reverse proxy (Traefik) ───────────────────────────────────────────────
@@ -45,7 +106,9 @@ services:
       - innoagent
     volumes:
       - ./infrastructure/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
-      - ./infrastructure/traefik/dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    configs:
+      - source: traefik_dynamic
+        target: /etc/traefik/dynamic.yaml
     depends_on:
       zitadel-api:
         condition: service_healthy
@@ -121,9 +184,10 @@ services:
     environment:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
-      TF_VAR_zitadel_domain: "localhost"
-      TF_VAR_zitadel_port: "8080"
-    entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') localhost\" >> /etc/hosts && sh /workspace/setup.sh"]
+      ZITADEL_DOMAIN: "${ZITADEL_DOMAIN:-localhost}"
+      TF_VAR_zitadel_domain: "${ZITADEL_DOMAIN:-localhost}"
+      TF_VAR_zitadel_port: "${ZITADEL_EXTERNALPORT:-8080}"
+    entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') $$ZITADEL_DOMAIN\" >> /etc/hosts && sh /workspace/setup.sh"]
     depends_on:
       zitadel-api:
         condition: service_healthy
@@ -145,8 +209,9 @@ services:
         required: false
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/auth_rsa_key
+      ZITADEL_ISSUER: "${ZITADEL_PUBLIC_SCHEME:-http}://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8080}"
     extra_hosts:
-      - "localhost:host-gateway"
+      - "${ZITADEL_DOMAIN:-localhost}:host-gateway"
     secrets:
       - auth_rsa_key
     networks:

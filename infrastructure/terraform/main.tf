@@ -50,7 +50,7 @@ resource "zitadel_application_oidc" "auth_client" {
 
   name = "auth-client"
 
-  redirect_uris             = ["http://${var.zitadel_domain}/callback"]
+  redirect_uris             = ["${var.app_scheme}://${var.zitadel_domain}/callback"]
   response_types            = ["OIDC_RESPONSE_TYPE_CODE"]
   grant_types               = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]
   app_type                  = "OIDC_APP_TYPE_NATIVE"

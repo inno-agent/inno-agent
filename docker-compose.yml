@@ -79,19 +79,22 @@ configs:
             priority: 100
           auth-service:
             rule: "PathPrefix(`/auth/v1`)"
-            entryPoints: [web]
+            entryPoints: [web, websecure]
             service: auth-service
             priority: 300
+            tls: {}
           chat-api:
             rule: "PathPrefix(`/api/v1`)"
-            entryPoints: [web]
+            entryPoints: [web, websecure]
             service: chat-api
             priority: 200
+            tls: {}
           frontend:
             rule: "PathPrefix(`/`)"
-            entryPoints: [web]
+            entryPoints: [web, websecure]
             service: frontend
             priority: 100
+            tls: {}
 
 services:
 
@@ -101,6 +104,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
       - "8080:8080"
     networks:
       - innoagent
@@ -187,6 +191,7 @@ services:
       ZITADEL_DOMAIN: "${ZITADEL_DOMAIN:-localhost}"
       TF_VAR_zitadel_domain: "${ZITADEL_DOMAIN:-localhost}"
       TF_VAR_zitadel_port: "${ZITADEL_EXTERNALPORT:-8080}"
+      TF_VAR_app_scheme: "${APP_SCHEME:-http}"
     entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') $$ZITADEL_DOMAIN\" >> /etc/hosts && sh /workspace/setup.sh"]
     depends_on:
       zitadel-api:

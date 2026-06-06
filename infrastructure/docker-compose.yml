@@ -49,12 +49,14 @@ configs:
             middlewares: [strip-api, zitadel-host]
             service: zitadel-api
             priority: 200
+            tls: {}
           zitadel-canonical:
             rule: "PathPrefix(`/`)"
             entryPoints: [zitadel]
             middlewares: [zitadel-host]
             service: zitadel-api
             priority: 100
+            tls: {}
           auth-service:
             rule: "PathPrefix(`/auth/v1`)"
             entryPoints: [web, websecure]

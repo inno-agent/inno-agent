@@ -55,7 +55,7 @@ func main() {
 		log.Fatalf("issuer: %v", err)
 	}
 
-	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelJWKSURL, cfg.ZitadelClientID)
 	if err != nil {
 		log.Fatalf("zitadel provider: %v", err)
 	}

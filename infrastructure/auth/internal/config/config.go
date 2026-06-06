@@ -8,8 +8,9 @@ import (
 )
 
 type Config struct {
-	ZitadelIssuer     string
-	ZitadelClientID   string
+	ZitadelIssuer   string
+	ZitadelJWKSURL  string
+	ZitadelClientID string
 	JWTPrivateKeyPath string
 	JWTExpiry         time.Duration
 	DatabaseDSN       string
@@ -37,8 +38,10 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return def
 	}
 
+	zitadelIssuer := require("ZITADEL_ISSUER")
 	cfg := &Config{
-		ZitadelIssuer:     require("ZITADEL_ISSUER"),
+		ZitadelIssuer:     zitadelIssuer,
+		ZitadelJWKSURL:    fallback("ZITADEL_JWKS_URL", zitadelIssuer+"/oauth/v2/keys"),
 		ZitadelClientID:   getenv("ZITADEL_CLIENT_ID"),
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),

@@ -71,12 +71,14 @@ configs:
             middlewares: [strip-api, zitadel-host]
             service: zitadel-api
             priority: 200
+            tls: {}
           zitadel-canonical:
             rule: "PathPrefix(`/`)"
             entryPoints: [zitadel]
             middlewares: [zitadel-host]
             service: zitadel-api
             priority: 100
+            tls: {}
           auth-service:
             rule: "PathPrefix(`/auth/v1`)"
             entryPoints: [web, websecure]
@@ -215,6 +217,7 @@ services:
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/auth_rsa_key
       ZITADEL_ISSUER: "${ZITADEL_PUBLIC_SCHEME:-http}://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8080}"
+      ZITADEL_JWKS_URL: "http://zitadel-api:8080/oauth/v2/keys"
     extra_hosts:
       - "${ZITADEL_DOMAIN:-localhost}:host-gateway"
     volumes:

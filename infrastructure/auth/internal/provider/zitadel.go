@@ -14,8 +14,7 @@ type ZitadelProvider struct {
 	clientID string
 }
 
-func NewZitadelProvider(ctx context.Context, issuer, clientID string) (*ZitadelProvider, error) {
-	jwksURL := issuer + "/oauth/v2/keys"
+func NewZitadelProvider(ctx context.Context, issuer, jwksURL, clientID string) (*ZitadelProvider, error) {
 	jwks, err := keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
 	if err != nil {
 		return nil, fmt.Errorf("fetch JWKS from %s: %w", jwksURL, err)

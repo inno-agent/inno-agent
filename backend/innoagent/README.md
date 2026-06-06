@@ -11,12 +11,6 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Wait until the model is downloaded:
-
-```bash
-docker compose logs -f model-loader
-```
-
 Test:
 
 ```bash

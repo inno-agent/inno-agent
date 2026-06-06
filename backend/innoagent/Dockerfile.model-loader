@@ -1,0 +1,6 @@
+FROM ollama/ollama:latest
+
+COPY scripts/wait-for-model.sh /wait-for-model.sh
+RUN chmod +x /wait-for-model.sh
+
+ENTRYPOINT ["/bin/sh", "/wait-for-model.sh"]

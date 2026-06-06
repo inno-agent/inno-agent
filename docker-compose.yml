@@ -22,20 +22,22 @@ services:
     # healthcheck временно убран для Windows
 
   model-loader:
-    image: ollama/ollama:latest
+    build:
+      context: ./backend/innoagent
+    dockerfile: Dockerfile.model-loader
+
     container_name: innoagent-model-loader
+
     restart: "no"
+
     networks:
       - innoagent
+
     depends_on:
       - ollama
+
     environment:
-      MODEL_NAME: qwen2.5:0.5b
-      OLLAMA_HOST: http://innoagent-ollama:11434
-    volumes:
-      - ollama_data:/root/.ollama
-      - ./scripts/wait-for-model.sh:/wait-for-model.sh:ro
-    entrypoint: ["sh", "/wait-for-model.sh"]
+      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
 
   orchestrator:
     build:

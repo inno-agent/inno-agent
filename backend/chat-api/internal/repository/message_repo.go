@@ -47,12 +47,12 @@ const (
     `
 )
 
-func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role, content string) (*domain.Message, error) {
+func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role domain.Role, content string) (*domain.Message, error) {
 	log := r.logger.With(
 		zap.String("operation", "Create"),
 		zap.String("user_id", userID),
 		zap.String("chat_id", chatID.String()),
-		zap.String("role", role),
+		zap.String("role", string(role)),
 	)
 
 	var m domain.Message

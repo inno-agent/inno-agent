@@ -75,21 +75,32 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 	return items, total, nil
 }
 
-func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, error) {
+func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
 		chat, err := s.chatRepo.Create(ctx, userID, nil)
 		if err != nil {
-			return nil, fmt.Errorf("Stream failed: %w", err)
+			return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
 		}
 		chatID = chat.ID
+	} else {
+		ok, err := s.chatRepo.ExistsForUser(ctx, chatID, userID)
+		if err != nil {
+			return nil, uuid.Nil, fmt.Errorf("Stream: check ownership: %w", err)
+		}
+		if !ok {
+			return nil, uuid.Nil, fmt.Errorf("Stream: chat not found or access denied")
+		}
 	}
 
-	_, err := s.messageRepo.Create(ctx, userID, chatID, "user", message)
+	_, err := s.messageRepo.Create(ctx, userID, chatID, domain.RoleUser, message)
 	if err != nil {
-		return nil, fmt.Errorf("Stream failed: %w", err)
+		return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
 	}
 
-	_ = s.chatRepo.UpdateTimestamp(ctx, chatID)
+	if err := s.chatRepo.UpdateTimestamp(ctx, chatID); err != nil {
+		s.logger.Warn("failed to update chat timestamp after user message",
+			zap.String("function", "Stream"), zap.Error(err))
+	}
 
 	rawCh := make(chan string)
 	outCh := make(chan string)
@@ -110,7 +121,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		}
 		// use a fresh context — the request ctx may already be cancelled when streaming finishes
 		saveCtx := context.Background()
-		if _, err := s.messageRepo.Create(saveCtx, userID, chatID, "assistant", sb.String()); err != nil {
+		if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
 			s.logger.Error("failed to save assistant message",
 				zap.String("function", "Stream"),
 				zap.Error(err),
@@ -124,5 +135,5 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		}
 	}()
 
-	return outCh, nil
+	return outCh, chatID, nil
 }

@@ -64,7 +64,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     writeSSEEvent(w, "status", map[string]string{"stage": "context_loading", "chat_id": chatID.String()})
     flusher.Flush()
 
-    ch, err := h.service.Stream(ctx, userID, chatID, message)
+    ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, message)
     if err != nil {
         h.logger.Error("failed to start stream", zap.Error(err))
         writeSSEEvent(w, "error", map[string]string{"code": "INTERNAL_ERROR", "message": "internal error"})
@@ -72,7 +72,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    writeSSEEvent(w, "status", map[string]string{"stage": "llm_processing", "chat_id": chatID.String()})
+    writeSSEEvent(w, "status", map[string]string{"stage": "llm_processing", "chat_id": resolvedChatID.String()})
     flusher.Flush()
 
     for chunk := range ch {

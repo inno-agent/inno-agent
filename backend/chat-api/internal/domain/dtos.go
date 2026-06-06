@@ -15,7 +15,7 @@ type ChatItem struct {
 
 type MessageDTO struct {
 	ID        uuid.UUID `json:"id"`
-	Role      string    `json:"role"`
+	Role      Role      `json:"role"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }

@@ -6,6 +6,13 @@ import (
 	"github.com/google/uuid"
 )
 
+type Role string
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+)
+
 type Chat struct {
 	ID          uuid.UUID
 	UserID      string
@@ -19,7 +26,7 @@ type Message struct {
 	ID        uuid.UUID
 	UserID    string
 	ChatID    uuid.UUID
-	Role      string
+	Role      Role
 	Content   string
 	CreatedAt time.Time
 }

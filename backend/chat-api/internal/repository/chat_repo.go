@@ -49,6 +49,8 @@ const (
 	queryUpdateChat = `
         UPDATE chats SET updated_at = now() WHERE id = $1
     `
+
+	queryExistsChatForUser = `SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND user_id = $2)`
 )
 
 func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*domain.Chat, error) {
@@ -108,6 +110,22 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 	}
 
 	return chats, total, nil
+}
+
+func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID string) (bool, error) {
+	log := r.logger.With(
+		zap.String("operation", "ExistsForUser"),
+		zap.String("chat_id", chatID.String()),
+		zap.String("user_id", userID),
+	)
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, queryExistsChatForUser, chatID, userID).Scan(&exists); err != nil {
+		log.Error("exists chat for user failed", zap.Error(err))
+		return false, fmt.Errorf("exists chat for user: %w", err)
+	}
+
+	return exists, nil
 }
 
 func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {

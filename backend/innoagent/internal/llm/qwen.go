@@ -123,7 +123,7 @@ func (p *QwenProvider) Chat(
 		)
 	}
 
-	defer httpResp.Body.Close()
+	defer func() { _ = httpResp.Body.Close() }()
 
 	body, err := io.ReadAll(httpResp.Body)
 	if err != nil {

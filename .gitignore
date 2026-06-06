@@ -1,2 +1,14 @@
 .DS_Store
 .idea/
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.vscode/
+.idea/
+
+# env
+.env
+.env.*
+!.env.example

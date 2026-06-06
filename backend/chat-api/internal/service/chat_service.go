@@ -140,6 +140,8 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 				return
 			case chunk, ok := <-rawCh:
 				if !ok {
+					// rawCh closed: natural completion or goroutine1 exited via ctx.Done().
+					// Both cases make this select branch ready simultaneously — check explicitly.
 					if ctx.Err() != nil {
 						return
 					}

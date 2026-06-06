@@ -29,6 +29,6 @@ func RegisterRoutes(r chi.Router, chatH *ChatHandler, msgH *MessageHandler, stre
     r.Route("/api/v1", func(r chi.Router) {
         r.Get("/chats", chatH.List)
         r.Get("/chats/{chat_id}/messages", msgH.ListByChat)
-        r.Post("/chats/{chat_id}/stream", streamH.Stream)
+        r.Get("/chats/{chat_id}/stream", streamH.Stream)
     })
 }

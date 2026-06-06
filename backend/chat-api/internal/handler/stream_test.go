@@ -1,9 +1,7 @@
 package handler
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +26,7 @@ func (m *mockStreamService) Stream(ctx context.Context, userID string, chatID uu
 
 func newStreamRouter(h *StreamHandler) *chi.Mux {
 	r := chi.NewRouter()
-	r.Post("/chats/{chat_id}/stream", h.Stream)
+	r.Get("/chats/{chat_id}/stream", h.Stream)
 	return r
 }
 
@@ -36,36 +34,27 @@ func newTestStreamHandler(svc domain.ChatService) *StreamHandler {
 	return NewStreamHandler(svc, zap.NewNop())
 }
 
-func postStream(r *chi.Mux, chatID, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, "/chats/"+chatID+"/stream", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+func getStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {
+	url := "/chats/" + chatID + "/stream"
+	sep := "?"
+	if userID != "" {
+		url += sep + "user_id=" + userID
+		sep = "&"
+	}
+	if message != "" {
+		url += sep + "message=" + message
+	}
+	req := httptest.NewRequest(http.MethodGet, url, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
-}
-
-func TestStream_InvalidBody(t *testing.T) {
-	h := newTestStreamHandler(&mockStreamService{})
-	r := newStreamRouter(h)
-
-	rec := postStream(r, "new", "not-json")
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode error: %v", err)
-	}
-	if body["error"] == "" {
-		t.Fatal("expected non-empty error field")
-	}
 }
 
 func TestStream_MissingUserID(t *testing.T) {
 	h := newTestStreamHandler(&mockStreamService{})
 	r := newStreamRouter(h)
 
-	rec := postStream(r, "new", `{"message":"hello"}`)
+	rec := getStream(r, "new", "", "hello")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
@@ -75,7 +64,7 @@ func TestStream_MissingMessage(t *testing.T) {
 	h := newTestStreamHandler(&mockStreamService{})
 	r := newStreamRouter(h)
 
-	rec := postStream(r, "new", `{"user_id":"u1"}`)
+	rec := getStream(r, "new", "u1", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
@@ -95,7 +84,7 @@ func TestStream_NewChat_SendsChunks(t *testing.T) {
 	h := newTestStreamHandler(svc)
 	r := newStreamRouter(h)
 
-	rec := postStream(r, "new", `{"user_id":"u1","message":"hi"}`)
+	rec := getStream(r, "new", "u1", "hi")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -122,10 +111,7 @@ func TestStream_AccessDenied_ReturnsSSEError(t *testing.T) {
 	r := newStreamRouter(h)
 
 	chatID := uuid.New()
-	body, _ := json.Marshal(map[string]string{"user_id": "u1", "message": "hi"})
-	req := httptest.NewRequest(http.MethodPost, "/chats/"+chatID.String()+"/stream", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	rec := getStream(r, chatID.String(), "u1", "hi")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 (SSE), got %d", rec.Code)
@@ -145,10 +131,7 @@ func TestStream_NotFound_ReturnsSSEError(t *testing.T) {
 	r := newStreamRouter(h)
 
 	chatID := uuid.New()
-	body, _ := json.Marshal(map[string]string{"user_id": "u1", "message": "hi"})
-	req := httptest.NewRequest(http.MethodPost, "/chats/"+chatID.String()+"/stream", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	rec := getStream(r, chatID.String(), "u1", "hi")
 
 	if !strings.Contains(rec.Body.String(), "NOT_FOUND") {
 		t.Fatalf("expected NOT_FOUND in SSE error, got: %s", rec.Body.String())

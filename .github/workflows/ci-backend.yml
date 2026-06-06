@@ -4,24 +4,24 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'backend/**'
+      - "backend/**"
   push:
     branches: [main]
     paths:
-      - 'backend/**'
+      - "backend/**"
 
 jobs:
-  ci:
+  ci-backend:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: "1.26"
 
       # later will be separated into different CIs on each service
       - name: Find and test services
@@ -37,8 +37,17 @@ jobs:
             fi
           done
 
-      - name: Lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: backend
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      # later will be separated into different CIs on each service
+      - name: Lint services
+        run: |
+          for dir in backend/*/; do
+            if [ -f "${dir}go.mod" ]; then
+              echo "Linting $dir"
+              cd "$dir"
+              golangci-lint run ./...
+              cd -
+            fi
+          done

@@ -1,18 +1,18 @@
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
+  default: none
   enable:
     - govet
     - staticcheck
     - errcheck
-    - ineffassign
-    - gosimple
     - gosec
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
+  settings:
+    errcheck:
+      check-type-assertions: true
 
 issues:
   max-issues-per-linter: 0

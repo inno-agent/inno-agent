@@ -5,7 +5,7 @@ import styles from './root.module.css'
 
 export const Route = createRootRoute({
     component: () => (
-        <MyRuntimeProvider>
+        <MyRuntimeProvider chatId="temp-chat-id" userId="temp-user-id">
             <div className={`${styles.layout} dark`}>
                 <Sidebar />
                 <main className={styles.main}>

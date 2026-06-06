@@ -26,7 +26,7 @@ func (m *mockStreamService) Stream(ctx context.Context, userID string, chatID uu
 
 func newStreamRouter(h *StreamHandler) *chi.Mux {
 	r := chi.NewRouter()
-	r.Get("/chats/{chat_id}/stream", h.Stream)
+	r.Post("/chats/{chat_id}/stream", h.Stream)
 	return r
 }
 
@@ -34,17 +34,17 @@ func newTestStreamHandler(svc domain.ChatService) *StreamHandler {
 	return NewStreamHandler(svc, zap.NewNop())
 }
 
-func getStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {
-	url := "/chats/" + chatID + "/stream"
-	sep := "?"
-	if userID != "" {
-		url += sep + "user_id=" + userID
-		sep = "&"
+func postStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {
+	body := `{"user_id":"` + userID + `","message":"` + message + `"}`
+	if userID == "" && message == "" {
+		body = `{}`
+	} else if userID == "" {
+		body = `{"message":"` + message + `"}`
+	} else if message == "" {
+		body = `{"user_id":"` + userID + `"}`
 	}
-	if message != "" {
-		url += sep + "message=" + message
-	}
-	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req := httptest.NewRequest(http.MethodPost, "/chats/"+chatID+"/stream", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
@@ -54,7 +54,7 @@ func TestStream_MissingUserID(t *testing.T) {
 	h := newTestStreamHandler(&mockStreamService{})
 	r := newStreamRouter(h)
 
-	rec := getStream(r, "new", "", "hello")
+	rec := postStream(r, "new", "", "hello")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
@@ -64,7 +64,7 @@ func TestStream_MissingMessage(t *testing.T) {
 	h := newTestStreamHandler(&mockStreamService{})
 	r := newStreamRouter(h)
 
-	rec := getStream(r, "new", "u1", "")
+	rec := postStream(r, "new", "u1", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
@@ -84,7 +84,7 @@ func TestStream_NewChat_SendsChunks(t *testing.T) {
 	h := newTestStreamHandler(svc)
 	r := newStreamRouter(h)
 
-	rec := getStream(r, "new", "u1", "hi")
+	rec := postStream(r, "new", "u1", "hi")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -111,13 +111,13 @@ func TestStream_AccessDenied_ReturnsSSEError(t *testing.T) {
 	r := newStreamRouter(h)
 
 	chatID := uuid.New()
-	rec := getStream(r, chatID.String(), "u1", "hi")
+	rec := postStream(r, chatID.String(), "u1", "hi")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 (SSE), got %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "AUTH_FAILED") {
-		t.Fatalf("expected ACCESS_DENIED in SSE error, got: %s", rec.Body.String())
+		t.Fatalf("expected AUTH_FAILED in SSE error, got: %s", rec.Body.String())
 	}
 }
 
@@ -131,9 +131,9 @@ func TestStream_NotFound_ReturnsSSEError(t *testing.T) {
 	r := newStreamRouter(h)
 
 	chatID := uuid.New()
-	rec := getStream(r, chatID.String(), "u1", "hi")
+	rec := postStream(r, chatID.String(), "u1", "hi")
 
 	if !strings.Contains(rec.Body.String(), "CHAT_NOT_FOUND") {
-		t.Fatalf("expected NOT_FOUND in SSE error, got: %s", rec.Body.String())
+		t.Fatalf("expected CHAT_NOT_FOUND in SSE error, got: %s", rec.Body.String())
 	}
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
+
+type streamRequest struct {
+	Message string `json:"message"`
+	UserID  string `json:"user_id"`
+}
 
 // StreamHandler handles SSE streaming of LLM responses.
 type StreamHandler struct {
@@ -23,7 +29,8 @@ func NewStreamHandler(service domain.ChatService, logger *zap.Logger) *StreamHan
 	return &StreamHandler{service: service, logger: logger}
 }
 
-// Stream sends a user message and streams LLM response chunks via SSE.
+// Stream accepts a POST request with JSON body, sends the user message,
+// and streams LLM response chunks via SSE.
 func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -39,15 +46,19 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var req streamRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.logger.Error("invalid request body", zap.Error(err))
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 	// TODO: replace with userID from JWT claims via auth middleware
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
+	if req.UserID == "" {
 		h.logger.Error("missing user_id", zap.String("function", "Stream"))
 		writeError(w, http.StatusBadRequest, "user_id is required")
 		return
 	}
-	message := r.URL.Query().Get("message")
-	if message == "" {
+	if req.Message == "" {
 		h.logger.Error("missing message", zap.String("function", "Stream"))
 		writeError(w, http.StatusBadRequest, "message is required")
 		return
@@ -68,7 +79,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	writeSSEEvent(w, "status", map[string]string{"stage": "context_loading"})
 	flusher.Flush()
 
-	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, message)
+	ch, resolvedChatID, err := h.service.Stream(ctx, req.UserID, chatID, req.Message)
 	if err != nil {
 		h.logger.Error("failed to start stream", zap.Error(err))
 		switch {

@@ -131,6 +131,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		}
 	}()
 
+	//nolint:gosec // context.Background intentional: save must complete even if request context is cancelled
 	go func() {
 		defer close(outCh)
 		var sb strings.Builder

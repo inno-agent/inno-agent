@@ -11,7 +11,7 @@ linters:
     - ineffassign
     - gosec
 
-linters-settings:
+settings:
   errcheck:
     check-type-assertions: true
 

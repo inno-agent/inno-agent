@@ -27,8 +27,8 @@ services:
     networks:
       - zitadel
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./traefik/dynamic.yaml:/etc/traefik/dynamic.yaml:ro
     depends_on:
       zitadel-api:
         condition: service_healthy
@@ -75,39 +75,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=zitadel
-
-      - traefik.http.services.zitadel-api.loadbalancer.server.port=8080
-      - traefik.http.services.zitadel-api.loadbalancer.server.scheme=h2c
-
-      - traefik.http.middlewares.zitadel-strip-api.stripprefix.prefixes=/api
-      - traefik.http.middlewares.zitadel-strip-api.stripprefix.forceSlash=false
-
-      - traefik.http.routers.zitadel-api-alias-web.rule=Host(`${ZITADEL_EXTERNALDOMAIN}`) && PathPrefix(`/api`)
-      - traefik.http.routers.zitadel-api-alias-web.entrypoints=web
-      - traefik.http.routers.zitadel-api-alias-web.middlewares=zitadel-strip-api
-      - traefik.http.routers.zitadel-api-alias-web.service=zitadel-api
-      - traefik.http.routers.zitadel-api-alias-web.priority=200
-
-      - traefik.http.routers.zitadel-api-alias-websecure.rule=Host(`${ZITADEL_EXTERNALDOMAIN}`) && PathPrefix(`/api`)
-      - traefik.http.routers.zitadel-api-alias-websecure.entrypoints=websecure
-      - traefik.http.routers.zitadel-api-alias-websecure.tls=true
-      - traefik.http.routers.zitadel-api-alias-websecure.middlewares=zitadel-strip-api
-      - traefik.http.routers.zitadel-api-alias-websecure.service=zitadel-api
-      - traefik.http.routers.zitadel-api-alias-websecure.priority=200
-
-      - traefik.http.routers.zitadel-canonical-web.rule=Host(`${ZITADEL_EXTERNALDOMAIN}`)
-      - traefik.http.routers.zitadel-canonical-web.entrypoints=web
-      - traefik.http.routers.zitadel-canonical-web.service=zitadel-api
-      - traefik.http.routers.zitadel-canonical-web.priority=100
-
-      - traefik.http.routers.zitadel-canonical-websecure.rule=Host(`${ZITADEL_EXTERNALDOMAIN}`)
-      - traefik.http.routers.zitadel-canonical-websecure.entrypoints=websecure
-      - traefik.http.routers.zitadel-canonical-websecure.tls=true
-      - traefik.http.routers.zitadel-canonical-websecure.service=zitadel-api
-      - traefik.http.routers.zitadel-canonical-websecure.priority=100
 
   # Runs terraform to create the Zitadel project + OIDC app; writes ZITADEL_CLIENT_ID to setup/auth.env.
   terraform-setup:

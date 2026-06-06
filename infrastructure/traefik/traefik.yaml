@@ -1,7 +1,6 @@
 providers:
-  docker:
-    exposedByDefault: false
-    network: zitadel
+  file:
+    filename: /etc/traefik/dynamic.yaml
 
 entryPoints:
   web:

@@ -1,0 +1,53 @@
+networks:
+  innoagent:
+    driver: bridge
+
+volumes:
+  ollama_data:
+
+services:
+
+  innoagent-ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    networks:
+      - innoagent
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        ollama pull ${MODEL_NAME:-qwen2.5:0.5b}
+        wait
+    healthcheck:
+        test: ["CMD", "ollama", "list"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+        start_period: 30s
+
+  orchestrator:
+    build:
+      context: ./backend/innoagent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - innoagent
+    depends_on:
+      innoagent-ollama:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
+      - OLLAMA_HOST=innoagent-ollama
+      - OLLAMA_PORT=11434
+      - LLM_BASE_URL=http://innoagent-ollama:11434/v1
+      - API_PORT=8080

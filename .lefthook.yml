@@ -7,10 +7,15 @@ pre-commit:
       root: backend
       run: gofumpt -d -l -e {staged_files}
 
-    go-lint:
-      glob: "**/*.go"
-      root: backend
-      run: golangci-lint run {staged_files}
+    go-lint-chat:
+      glob: "backend/chat-api/**/*.go"
+      root: backend/chat-api
+      run: golangci-lint run ./...
+
+    go-lint-innoagent:
+      glob: "backend/innoagent/**/*.go"
+      root: backend/innoagent
+      run: golangci-lint run ./...
 
     python-fmt:
       glob: "**/*.py"

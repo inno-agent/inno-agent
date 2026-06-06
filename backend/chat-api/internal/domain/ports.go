@@ -20,6 +20,11 @@ type MessageRepository interface {
 	ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]Message, int, error)
 }
 
+// LLMProvider sends a prompt and returns a response from the language model.
+type LLMProvider interface {
+	Chat(ctx context.Context, message string) (string, error)
+}
+
 // ChatService defines the application use cases for chat and messaging.
 type ChatService interface {
 	ListChats(ctx context.Context, userID string, limit, offset int) ([]ChatItem, int, error)

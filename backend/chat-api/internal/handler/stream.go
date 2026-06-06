@@ -11,11 +11,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 type streamRequest struct {
 	Message string `json:"message"`
-	UserID  string `json:"user_id"`
 }
 
 // StreamHandler handles SSE streaming of LLM responses.
@@ -46,16 +46,16 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req streamRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.logger.Error("invalid request body", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	// TODO: replace with userID from JWT claims via auth middleware
-	if req.UserID == "" {
-		h.logger.Error("missing user_id", zap.String("function", "Stream"))
-		writeError(w, http.StatusBadRequest, "user_id is required")
 		return
 	}
 	if req.Message == "" {
@@ -79,7 +79,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	writeSSEEvent(w, "status", map[string]string{"stage": "context_loading"})
 	flusher.Flush()
 
-	ch, resolvedChatID, err := h.service.Stream(ctx, req.UserID, chatID, req.Message)
+	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, req.Message)
 	if err != nil {
 		h.logger.Error("failed to start stream", zap.Error(err))
 		switch {

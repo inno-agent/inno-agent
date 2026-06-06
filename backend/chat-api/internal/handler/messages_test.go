@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 // mockMsgService implements domain.ChatService for message handler tests.
@@ -35,30 +36,35 @@ func newMsgRouter(h *MessageHandler) *chi.Mux {
 	return r
 }
 
+func getMessages(r *chi.Mux, chatID, userID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/chats/"+chatID+"/messages", nil)
+	if userID != "" {
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		req = req.WithContext(ctx)
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestMessageListByChat_InvalidUUID(t *testing.T) {
 	h := newTestMessageHandler(&mockMsgService{})
 	r := newMsgRouter(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats/not-a-uuid/messages?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getMessages(r, "not-a-uuid", "u1")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid UUID, got %d", rec.Code)
 	}
 }
 
-func TestMessageListByChat_MissingUserID(t *testing.T) {
+func TestMessageListByChat_NoAuth_Returns401(t *testing.T) {
 	h := newTestMessageHandler(&mockMsgService{})
 	r := newMsgRouter(h)
 
 	chatID := uuid.New()
-	req := httptest.NewRequest(http.MethodGet, "/chats/"+chatID.String()+"/messages", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing user_id, got %d", rec.Code)
+	rec := getMessages(r, chatID.String(), "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for missing auth, got %d", rec.Code)
 	}
 }
 
@@ -72,10 +78,7 @@ func TestMessageListByChat_EmptyResult(t *testing.T) {
 	r := newMsgRouter(h)
 
 	chatID := uuid.New()
-	req := httptest.NewRequest(http.MethodGet, "/chats/"+chatID.String()+"/messages?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getMessages(r, chatID.String(), "u1")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -109,10 +112,7 @@ func TestMessageListByChat_ServiceError(t *testing.T) {
 	r := newMsgRouter(h)
 
 	chatID := uuid.New()
-	req := httptest.NewRequest(http.MethodGet, "/chats/"+chatID.String()+"/messages?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getMessages(r, chatID.String(), "u1")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}

@@ -25,6 +25,31 @@ func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServ
 			"client_id": clientID,
 		})
 	})
+
+	r.GET("/auth/v1/jwks", func(c *gin.Context) {
+		c.JSON(http.StatusOK, iss.PublicKeyJWKS())
+	})
+
+	r.POST("/auth/v1/validate", func(c *gin.Context) {
+		var req struct {
+			Token string `json:"token" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+		claims, err := iss.Verify(req.Token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"user_id":     claims.UserID,
+			"tier":        claims.Tier,
+			"ctx_version": claims.CtxVersion,
+		})
+	})
+
 	r.POST("/auth/v1/exchange", exchangeHandler(p, svc, iss, expiry))
 }
 

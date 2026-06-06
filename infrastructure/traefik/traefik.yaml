@@ -5,6 +5,8 @@ providers:
 entryPoints:
   web:
     address: ":80"
+  zitadel:
+    address: ":8080"
   websecure:
     address: ":443"
 

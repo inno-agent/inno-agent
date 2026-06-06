@@ -14,13 +14,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 // mockChatService implements domain.ChatService for chat handler tests.
 type mockChatService struct {
 	domain.ChatService // embed for unimplemented methods
-	listChats  func(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error)
-	getHistory func(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.MessageDTO, int, error)
+	listChats          func(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error)
+	getHistory         func(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.MessageDTO, int, error)
 }
 
 func (m *mockChatService) ListChats(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error) {
@@ -35,18 +36,30 @@ func newTestChatHandler(svc domain.ChatService) *ChatHandler {
 	return NewChatHandler(svc, zap.NewNop())
 }
 
-func TestChatList_MissingUserID(t *testing.T) {
+func getChats(r *chi.Mux, userID, query string) *httptest.ResponseRecorder {
+	url := "/chats"
+	if query != "" {
+		url += "?" + query
+	}
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	if userID != "" {
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		req = req.WithContext(ctx)
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestChatList_NoAuth_Returns401(t *testing.T) {
 	h := newTestChatHandler(&mockChatService{})
 
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	rec := getChats(r, "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 
 	var body map[string]string
@@ -69,10 +82,7 @@ func TestChatList_EmptyList(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getChats(r, "u1", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -108,10 +118,7 @@ func TestChatList_TwoChats(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getChats(r, "u1", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -148,10 +155,7 @@ func TestChatList_ServiceError(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats?user_id=u1", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getChats(r, "u1", "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
@@ -170,10 +174,7 @@ func TestChatList_InvalidLimitFallsToDefault(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats?user_id=u1&limit=abc", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getChats(r, "u1", "limit=abc")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
@@ -195,10 +196,7 @@ func TestChatList_LimitTooLargeFallsToDefault(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/chats", h.List)
 
-	req := httptest.NewRequest(http.MethodGet, "/chats?user_id=u1&limit=200", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := getChats(r, "u1", "limit=200")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}

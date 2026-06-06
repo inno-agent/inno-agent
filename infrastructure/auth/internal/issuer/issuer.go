@@ -3,9 +3,11 @@ package issuer
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -58,6 +60,21 @@ func (i *Issuer) Issue(userID, tier string, ctxVersion int32) (string, error) {
 		return "", fmt.Errorf("sign token: %w", err)
 	}
 	return signed, nil
+}
+
+func (i *Issuer) PublicKeyJWKS() map[string]interface{} {
+	pub := &i.privateKey.PublicKey
+	return map[string]interface{}{
+		"keys": []map[string]interface{}{
+			{
+				"kty": "RSA",
+				"use": "sig",
+				"alg": "RS256",
+				"n":   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
+				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
+			},
+		},
+	}
 }
 
 func (i *Issuer) Verify(tokenStr string) (Claims, error) {

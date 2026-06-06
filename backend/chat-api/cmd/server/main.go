@@ -15,6 +15,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/config"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/handler"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/repository"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/service"
 )
@@ -46,15 +47,16 @@ func main() {
 
 	chatRepo := repository.NewChatRepo(pool, logger)
 	messageRepo := repository.NewMessageRepo(pool, logger)
+	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 
-	chatService := service.NewChatService(chatRepo, messageRepo, logger)
+	chatService := service.NewChatService(chatRepo, messageRepo, llmClient, logger)
 
 	chatHandler := handler.NewChatHandler(chatService, logger)
 	messageHandler := handler.NewMessageHandler(chatService, logger)
 	streamHandler := handler.NewStreamHandler(chatService, logger)
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler)
+	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

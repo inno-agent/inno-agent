@@ -1,38 +1,232 @@
+name: inno-agent
+
+# ─── Networks ───────────────────────────────────────────────────────────────
 networks:
   innoagent:
-    driver: bridge
+    name: innoagent
 
+# ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
-  ollama_data:
+  postgres-data:
+  machinekey:
+  ollama-data:
+
+# ─── Secrets ────────────────────────────────────────────────────────────────
+secrets:
+  auth_rsa_key:
+    file: ./infrastructure/auth/dev-private-key.pem
+
+# ─── Configs (Zitadel SMTP, generated from infrastructure/.env) ─────────────
+configs:
+  zitadel_secrets:
+    content: |
+      DefaultInstance:
+        SMTPConfiguration:
+          Description: ${ZITADEL_SMTP_DESCRIPTION}
+          SMTP:
+            Host: ${ZITADEL_SMTP_HOST}
+            PlainAuth:
+              User: ${ZITADEL_SMTP_USER}
+              Password: ${ZITADEL_SMTP_PASSWORD}
+          TLS: ${ZITADEL_SMTP_TLS}
+          From: ${ZITADEL_SMTP_FROM}
+          FromName: ${ZITADEL_SMTP_FROM_NAME}
 
 services:
 
-  innoagent-ollama:
+  # ─── Reverse proxy (Traefik) ───────────────────────────────────────────────
+  proxy:
+    image: ${TRAEFIK_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:8080"
+    networks:
+      - innoagent
+    volumes:
+      - ./infrastructure/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./infrastructure/traefik/dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+    depends_on:
+      zitadel-api:
+        condition: service_healthy
+
+  # ─── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: ${POSTGRES_IMAGE}
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}"]
+      interval: 10s
+      timeout: 30s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - innoagent
+
+  # ─── Zitadel IdP ──────────────────────────────────────────────────────────
+  zitadel-api:
+    image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION}
+    restart: unless-stopped
+    user: "0"
+    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --config /zitadel.yaml --config /zitadel-secrets.yaml
+    env_file:
+      - .env
+    environment:
+      ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH: /machinekey/terraform.json
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: terraform-provisioner
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Terraform Provisioner
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE: "1"
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_EXPIRATIONDATE: "2030-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: admin
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_FIRSTNAME: Admin
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_LASTNAME: Inno
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: admin@localhost
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_VERIFIED: "true"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+    volumes:
+      - ./infrastructure/zitadel.yaml:/zitadel.yaml:ro
+      - machinekey:/machinekey
+    configs:
+      - source: zitadel_secrets
+        target: /zitadel-secrets.yaml
+        mode: 0400
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready", "--config", "/zitadel.yaml"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 20s
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── Terraform: creates Zitadel OIDC app, writes client_id to auth.env ────
+  terraform-setup:
+    image: hashicorp/terraform:1.12
+    working_dir: /workspace
+    volumes:
+      - ./infrastructure/terraform:/workspace
+      - ./infrastructure/setup:/setup
+      - machinekey:/machinekey:ro
+    environment:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_zitadel_domain: "localhost"
+      TF_VAR_zitadel_port: "8080"
+    entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') localhost\" >> /etc/hosts && sh /workspace/setup.sh"]
+    depends_on:
+      zitadel-api:
+        condition: service_healthy
+      proxy:
+        condition: service_started
+    restart: "no"
+    networks:
+      - innoagent
+
+  # ─── Auth service (AICore JWT issuer) ─────────────────────────────────────
+  auth:
+    build:
+      context: ./infrastructure/auth
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      - path: ./infrastructure/setup/auth.env
+        required: false
+    environment:
+      AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/auth_rsa_key
+    extra_hosts:
+      - "localhost:host-gateway"
+    secrets:
+      - auth_rsa_key
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zitadel-api:
+        condition: service_healthy
+      terraform-setup:
+        condition: service_completed_successfully
+
+  # ─── Chat API DB migrations ────────────────────────────────────────────────
+  chat-api-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/chat-api/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ─── Chat API ──────────────────────────────────────────────────────────────
+  chat-api:
+    build:
+      context: ./backend/chat-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      AUTH_SERVICE_URL: http://auth:8081
+      SERVER_PORT: "8000"
+    networks:
+      - innoagent
+    depends_on:
+      chat-api-migrate:
+        condition: service_completed_successfully
+      auth:
+        condition: service_started
+      orchestrator:
+        condition: service_started
+
+  # ─── Ollama (LLM runtime) ─────────────────────────────────────────────────
+  ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
     networks:
       - innoagent
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama-data:/root/.ollama
     environment:
-      - OLLAMA_HOST=0.0.0.0
-      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama serve &
-        sleep 5
-        ollama pull ${MODEL_NAME:-qwen2.5:0.5b}
-        wait
+      OLLAMA_HOST: "0.0.0.0"
     healthcheck:
-        test: ["CMD", "ollama", "list"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-        start_period: 30s
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
+  # ─── Pull model on first boot ─────────────────────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    networks:
+      - innoagent
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${MODEL_NAME:-qwen2.5:0.5b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  # ─── AI Orchestrator ──────────────────────────────────────────────────────
   orchestrator:
     build:
       context: ./backend/innoagent
@@ -40,14 +234,19 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
-    depends_on:
-      innoagent-ollama:
-        condition: service_healthy
-    ports:
-      - "${API_PORT:-8080}:8080"
     environment:
-      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
-      - OLLAMA_HOST=innoagent-ollama
-      - OLLAMA_PORT=11434
-      - LLM_BASE_URL=http://innoagent-ollama:11434/v1
-      - API_PORT=8080
+      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
+      LLM_BASE_URL: http://ollama:11434/v1
+      API_PORT: "8080"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - innoagent

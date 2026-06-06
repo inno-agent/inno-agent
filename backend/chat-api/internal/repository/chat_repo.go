@@ -37,15 +37,12 @@ const (
                COALESCE(
                    (SELECT content FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1),
                    ''
-               ) AS last_message
+               ) AS last_message,
+               COUNT(*) OVER() AS total
         FROM chats c
         WHERE c.user_id = $1
         ORDER BY c.updated_at DESC
         LIMIT $2 OFFSET $3
-    `
-
-	queryCountChatsByUser = `
-        SELECT COUNT(*) FROM chats WHERE user_id = $1
     `
 
 	queryUpdateChat = `
@@ -81,16 +78,6 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 		zap.Int("offset", offset),
 	)
 
-	var total int
-	if err := r.pool.QueryRow(ctx, queryCountChatsByUser, userID).Scan(&total); err != nil {
-		log.Error("count chats failed", zap.Error(err))
-		return nil, 0, fmt.Errorf("list chats: count: %w", err)
-	}
-
-	if total == 0 {
-		return []domain.Chat{}, 0, nil
-	}
-
 	rows, err := r.pool.Query(ctx, queryListChatsByUser, userID, limit, offset)
 	if err != nil {
 		log.Error("list chats query failed", zap.Error(err))
@@ -98,10 +85,13 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 	}
 	defer rows.Close()
 
-	var chats []domain.Chat
+	var (
+		chats []domain.Chat
+		total int
+	)
 	for rows.Next() {
 		var c domain.Chat
-		if err := rows.Scan(&c.ID, &c.Title, &c.UpdatedAt, &c.LastMessage); err != nil {
+		if err := rows.Scan(&c.ID, &c.Title, &c.UpdatedAt, &c.LastMessage, &total); err != nil {
 			log.Error("scan chat row failed", zap.Error(err))
 			return nil, 0, fmt.Errorf("list chats: scan: %w", err)
 		}
@@ -111,6 +101,10 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 	if err := rows.Err(); err != nil {
 		log.Error("iterate chat rows failed", zap.Error(err))
 		return nil, 0, fmt.Errorf("list chats: rows: %w", err)
+	}
+
+	if chats == nil {
+		return []domain.Chat{}, 0, nil
 	}
 
 	return chats, total, nil

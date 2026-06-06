@@ -33,19 +33,13 @@ const (
     `
 
 	queryListMessagesByChat = `
-        SELECT m.id, m.user_id, m.chat_id, m.role, m.content, m.created_at
+        SELECT m.id, m.user_id, m.chat_id, m.role, m.content, m.created_at,
+               COUNT(*) OVER() AS total
         FROM messages m
         JOIN chats c ON m.chat_id = c.id
         WHERE m.chat_id = $1 AND c.user_id = $2
         ORDER BY m.created_at ASC
         LIMIT $3 OFFSET $4
-    `
-
-	queryCountMessagesByChat = `
-        SELECT COUNT(*)
-        FROM messages m
-        JOIN chats c ON m.chat_id = c.id
-        WHERE m.chat_id = $1 AND c.user_id = $2
     `
 )
 
@@ -78,16 +72,6 @@ func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid
 		zap.Int("offset", offset),
 	)
 
-	var total int
-	if err := r.pool.QueryRow(ctx, queryCountMessagesByChat, chatID, userID).Scan(&total); err != nil {
-		log.Error("count messages failed", zap.Error(err))
-		return nil, 0, fmt.Errorf("list messages: count: %w", err)
-	}
-
-	if total == 0 {
-		return []domain.Message{}, 0, nil
-	}
-
 	rows, err := r.pool.Query(ctx, queryListMessagesByChat, chatID, userID, limit, offset)
 	if err != nil {
 		log.Error("list messages query failed", zap.Error(err))
@@ -95,10 +79,13 @@ func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid
 	}
 	defer rows.Close()
 
-	var msgs []domain.Message
+	var (
+		msgs  []domain.Message
+		total int
+	)
 	for rows.Next() {
 		var m domain.Message
-		if err := rows.Scan(&m.ID, &m.UserID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.UserID, &m.ChatID, &m.Role, &m.Content, &m.CreatedAt, &total); err != nil {
 			log.Error("scan message row failed", zap.Error(err))
 			return nil, 0, fmt.Errorf("list messages: scan: %w", err)
 		}
@@ -108,6 +95,10 @@ func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid
 	if err := rows.Err(); err != nil {
 		log.Error("iterate message rows failed", zap.Error(err))
 		return nil, 0, fmt.Errorf("list messages: rows: %w", err)
+	}
+
+	if msgs == nil {
+		return []domain.Message{}, 0, nil
 	}
 
 	return msgs, total, nil

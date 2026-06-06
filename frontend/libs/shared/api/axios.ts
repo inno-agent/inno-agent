@@ -1,0 +1,39 @@
+import axios from 'axios'
+
+const API_BASE_URL = '/api/v1'
+
+export const apiEndpoints = {
+    chats: '/chats',
+    chatMessages: (chatId: string) => `/chats/${chatId}/messages`,
+    chatStream: (chatId: string) => `/chats/${chatId}/stream`,
+}
+
+export const apiClient = axios.create({
+    baseURL: API_BASE_URL,
+    withCredentials: true,
+    headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+    },
+})
+
+export const buildApiUrl = (
+    endpoint: string,
+    params?: URLSearchParams | Record<string, string | number | boolean | undefined>,
+) =>
+    apiClient.getUri({
+        url: endpoint,
+        params,
+        paramsSerializer: (value) =>
+            value instanceof URLSearchParams
+                ? value.toString()
+                : new URLSearchParams(
+                      Object.entries(value).reduce<Record<string, string>>((acc, [key, item]) => {
+                          if (item !== undefined) {
+                              acc[key] = String(item)
+                          }
+
+                          return acc
+                      }, {}),
+                  ).toString(),
+    })

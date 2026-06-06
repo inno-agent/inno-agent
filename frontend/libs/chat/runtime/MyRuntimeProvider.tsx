@@ -21,7 +21,7 @@ export function MyRuntimeProvider({
     userId: string
 }>) {
     const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([])
-    const [isRunning, setIsRunning] = useState(false)
+    const [isRunning, setIsRunning] = useState<boolean>(false);
 
     const onNew = useCallback(
         async (message: AppendMessage) => {
@@ -29,6 +29,8 @@ export function MyRuntimeProvider({
                 throw new Error('Only text content is supported')
             }
 
+
+            //TODO - здесь могут быть ошибки
             const nextMessages = [
                 ...messages,
                 createUserTextMessage(message.content[0].text),

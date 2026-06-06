@@ -55,7 +55,7 @@ func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offse
 }
 
 func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]dtos.Message, int, error) {
-    msgs, total, err := s.messageRepo.ListByChat(ctx, chatID, limit, offset)
+    msgs, total, err := s.messageRepo.ListByChat(ctx, userID, chatID, limit, offset)
     if err != nil {
         s.logger.Error("failed to get history",
             zap.String("function", "GetHistory"),
@@ -101,19 +101,20 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
     }()
 
     go func() {
-        var fullResponse string
-        for chunk := range ch {
-            fullResponse += chunk
-        }
-        _, err := s.messageRepo.Create(ctx, userID, chatID, "assistant", fullResponse)
-        if err != nil {
-            s.logger.Error("failed to save assistant message",
-                zap.String("function", "Stream"),
-                zap.Error(err),
-            )
-        }
-        _ = s.chatRepo.UpdateTimestamp(ctx, chatID)
-    }()
+    var fullResponse string
+    for chunk := range ch {
+        fullResponse += chunk
+    }
+    saveCtx := context.Background()
+    _, err := s.messageRepo.Create(saveCtx, userID, chatID, "assistant", fullResponse)
+    if err != nil {
+        s.logger.Error("failed to save assistant message",
+            zap.String("function", "Stream"),
+            zap.Error(err),
+        )
+    }
+    _ = s.chatRepo.UpdateTimestamp(saveCtx, chatID)
+}()
 
     return ch, nil
 }

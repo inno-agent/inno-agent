@@ -9,5 +9,5 @@ import (
 
 type MessageRepository interface {
     Create(ctx context.Context, userID string, chatID uuid.UUID, role, content string) (*entities.Message, error)
-    ListByChat(ctx context.Context, chatID uuid.UUID, limit, offset int) ([]entities.Message, int, error)
+    ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]entities.Message, int, error)
 }

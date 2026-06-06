@@ -1,1 +1,85 @@
 package handler
+
+import (
+    "fmt"
+    "net/http"
+
+    "github.com/go-chi/chi/v5"
+    "github.com/google/uuid"
+    "go.uber.org/zap"
+
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/services"
+)
+
+type StreamHandler struct {
+    service services.Service
+    logger  *zap.Logger
+}
+
+func NewStreamHandler(service services.Service, logger *zap.Logger) *StreamHandler {
+    return &StreamHandler{service: service, logger: logger}
+}
+
+func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+
+    chatIDParam := chi.URLParam(r, "chat_id")
+    var chatID uuid.UUID
+    if chatIDParam != "" && chatIDParam != "new" {
+        var err error
+        chatID, err = uuid.Parse(chatIDParam)
+        if err != nil {
+            h.logger.Error("invalid chat_id", zap.Error(err))
+            writeError(w, http.StatusBadRequest, "invalid chat_id")
+            return
+        }
+    }
+
+    userID := r.URL.Query().Get("user_id")
+    if userID == "" {
+        h.logger.Error("missing user_id", zap.String("function", "Stream"))
+        writeError(w, http.StatusBadRequest, "user_id is required")
+        return
+    }
+
+    message := r.URL.Query().Get("message")
+    if message == "" {
+        h.logger.Error("missing message", zap.String("function", "Stream"))
+        writeError(w, http.StatusBadRequest, "message is required")
+        return
+    }
+
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+    w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		h.logger.Error("streaming not supported")
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"context_loading\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    flusher.Flush()
+
+    ch, err := h.service.Stream(ctx, userID, chatID, message)
+    if err != nil {
+        h.logger.Error("failed to start stream", zap.Error(err))
+        fmt.Fprintf(w, "event: error\ndata: {\"code\":\"INTERNAL_ERROR\",\"message\":\"%s\"}\n\n", err.Error())
+        flusher.Flush()
+        return
+    }
+
+    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"llm_processing\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    flusher.Flush()
+
+    for chunk := range ch {
+        fmt.Fprintf(w, "event: chunk\ndata: {\"content\":\"%s\"}\n\n", chunk)
+        flusher.Flush()
+    }
+
+    fmt.Fprintf(w, "event: done\ndata: {\"status\":\"completed\"}\n\n")
+    flusher.Flush()
+}

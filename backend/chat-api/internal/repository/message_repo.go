@@ -11,11 +11,13 @@ import (
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
+// MessageRepo is the PostgreSQL implementation of domain.MessageRepository.
 type MessageRepo struct {
 	pool   *pgxpool.Pool
 	logger *zap.Logger
 }
 
+// NewMessageRepo creates a MessageRepo backed by the given connection pool.
 func NewMessageRepo(pool *pgxpool.Pool, logger *zap.Logger) *MessageRepo {
 	return &MessageRepo{
 		pool:   pool,
@@ -47,6 +49,7 @@ const (
     `
 )
 
+// Create inserts a new message row and returns the created Message.
 func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role domain.Role, content string) (*domain.Message, error) {
 	log := r.logger.With(
 		zap.String("operation", "Create"),
@@ -65,6 +68,7 @@ func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUI
 	return &m, nil
 }
 
+// ListByChat returns a paginated list of messages for the given chat, scoped to the user.
 func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.Message, int, error) {
 	log := r.logger.With(
 		zap.String("operation", "ListByChat"),

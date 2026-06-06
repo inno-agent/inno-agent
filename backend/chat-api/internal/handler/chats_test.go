@@ -94,11 +94,9 @@ func TestChatList_EmptyList(t *testing.T) {
 
 func TestChatList_TwoChats(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
-	title1 := "Chat 1"
-	title2 := "Chat 2"
 	items := []domain.ChatItem{
-		{ID: uuid.New(), Title: &title1, LastMessage: "hello", UpdatedAt: now},
-		{ID: uuid.New(), Title: &title2, LastMessage: "world", UpdatedAt: now},
+		{ID: uuid.New(), Title: "Chat 1", LastMessage: "hello", UpdatedAt: now},
+		{ID: uuid.New(), Title: "Chat 2", LastMessage: "world", UpdatedAt: now},
 	}
 	svc := &mockChatService{
 		listChats: func(_ context.Context, _ string, _, _ int) ([]domain.ChatItem, int, error) {
@@ -179,8 +177,8 @@ func TestChatList_InvalidLimitFallsToDefault(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if capturedLimit != 10 {
-		t.Fatalf("expected default limit 10, got %d", capturedLimit)
+	if capturedLimit != 20 {
+		t.Fatalf("expected default limit 20, got %d", capturedLimit)
 	}
 }
 
@@ -204,7 +202,7 @@ func TestChatList_LimitTooLargeFallsToDefault(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if capturedLimit != 10 {
-		t.Fatalf("expected limit clamped to 10, got %d", capturedLimit)
+	if capturedLimit != 20 {
+		t.Fatalf("expected limit clamped to 20, got %d", capturedLimit)
 	}
 }

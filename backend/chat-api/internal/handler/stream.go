@@ -3,6 +3,7 @@ package handler
 import (
     "errors"
     "net/http"
+    "time"
 
     "github.com/go-chi/chi/v5"
     "github.com/google/uuid"
@@ -11,15 +12,18 @@ import (
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
+// StreamHandler handles SSE streaming of LLM responses.
 type StreamHandler struct {
     service domain.ChatService
     logger  *zap.Logger
 }
 
+// NewStreamHandler creates a StreamHandler with the given service and logger.
 func NewStreamHandler(service domain.ChatService, logger *zap.Logger) *StreamHandler {
     return &StreamHandler{service: service, logger: logger}
 }
 
+// Stream sends a user message and streams LLM response chunks via SSE.
 func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
@@ -69,9 +73,9 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
         h.logger.Error("failed to start stream", zap.Error(err))
         switch {
         case errors.Is(err, domain.ErrAccessDenied):
-            writeSSEEvent(w, "error", map[string]string{"code": "ACCESS_DENIED", "message": "access denied"})
+            writeSSEEvent(w, "error", map[string]string{"code": "AUTH_FAILED", "message": "access denied"})
         case errors.Is(err, domain.ErrNotFound):
-            writeSSEEvent(w, "error", map[string]string{"code": "NOT_FOUND", "message": "chat not found"})
+            writeSSEEvent(w, "error", map[string]string{"code": "CHAT_NOT_FOUND", "message": "chat not found"})
         default:
             writeSSEEvent(w, "error", map[string]string{"code": "INTERNAL_ERROR", "message": "internal error"})
         }
@@ -96,6 +100,9 @@ loop:
         }
     }
 
-    writeSSEEvent(w, "done", map[string]string{"status": "completed"})
+    writeSSEEvent(w, "done", map[string]interface{}{
+        "status":      "completed",
+        "finished_at": time.Now().UTC().Format(time.RFC3339),
+    })
     flusher.Flush()
 }

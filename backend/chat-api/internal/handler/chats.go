@@ -9,15 +9,18 @@ import (
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
+// ChatHandler handles HTTP requests for chat listing.
 type ChatHandler struct {
     service domain.ChatService
     logger  *zap.Logger
 }
 
+// NewChatHandler creates a ChatHandler with the given service and logger.
 func NewChatHandler(service domain.ChatService, logger *zap.Logger) *ChatHandler {
     return &ChatHandler{service: service, logger: logger}
 }
 
+// List returns a paginated list of chats for the requesting user.
 func (h *ChatHandler) List(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
@@ -31,8 +34,8 @@ func (h *ChatHandler) List(w http.ResponseWriter, r *http.Request) {
 
     limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
     offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-    if limit <= 0 || limit > 50 {
-        limit = 10
+    if limit <= 0 || limit > 100 {
+        limit = 20
     }
     if offset < 0 {
         offset = 0

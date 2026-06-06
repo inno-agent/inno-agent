@@ -11,15 +11,18 @@ import (
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
+// MessageHandler handles HTTP requests for chat message history.
 type MessageHandler struct {
     service domain.ChatService
     logger  *zap.Logger
 }
 
+// NewMessageHandler creates a MessageHandler with the given service and logger.
 func NewMessageHandler(service domain.ChatService, logger *zap.Logger) *MessageHandler {
     return &MessageHandler{service: service, logger: logger}
 }
 
+// ListByChat returns paginated message history for the given chat.
 func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 

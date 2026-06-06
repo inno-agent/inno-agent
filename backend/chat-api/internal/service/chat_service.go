@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -13,12 +14,14 @@ import (
 
 var _ domain.ChatService = (*ChatService)(nil)
 
+// ChatService handles chat and message business logic.
 type ChatService struct {
 	chatRepo    domain.ChatRepository
 	messageRepo domain.MessageRepository
 	logger      *zap.Logger
 }
 
+// NewChatService creates a ChatService with the given repositories and logger.
 func NewChatService(
 	chatRepo domain.ChatRepository,
 	messageRepo domain.MessageRepository,
@@ -31,6 +34,7 @@ func NewChatService(
 	}
 }
 
+// ListChats returns a paginated list of chats belonging to the given user.
 func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error) {
 	chats, total, err := s.chatRepo.ListByUser(ctx, userID, limit, offset)
 	if err != nil {
@@ -43,9 +47,13 @@ func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offse
 
 	items := make([]domain.ChatItem, len(chats))
 	for i, c := range chats {
+		title := ""
+		if c.Title != nil {
+			title = *c.Title
+		}
 		items[i] = domain.ChatItem{
 			ID:          c.ID,
-			Title:       c.Title,
+			Title:       title,
 			LastMessage: c.LastMessage,
 			UpdatedAt:   c.UpdatedAt,
 		}
@@ -53,6 +61,7 @@ func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offse
 	return items, total, nil
 }
 
+// GetHistory returns paginated message history for the given chat, scoped to the user.
 func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.MessageDTO, int, error) {
 	msgs, total, err := s.messageRepo.ListByChat(ctx, userID, chatID, limit, offset)
 	if err != nil {
@@ -75,6 +84,7 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 	return items, total, nil
 }
 
+// Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
 		chat, err := s.chatRepo.Create(ctx, userID, nil)
@@ -130,12 +140,11 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 				return
 			case chunk, ok := <-rawCh:
 				if !ok {
-					// rawCh closed: could be natural completion OR goroutine1 exiting due to ctx cancellation.
-					// Both cases make this branch ready simultaneously with ctx.Done(), so check explicitly.
 					if ctx.Err() != nil {
 						return
 					}
-					saveCtx := context.Background()
+					saveCtx, saveCancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer saveCancel()
 					if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
 						s.logger.Error("failed to save assistant message",
 							zap.String("function", "Stream"),

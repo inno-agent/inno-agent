@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Role identifies the author of a message.
 type Role string
 
 const (
@@ -13,6 +14,7 @@ const (
 	RoleAssistant Role = "assistant"
 )
 
+// Chat is the aggregate root for a conversation thread.
 type Chat struct {
 	ID          uuid.UUID
 	UserID      string
@@ -22,6 +24,7 @@ type Chat struct {
 	CreatedAt   time.Time
 }
 
+// Message represents a single turn in a chat conversation.
 type Message struct {
 	ID        uuid.UUID
 	UserID    string

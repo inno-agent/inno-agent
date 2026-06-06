@@ -11,11 +11,13 @@ import (
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
+// ChatRepo is the PostgreSQL implementation of domain.ChatRepository.
 type ChatRepo struct {
 	pool   *pgxpool.Pool
 	logger *zap.Logger
 }
 
+// NewChatRepo creates a ChatRepo backed by the given connection pool.
 func NewChatRepo(pool *pgxpool.Pool, logger *zap.Logger) *ChatRepo {
 	return &ChatRepo{
 		pool:   pool,
@@ -53,6 +55,7 @@ const (
 	queryExistsChatForUser = `SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND user_id = $2)`
 )
 
+// Create inserts a new chat row and returns the created Chat.
 func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*domain.Chat, error) {
 	log := r.logger.With(
 		zap.String("operation", "Create"),
@@ -69,6 +72,7 @@ func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*d
 	return &c, nil
 }
 
+// ListByUser returns a paginated list of chats for the given user along with the total count.
 func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Chat, int, error) {
 	log := r.logger.With(
 		zap.String("operation", "ListByUser"),
@@ -112,6 +116,7 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 	return chats, total, nil
 }
 
+// ExistsForUser reports whether a chat with the given ID belongs to the given user.
 func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID string) (bool, error) {
 	log := r.logger.With(
 		zap.String("operation", "ExistsForUser"),
@@ -128,6 +133,7 @@ func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID s
 	return exists, nil
 }
 
+// UpdateTimestamp sets the updated_at column of a chat to the current time.
 func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {
 	log := r.logger.With(
 		zap.String("operation", "UpdateTimestamp"),

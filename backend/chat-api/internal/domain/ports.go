@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// ChatRepository defines persistence operations for chats.
 type ChatRepository interface {
 	Create(ctx context.Context, userID string, title *string) (*Chat, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]Chat, int, error)
@@ -13,11 +14,13 @@ type ChatRepository interface {
 	ExistsForUser(ctx context.Context, chatID uuid.UUID, userID string) (bool, error)
 }
 
+// MessageRepository defines persistence operations for messages.
 type MessageRepository interface {
 	Create(ctx context.Context, userID string, chatID uuid.UUID, role Role, content string) (*Message, error)
 	ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]Message, int, error)
 }
 
+// ChatService defines the application use cases for chat and messaging.
 type ChatService interface {
 	ListChats(ctx context.Context, userID string, limit, offset int) ([]ChatItem, int, error)
 	GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]MessageDTO, int, error)

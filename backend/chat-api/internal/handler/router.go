@@ -7,6 +7,7 @@ import (
     "github.com/go-chi/chi/v5/middleware"
 )
 
+// RegisterRoutes mounts all API routes and middleware onto the given router.
 func RegisterRoutes(r chi.Router, chatH *ChatHandler, msgH *MessageHandler, streamH *StreamHandler) {
     r.Use(middleware.Logger)
     r.Use(func(next http.Handler) http.Handler {

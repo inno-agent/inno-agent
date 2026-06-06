@@ -5,6 +5,7 @@ import (
     "time"
 )
 
+// Config holds application configuration loaded from environment variables.
 type Config struct {
     DatabaseURL  string
     ServerPort   string
@@ -13,6 +14,7 @@ type Config struct {
     IdleTimeout  time.Duration
 }
 
+// Load reads configuration from environment variables and returns a Config with defaults applied.
 func Load() *Config {
     return &Config{
         DatabaseURL:  getEnv("DATABASE_URL", ""),

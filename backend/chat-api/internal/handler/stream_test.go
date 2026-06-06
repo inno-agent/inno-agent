@@ -116,7 +116,7 @@ func TestStream_AccessDenied_ReturnsSSEError(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 (SSE), got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "ACCESS_DENIED") {
+	if !strings.Contains(rec.Body.String(), "AUTH_FAILED") {
 		t.Fatalf("expected ACCESS_DENIED in SSE error, got: %s", rec.Body.String())
 	}
 }
@@ -133,7 +133,7 @@ func TestStream_NotFound_ReturnsSSEError(t *testing.T) {
 	chatID := uuid.New()
 	rec := getStream(r, chatID.String(), "u1", "hi")
 
-	if !strings.Contains(rec.Body.String(), "NOT_FOUND") {
+	if !strings.Contains(rec.Body.String(), "CHAT_NOT_FOUND") {
 		t.Fatalf("expected NOT_FOUND in SSE error, got: %s", rec.Body.String())
 	}
 }

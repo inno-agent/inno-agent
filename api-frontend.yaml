@@ -1,0 +1,246 @@
+openapi: 3.0.3
+info:
+  title: LLM Chat API
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+paths:
+
+  /chats:
+    get:
+      summary: List user chats
+      operationId: listChats
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Chat list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chats, total]
+                properties:
+                  chats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatItem'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/400'
+
+  /chats/{chat_id}/messages:
+    get:
+      summary: Get chat history
+      operationId: getChatHistory
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chat_id, messages, total]
+                properties:
+                  chat_id:
+                    type: string
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  total:
+                    type: integer
+        '404':
+          $ref: '#/components/responses/404'
+
+  /chats/{chat_id}/stream:
+    get:
+      summary: Send message and stream response via SSE
+      operationId: streamMessage
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: message
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 10000
+        - name: temperature
+          in: query
+          schema:
+            type: number
+            minimum: 0
+            maximum: 2
+            default: 0.3
+        - name: max_tokens
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 8192
+            default: 2048
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                success:
+                  value: |
+                    event: status
+                    data: {"stage":"auth_check","chat_id":"chat-abc123"}
+
+                    event: status
+                    data: {"stage":"context_loading","chat_id":"chat-abc123"}
+
+                    event: status
+                    data: {"stage":"llm_processing","chat_id":"chat-abc123"}
+
+                    event: chunk
+                    data: {"content":"def add(a: int, b: int) -> int:\n    return a + b"}
+
+                    event: done
+                    data: {"status":"completed","tokens_used":{"prompt":142,"completion":28,"total":170},"finished_at":"2026-06-03T14:30:15Z"}
+                error:
+                  value: |
+                    event: status
+                    data: {"stage":"auth_check","chat_id":"chat-abc123"}
+
+                    event: error
+                    data: {"code":"LLM_TIMEOUT","message":"model did not respond in time","retry_allowed":true}
+        '404':
+          $ref: '#/components/responses/404'
+        '500':
+          $ref: '#/components/responses/500'
+
+components:
+
+  schemas:
+
+    ChatItem:
+      type: object
+      required: [id, title, last_message, updated_at]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        last_message:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      required: [id, role, content, created_at]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - CHAT_NOT_FOUND
+            - AUTH_FAILED
+            - RATE_LIMITED
+            - CONTEXT_LOAD_ERROR
+            - LLM_UNAVAILABLE
+            - LLM_TIMEOUT
+            - INTERNAL_ERROR
+        message:
+          type: string
+        retry_allowed:
+          type: boolean
+
+  responses:
+
+    '400':
+      description: Invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    '404':
+      description: Chat not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    '500':
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

@@ -1,5 +1,5 @@
 import type { ThreadMessageLike } from '@assistant-ui/react'
-import type { ChatRequestMessage, ChatStreamEvent, MessageContentPart } from './types'
+import type { ChatRequestMessage, MessageContentPart } from './types'
 
 export const createUserTextMessage = (text: string): ThreadMessageLike => ({
     role: 'user',
@@ -58,32 +58,6 @@ export const upsertAssistantText = (
         return content
     })
 
-export const appendAssistantToolCall = (
-    messages: readonly ThreadMessageLike[],
-    event: Extract<ChatStreamEvent, { type: 'tool_call' }>,
-): ThreadMessageLike[] =>
-    updateAssistantContent(messages, (content) => [
-        ...content,
-        {
-            type: 'tool-call' as const,
-            toolCallId: event.id,
-            toolName: event.name,
-            args: JSON.parse(event.arguments),
-            argsText: event.arguments,
-        },
-    ])
-
-export const applyAssistantToolResult = (
-    messages: readonly ThreadMessageLike[],
-    event: Extract<ChatStreamEvent, { type: 'tool_result' }>,
-): ThreadMessageLike[] =>
-    updateAssistantContent(messages, (content) =>
-        content.map((part) =>
-            part.type === 'tool-call' && part.toolCallId === event.id
-                ? { ...part, result: JSON.parse(event.result) }
-                : part,
-        ),
-    )
 
 export const appendAssistantError = (
     messages: readonly ThreadMessageLike[],

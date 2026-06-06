@@ -1,3 +1,5 @@
+.DS_Store
+.idea/
 # OS
 .DS_Store
 Thumbs.db

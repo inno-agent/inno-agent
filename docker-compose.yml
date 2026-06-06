@@ -71,12 +71,14 @@ configs:
             middlewares: [strip-api, zitadel-host]
             service: zitadel-api
             priority: 200
+            tls: {}
           zitadel-canonical:
             rule: "PathPrefix(`/`)"
             entryPoints: [zitadel]
             middlewares: [zitadel-host]
             service: zitadel-api
             priority: 100
+            tls: {}
           auth-service:
             rule: "PathPrefix(`/auth/v1`)"
             entryPoints: [web, websecure]
@@ -96,6 +98,13 @@ configs:
             priority: 100
             tls: {}
 
+      tls:
+        stores:
+          default:
+            defaultCertificate:
+              certFile: /certs/server.crt
+              keyFile: /certs/server.key
+
 services:
 
   # ─── Reverse proxy (Traefik) ───────────────────────────────────────────────
@@ -110,6 +119,7 @@ services:
       - innoagent
     volumes:
       - ./infrastructure/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./infrastructure/traefik/certs:/certs:ro
     configs:
       - source: traefik_dynamic
         target: /etc/traefik/dynamic.yaml
@@ -185,6 +195,7 @@ services:
       - ./infrastructure/terraform:/workspace
       - ./infrastructure/setup:/setup
       - machinekey:/machinekey:ro
+      - ./infrastructure/traefik/certs:/certs:ro
     environment:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
@@ -192,7 +203,7 @@ services:
       TF_VAR_zitadel_domain: "${ZITADEL_DOMAIN:-localhost}"
       TF_VAR_zitadel_port: "${ZITADEL_EXTERNALPORT:-8080}"
       TF_VAR_app_scheme: "${APP_SCHEME:-http}"
-    entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') $$ZITADEL_DOMAIN\" >> /etc/hosts && sh /workspace/setup.sh"]
+    entrypoint: ["sh", "-c", "cp /certs/server.crt /usr/local/share/ca-certificates/server.crt && update-ca-certificates -q && echo \"$(getent hosts proxy | awk '{print $1}') $$ZITADEL_DOMAIN\" >> /etc/hosts && sh /workspace/setup.sh"]
     depends_on:
       zitadel-api:
         condition: service_healthy

@@ -10,7 +10,7 @@ terraform {
 provider "zitadel" {
   domain           = var.zitadel_domain
   port             = var.zitadel_port
-  insecure         = true
+  insecure         = false
   jwt_profile_file = var.zitadel_jwt_profile_file
 }
 

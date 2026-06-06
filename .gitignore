@@ -13,3 +13,6 @@ Thumbs.db
 
 # generated at runtime by terraform-setup
 infrastructure/setup/auth.env
+
+# generated TLS certificates
+infrastructure/traefik/certs/

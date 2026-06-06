@@ -1,0 +1,150 @@
+openapi: 3.0.3
+info:
+  title: Core Backend & LLM Provider API
+  version: 0.1.0
+
+servers:
+  - url: http://core-backend:8080/v1
+
+paths:
+
+  /chat/completions:
+    post:
+      summary: Send prompt with context, stream response via SSE
+      operationId: chatCompletions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages, session]
+              properties:
+                model:
+                  type: string
+                  default: qwen3-coder
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    required: [role, content]
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user]
+                      content:
+                        type: string
+                session:
+                  type: object
+                  required: [user_id, chat_id]
+                  properties:
+                    user_id:
+                      type: string
+                    chat_id:
+                      type: string
+                    pr_id:
+                      type: string
+                    context_tokens_used:
+                      type: integer
+                temperature:
+                  type: number
+                  minimum: 0
+                  maximum: 2
+                  default: 0.3
+                max_tokens:
+                  type: integer
+                  minimum: 1
+                  maximum: 8192
+                  default: 2048
+                stream:
+                  type: boolean
+                  default: true
+                tools:
+                  type: array
+                  items:
+                    type: string
+                    enum: [diff_parser, static_analyzer, code_search]
+            examples:
+              with_context:
+                value:
+                  model: qwen3-coder
+                  messages:
+                    - role: system
+                      content: |
+                        Previous conversation context:
+                        User: How do I write a function in Python?
+                        Assistant: Use the def keyword...
+                    - role: user
+                      content: "Write a function that adds two numbers in Python"
+                  session:
+                    user_id: "user-12345"
+                    chat_id: "chat-abc123"
+                    context_tokens_used: 142
+                  temperature: 0.3
+                  max_tokens: 2048
+                  stream: true
+                  tools: []
+              with_pr_context:
+                value:
+                  model: qwen3-coder
+                  messages:
+                    - role: system
+                      content: |
+                        You are reviewing a pull request.
+                        PR diff: ...
+                        Files changed: 5
+                    - role: user
+                      content: "Review the changes in src/auth/login.js"
+                  session:
+                    user_id: "user-12345"
+                    chat_id: "chat-abc123"
+                    pr_id: "gitflame-pr-789"
+                    context_tokens_used: 850
+                  temperature: 0.2
+                  max_tokens: 4096
+                  stream: true
+                  tools: [diff_parser]
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                success:
+                  value: |
+                    data: {"id":"cmpl-001","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"def "}}]}
+
+                    data: {"id":"cmpl-001","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"add(a, b):\n    return a + b"}}]}
+
+                    data: [DONE]
+        '401':
+          description: Auth failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after_seconds:
+                    type: integer
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

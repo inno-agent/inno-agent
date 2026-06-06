@@ -37,8 +37,17 @@ jobs:
             fi
           done
 
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-          working-directory: backend
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+
+      # later will be separated into different CIs on each service
+      - name: Lint services
+        run: |
+          for dir in backend/*/; do
+            if [ -f "${dir}go.mod" ]; then
+              echo "Linting $dir"
+              cd "$dir"
+              golangci-lint run ./...
+              cd -
+            fi
+          done

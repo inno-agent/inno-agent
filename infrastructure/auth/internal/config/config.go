@@ -10,6 +10,7 @@ import (
 type Config struct {
 	ZitadelIssuer   string
 	ZitadelJWKSURL  string
+	ZitadelBaseURL  string
 	ZitadelClientID string
 	JWTPrivateKeyPath string
 	JWTExpiry         time.Duration
@@ -42,6 +43,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 	cfg := &Config{
 		ZitadelIssuer:     zitadelIssuer,
 		ZitadelJWKSURL:    fallback("ZITADEL_JWKS_URL", zitadelIssuer+"/oauth/v2/keys"),
+		ZitadelBaseURL:    fallback("ZITADEL_BASE_URL", "http://zitadel-api:8080"),
 		ZitadelClientID:   getenv("ZITADEL_CLIENT_ID"),
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),

@@ -61,7 +61,7 @@ func TestHTTP_Exchange_Success(t *testing.T) {
 	}
 
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, "http://localhost:8080", "test-client")
+	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, "http://localhost:8080", "test-client", "http://zitadel-api:8080")
 
 	body := `{"token": "any-idp-token"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/v1/exchange", strings.NewReader(body))
@@ -82,7 +82,7 @@ func TestHTTP_Exchange_InvalidToken(t *testing.T) {
 
 	p := &stubProvider{err: errors.New("token expired")}
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, nil, iss, 30*time.Minute, "", "")
+	transport.RegisterHTTPRoutes(r, p, nil, iss, 30*time.Minute, "", "", "http://zitadel-api:8080")
 
 	body := `{"token": "bad-token"}`
 	req := httptest.NewRequest(http.MethodPost, "/auth/v1/exchange", strings.NewReader(body))
@@ -101,7 +101,7 @@ func TestHTTP_Config(t *testing.T) {
 	iss := makeTestIssuer(t)
 
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, "http://localhost:8080", "my-client-id")
+	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, "http://localhost:8080", "my-client-id", "http://zitadel-api:8080")
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/v1/config", nil)
 	w := httptest.NewRecorder()

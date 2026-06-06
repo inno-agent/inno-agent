@@ -81,7 +81,7 @@ func main() {
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
-	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID, cfg.ZitadelBaseURL)
 
 	httpSrv := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,

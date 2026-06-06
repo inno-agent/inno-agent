@@ -88,7 +88,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			return nil, uuid.Nil, fmt.Errorf("Stream: check ownership: %w", err)
 		}
 		if !ok {
-			return nil, uuid.Nil, fmt.Errorf("Stream: chat not found or access denied")
+			return nil, uuid.Nil, fmt.Errorf("Stream: %w", domain.ErrAccessDenied)
 		}
 	}
 
@@ -102,36 +102,57 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			zap.String("function", "Stream"), zap.Error(err))
 	}
 
-	rawCh := make(chan string)
-	outCh := make(chan string)
+	rawCh := make(chan string, 4)
+	outCh := make(chan string, 4)
 
 	go func() {
 		defer close(rawCh)
-		rawCh <- "stream mock response. llm is not connected yet"
-		rawCh <- "stream mock response"
-		rawCh <- "still stream mock response"
+		chunks := []string{
+			"stream mock response. llm is not connected yet",
+			"stream mock response",
+			"still stream mock response",
+		}
+		for _, chunk := range chunks {
+			select {
+			case <-ctx.Done():
+				return
+			case rawCh <- chunk:
+			}
+		}
 	}()
 
 	go func() {
 		defer close(outCh)
 		var sb strings.Builder
-		for chunk := range rawCh {
-			outCh <- chunk
-			sb.WriteString(chunk)
-		}
-		// use a fresh context — the request ctx may already be cancelled when streaming finishes
-		saveCtx := context.Background()
-		if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
-			s.logger.Error("failed to save assistant message",
-				zap.String("function", "Stream"),
-				zap.Error(err),
-			)
-		}
-		if err := s.chatRepo.UpdateTimestamp(saveCtx, chatID); err != nil {
-			s.logger.Warn("failed to update chat timestamp",
-				zap.String("function", "Stream"),
-				zap.Error(err),
-			)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case chunk, ok := <-rawCh:
+				if !ok {
+					// stream completed naturally — save the full assistant message
+					saveCtx := context.Background()
+					if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
+						s.logger.Error("failed to save assistant message",
+							zap.String("function", "Stream"),
+							zap.Error(err),
+						)
+					}
+					if err := s.chatRepo.UpdateTimestamp(saveCtx, chatID); err != nil {
+						s.logger.Warn("failed to update chat timestamp",
+							zap.String("function", "Stream"),
+							zap.Error(err),
+						)
+					}
+					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case outCh <- chunk:
+					sb.WriteString(chunk)
+				}
+			}
 		}
 	}()
 

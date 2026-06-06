@@ -1,6 +1,8 @@
 package handler
 
 import (
+    "encoding/json"
+    "errors"
     "net/http"
 
     "github.com/go-chi/chi/v5"
@@ -9,6 +11,11 @@ import (
 
     "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
+
+type streamRequest struct {
+    Message string `json:"message"`
+    UserID  string `json:"user_id"`
+}
 
 type StreamHandler struct {
     service domain.ChatService
@@ -34,16 +41,19 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
         }
     }
 
+    var req streamRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        h.logger.Error("invalid request body", zap.Error(err))
+        writeError(w, http.StatusBadRequest, "invalid request body")
+        return
+    }
     // TODO: replace with userID from JWT claims via auth middleware
-    userID := r.URL.Query().Get("user_id")
-    if userID == "" {
+    if req.UserID == "" {
         h.logger.Error("missing user_id", zap.String("function", "Stream"))
         writeError(w, http.StatusBadRequest, "user_id is required")
         return
     }
-
-    message := r.URL.Query().Get("message")
-    if message == "" {
+    if req.Message == "" {
         h.logger.Error("missing message", zap.String("function", "Stream"))
         writeError(w, http.StatusBadRequest, "message is required")
         return
@@ -61,13 +71,20 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Connection", "keep-alive")
     w.Header().Set("X-Accel-Buffering", "no")
 
-    writeSSEEvent(w, "status", map[string]string{"stage": "context_loading", "chat_id": chatID.String()})
+    writeSSEEvent(w, "status", map[string]string{"stage": "context_loading"})
     flusher.Flush()
 
-    ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, message)
+    ch, resolvedChatID, err := h.service.Stream(ctx, req.UserID, chatID, req.Message)
     if err != nil {
         h.logger.Error("failed to start stream", zap.Error(err))
-        writeSSEEvent(w, "error", map[string]string{"code": "INTERNAL_ERROR", "message": "internal error"})
+        switch {
+        case errors.Is(err, domain.ErrAccessDenied):
+            writeSSEEvent(w, "error", map[string]string{"code": "ACCESS_DENIED", "message": "access denied"})
+        case errors.Is(err, domain.ErrNotFound):
+            writeSSEEvent(w, "error", map[string]string{"code": "NOT_FOUND", "message": "chat not found"})
+        default:
+            writeSSEEvent(w, "error", map[string]string{"code": "INTERNAL_ERROR", "message": "internal error"})
+        }
         flusher.Flush()
         return
     }
@@ -75,9 +92,18 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
     writeSSEEvent(w, "status", map[string]string{"stage": "llm_processing", "chat_id": resolvedChatID.String()})
     flusher.Flush()
 
-    for chunk := range ch {
-        writeSSEEvent(w, "chunk", map[string]string{"content": chunk})
-        flusher.Flush()
+loop:
+    for {
+        select {
+        case chunk, ok := <-ch:
+            if !ok {
+                break loop
+            }
+            writeSSEEvent(w, "chunk", map[string]string{"content": chunk})
+            flusher.Flush()
+        case <-ctx.Done():
+            return
+        }
     }
 
     writeSSEEvent(w, "done", map[string]string{"status": "completed"})

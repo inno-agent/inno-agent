@@ -1,12 +1,9 @@
-version: "3.9"
-
 networks:
   innoagent:
     driver: bridge
 
 volumes:
   ollama_data:
-    driver: local
 
 services:
 
@@ -22,25 +19,19 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+    # healthcheck временно убран для Windows
 
   model-loader:
     image: ollama/ollama:latest
     container_name: innoagent-model-loader
-    restart: on-failure
+    restart: "no"
     networks:
       - innoagent
     depends_on:
-      ollama:
-        condition: service_healthy
+      - ollama
     environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
+      MODEL_NAME: qwen2.5:0.5b
+      OLLAMA_HOST: http://innoagent-ollama:11434
     volumes:
       - ollama_data:/root/.ollama
       - ./scripts/wait-for-model.sh:/wait-for-model.sh:ro
@@ -48,33 +39,19 @@ services:
 
   orchestrator:
     build:
-      context: .
+      context: ./backend/innoagent
       dockerfile: Dockerfile
     container_name: innoagent-orchestrator
     restart: unless-stopped
     networks:
       - innoagent
     depends_on:
-      ollama:
-        condition: service_healthy
-      model-loader:
-        condition: service_completed_successfully
+      - model-loader
     ports:
       - "${API_PORT:-8080}:8080"
     environment:
       - MODEL_NAME=${MODEL_NAME:-qwen2.5:0.5b}
-      - OLLAMA_HOST=ollama
+      - OLLAMA_HOST=innoagent-ollama
       - OLLAMA_PORT=11434
-      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_BASE_URL=http://innoagent-ollama:11434/v1
       - API_PORT=8080
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"

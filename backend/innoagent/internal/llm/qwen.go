@@ -14,7 +14,7 @@ import (
 const (
 	defaultHTTPTimeout = 120 * time.Second
 
-	chatCompletionsPath = "/chat/completions"
+	chatCompletionsPath = "/api/chat"
 )
 
 type QwenProvider struct {

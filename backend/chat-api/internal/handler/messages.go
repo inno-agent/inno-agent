@@ -8,16 +8,15 @@ import (
     "github.com/google/uuid"
     "go.uber.org/zap"
 
-    // "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/dtos"
-    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/services"
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
 type MessageHandler struct {
-    service services.Service
+    service domain.ChatService
     logger  *zap.Logger
 }
 
-func NewMessageHandler(service services.Service, logger *zap.Logger) *MessageHandler {
+func NewMessageHandler(service domain.ChatService, logger *zap.Logger) *MessageHandler {
     return &MessageHandler{service: service, logger: logger}
 }
 
@@ -31,9 +30,10 @@ func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // TODO: replace with userID from JWT claims via auth middleware
     userID := r.URL.Query().Get("user_id")
     if userID == "" {
-        h.logger.Error("missing user_id", zap.String("function", "ListByChat"))
+        h.logger.Warn("missing user_id", zap.String("function", "ListByChat"))
         writeError(w, http.StatusBadRequest, "user_id is required")
         return
     }

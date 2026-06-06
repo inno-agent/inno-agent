@@ -1,22 +1,21 @@
 package handler
 
 import (
-    "fmt"
     "net/http"
 
     "github.com/go-chi/chi/v5"
     "github.com/google/uuid"
     "go.uber.org/zap"
 
-    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain/services"
+    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
 type StreamHandler struct {
-    service services.Service
+    service domain.ChatService
     logger  *zap.Logger
 }
 
-func NewStreamHandler(service services.Service, logger *zap.Logger) *StreamHandler {
+func NewStreamHandler(service domain.ChatService, logger *zap.Logger) *StreamHandler {
     return &StreamHandler{service: service, logger: logger}
 }
 
@@ -35,6 +34,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
         }
     }
 
+    // TODO: replace with userID from JWT claims via auth middleware
     userID := r.URL.Query().Get("user_id")
     if userID == "" {
         h.logger.Error("missing user_id", zap.String("function", "Stream"))
@@ -49,37 +49,37 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    flusher, ok := w.(http.Flusher)
+    if !ok {
+        h.logger.Error("streaming not supported")
+        writeError(w, http.StatusInternalServerError, "streaming not supported")
+        return
+    }
+
     w.Header().Set("Content-Type", "text/event-stream")
     w.Header().Set("Cache-Control", "no-cache")
     w.Header().Set("Connection", "keep-alive")
     w.Header().Set("X-Accel-Buffering", "no")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		h.logger.Error("streaming not supported")
-		writeError(w, http.StatusInternalServerError, "streaming not supported")
-		return
-	}
-
-    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"context_loading\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    writeSSEEvent(w, "status", map[string]string{"stage": "context_loading", "chat_id": chatID.String()})
     flusher.Flush()
 
     ch, err := h.service.Stream(ctx, userID, chatID, message)
     if err != nil {
         h.logger.Error("failed to start stream", zap.Error(err))
-        fmt.Fprintf(w, "event: error\ndata: {\"code\":\"INTERNAL_ERROR\",\"message\":\"%s\"}\n\n", err.Error())
+        writeSSEEvent(w, "error", map[string]string{"code": "INTERNAL_ERROR", "message": "internal error"})
         flusher.Flush()
         return
     }
 
-    fmt.Fprintf(w, "event: status\ndata: {\"stage\":\"llm_processing\",\"chat_id\":\"%s\"}\n\n", chatID.String())
+    writeSSEEvent(w, "status", map[string]string{"stage": "llm_processing", "chat_id": chatID.String()})
     flusher.Flush()
 
     for chunk := range ch {
-        fmt.Fprintf(w, "event: chunk\ndata: {\"content\":\"%s\"}\n\n", chunk)
+        writeSSEEvent(w, "chunk", map[string]string{"content": chunk})
         flusher.Flush()
     }
 
-    fmt.Fprintf(w, "event: done\ndata: {\"status\":\"completed\"}\n\n")
+    writeSSEEvent(w, "done", map[string]string{"status": "completed"})
     flusher.Flush()
 }

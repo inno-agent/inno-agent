@@ -18,7 +18,7 @@ func Load() *Config {
         DatabaseURL:  getEnv("DATABASE_URL", ""),
         ServerPort:   getEnv("SERVER_PORT", "8000"),
         ReadTimeout:  getDuration("READ_TIMEOUT", 10*time.Second),
-        WriteTimeout: getDuration("WRITE_TIMEOUT", 0),
+        WriteTimeout: getDuration("WRITE_TIMEOUT", 0), // 0 = no timeout, required for SSE streaming
         IdleTimeout:  getDuration("IDLE_TIMEOUT", 120*time.Second),
     }
 }

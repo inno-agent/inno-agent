@@ -1,0 +1,29 @@
+http:
+  middlewares:
+    strip-api:
+      stripPrefix:
+        prefixes:
+          - /api
+
+  services:
+    zitadel-api:
+      loadBalancer:
+        servers:
+          - url: "h2c://zitadel-api:8080"
+
+  routers:
+    zitadel-alias:
+      rule: "PathPrefix(`/api`)"
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+      service: zitadel-api
+      priority: 200
+
+    zitadel-canonical:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      service: zitadel-api
+      priority: 100

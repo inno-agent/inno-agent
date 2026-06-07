@@ -67,10 +67,7 @@ func (p *QwenProvider) Chat(
 
 	chatMessages := make([]ChatMessage, len(messages))
 	for i, m := range messages {
-		chatMessages[i] = ChatMessage{
-			Role:    m.Role,
-			Content: m.Content,
-		}
+		chatMessages[i] = ChatMessage(m)
 	}
 
 	reqBody := ChatRequest{

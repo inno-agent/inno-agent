@@ -109,13 +109,6 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			return nil, uuid.Nil, fmt.Errorf("Stream: %w", domain.ErrAccessDenied)
 		}
 	}
-	func truncateString(s string, maxLen int) string {
-		if len(s) <= maxLen {
-			return s
-		}
-		return s[:maxLen]
-	}
-
 	_, err := s.messageRepo.Create(ctx, userID, chatID, domain.RoleUser, message)
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
@@ -209,3 +202,4 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 
 	return outCh, chatID, nil
 }
+

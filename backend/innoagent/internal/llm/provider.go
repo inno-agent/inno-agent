@@ -18,5 +18,9 @@ type Provider interface {
 	//
 	// Returns a non-nil error on network failure, non-2xx HTTP status,
 	// or malformed response from the upstream API.
-	Chat(ctx context.Context, message string) (string, error)
+    Chat(ctx context.Context, messages []Message) (string, error)}
+
+type Message struct {
+    Role    string `json:"role"`
+    Content string `json:"content"`
 }

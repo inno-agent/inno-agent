@@ -6,6 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
+type LLMMessage struct {
+    Role    string `json:"role"`
+    Content string `json:"content"`
+}
+
 // ChatRepository defines persistence operations for chats.
 type ChatRepository interface {
 	Create(ctx context.Context, userID string, title *string) (*Chat, error)
@@ -22,7 +27,7 @@ type MessageRepository interface {
 
 // LLMProvider sends a prompt and returns a response from the language model.
 type LLMProvider interface {
-	Chat(ctx context.Context, message string) (string, error)
+	Chat(ctx context.Context, messages []LLMMessage) (string, error)
 }
 
 // ChatService defines the application use cases for chat and messaging.

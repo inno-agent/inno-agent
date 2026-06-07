@@ -59,21 +59,23 @@ func NewQwenProvider(
 
 func (p *QwenProvider) Chat(
 	ctx context.Context,
-	message string,
+	messages []Message,
 ) (string, error) {
-	if strings.TrimSpace(message) == "" {
+	if len(messages) == 0 {
 		return "", ErrEmptyMessage
 	}
 
-	reqBody := ChatRequest{
-		Model: p.model,
-		Messages: []ChatMessage{
-			{
-				Role:    "user",
-				Content: message,
-			},
-		},
+	chatMessages := make([]ChatMessage, len(messages))
+	for i, m := range messages {
+		chatMessages[i] = ChatMessage{
+			Role:    m.Role,
+			Content: m.Content,
+		}
+	}
 
+	reqBody := ChatRequest{
+		Model:       p.model,
+		Messages:    chatMessages,
 		Temperature: 0.7,
 		MaxTokens:   1024,
 		Stream:      false,

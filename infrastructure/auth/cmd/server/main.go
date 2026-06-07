@@ -55,7 +55,7 @@ func main() {
 		log.Fatalf("issuer: %v", err)
 	}
 
-	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelJWKSURL, cfg.ZitadelClientID)
 	if err != nil {
 		log.Fatalf("zitadel provider: %v", err)
 	}
@@ -81,7 +81,7 @@ func main() {
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
-	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID)
+	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID, cfg.ZitadelBaseURL)
 
 	httpSrv := &http.Server{
 		Addr:    ":" + cfg.HTTPPort,

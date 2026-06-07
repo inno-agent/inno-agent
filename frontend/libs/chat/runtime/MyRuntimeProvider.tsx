@@ -3,7 +3,7 @@ import {
     AssistantRuntimeProvider,
     useExternalStoreRuntime,
 } from '@assistant-ui/react'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { streamMessage } from '@libs/chat/api/chatApi'
 import {
     appendAssistantError,
@@ -12,39 +12,37 @@ import {
 } from '@libs/chat/model/messageMappers'
 
 export function MyRuntimeProvider({
-     children,
-     chatId,
-     userId,
-     }: Readonly<{
+    children,
+    initialChatId,
+}: Readonly<{
     children: React.ReactNode
-    chatId: string
-    userId: string
+    initialChatId?: string
 }>) {
     const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([])
-    const [isRunning, setIsRunning] = useState<boolean>(false);
+    const [isRunning, setIsRunning] = useState<boolean>(false)
+    const chatIdRef = useRef<string>(initialChatId ?? 'new')
 
     const onNew = useCallback(
         async (message: AppendMessage) => {
-            if (message.content[0]?.type !== 'text') {
+            const firstPart = message.content[0]
+            if (firstPart?.type !== 'text') {
                 throw new Error('Only text content is supported')
             }
 
-
-            //TODO - здесь могут быть ошибки
-            const nextMessages = [
-                ...messages,
-                createUserTextMessage(message.content[0].text),
-            ]
-
-            setMessages(nextMessages)
+            setMessages((prev) => [...prev, createUserTextMessage(firstPart.text)])
             setIsRunning(true)
 
             try {
-                const stream = await streamMessage(chatId, userId, message.content[0].text)
+                const stream = await streamMessage(chatIdRef.current, firstPart.text)
                 let textContent = ''
 
                 for await (const event of stream) {
                     switch (event.type) {
+                        case 'status':
+                            if ('chat_id' in event && event.chat_id) {
+                                chatIdRef.current = event.chat_id
+                            }
+                            break
                         case 'chunk':
                             textContent += event.content
                             setMessages((prev) => upsertAssistantText(prev, textContent))
@@ -60,7 +58,7 @@ export function MyRuntimeProvider({
                 setIsRunning(false)
             }
         },
-        [messages],
+        [],
     )
 
     const runtime = useExternalStoreRuntime<ThreadMessageLike>({

@@ -72,7 +72,7 @@ func TestZitadelProvider_ValidToken(t *testing.T) {
 	srv := makeJWKSServer(t, key, "")
 	issuerURL := srv.URL
 
-	p, err := provider.NewZitadelProvider(context.Background(), issuerURL, testClientID)
+	p, err := provider.NewZitadelProvider(context.Background(), issuerURL, issuerURL+"/oauth/v2/keys", testClientID)
 	require.NoError(t, err)
 
 	token := makeToken(t, key, issuerURL, "user-123", "alice@example.com", time.Now().Add(time.Hour))
@@ -87,7 +87,7 @@ func TestZitadelProvider_ExpiredToken(t *testing.T) {
 	key := makeRSAKey(t)
 	srv := makeJWKSServer(t, key, "")
 
-	p, err := provider.NewZitadelProvider(context.Background(), srv.URL, testClientID)
+	p, err := provider.NewZitadelProvider(context.Background(), srv.URL, srv.URL+"/oauth/v2/keys", testClientID)
 	require.NoError(t, err)
 
 	token := makeToken(t, key, srv.URL, "user-123", "alice@example.com", time.Now().Add(-time.Hour))
@@ -99,7 +99,7 @@ func TestZitadelProvider_WrongAudience(t *testing.T) {
 	key := makeRSAKey(t)
 	srv := makeJWKSServer(t, key, "")
 
-	p, err := provider.NewZitadelProvider(context.Background(), srv.URL, "other-client")
+	p, err := provider.NewZitadelProvider(context.Background(), srv.URL, srv.URL+"/oauth/v2/keys", "other-client")
 	require.NoError(t, err)
 
 	token := makeToken(t, key, srv.URL, "user-123", "alice@example.com", time.Now().Add(time.Hour))

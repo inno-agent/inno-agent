@@ -19,7 +19,8 @@ export async function* parseSseStream(
             }
 
             try {
-                events.push(JSON.parse(event.data) as ChatStreamEvent)
+                const payload = JSON.parse(event.data)
+                events.push({ type: event.event ?? 'message', ...payload } as ChatStreamEvent)
             } catch {
                 // Ignore malformed SSE payloads and keep consuming the stream.
             }

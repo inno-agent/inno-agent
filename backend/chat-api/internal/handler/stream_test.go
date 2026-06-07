@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 type mockStreamService struct {
@@ -35,28 +36,28 @@ func newTestStreamHandler(svc domain.ChatService) *StreamHandler {
 }
 
 func postStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {
-	body := `{"user_id":"` + userID + `","message":"` + message + `"}`
-	if userID == "" && message == "" {
+	body := `{"message":"` + message + `"}`
+	if message == "" {
 		body = `{}`
-	} else if userID == "" {
-		body = `{"message":"` + message + `"}`
-	} else if message == "" {
-		body = `{"user_id":"` + userID + `"}`
 	}
 	req := httptest.NewRequest(http.MethodPost, "/chats/"+chatID+"/stream", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if userID != "" {
+		ctx := context.WithValue(req.Context(), middleware.UserIDKey, userID)
+		req = req.WithContext(ctx)
+	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
 }
 
-func TestStream_MissingUserID(t *testing.T) {
+func TestStream_NoAuth_Returns401(t *testing.T) {
 	h := newTestStreamHandler(&mockStreamService{})
 	r := newStreamRouter(h)
 
 	rec := postStream(r, "new", "", "hello")
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 

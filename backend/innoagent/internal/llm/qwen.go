@@ -14,7 +14,7 @@ import (
 const (
 	defaultHTTPTimeout = 120 * time.Second
 
-	chatCompletionsPath = "/api/chat"
+	chatCompletionsPath = "/chat/completions"
 )
 
 type QwenProvider struct {
@@ -42,7 +42,6 @@ func NewQwenProvider(
 	baseURL string,
 	opts ...QwenOption,
 ) *QwenProvider {
-
 	p := &QwenProvider{
 		baseURL: strings.TrimRight(baseURL, "/"),
 
@@ -62,7 +61,6 @@ func (p *QwenProvider) Chat(
 	ctx context.Context,
 	message string,
 ) (string, error) {
-
 	if strings.TrimSpace(message) == "" {
 		return "", ErrEmptyMessage
 	}
@@ -97,7 +95,6 @@ func (p *QwenProvider) Chat(
 		endpoint,
 		bytes.NewReader(payload),
 	)
-
 	if err != nil {
 		return "", fmt.Errorf(
 			"llm: failed to build request: %w",
@@ -162,7 +159,6 @@ func (p *QwenProvider) parseErrorResponse(
 	statusCode int,
 	body []byte,
 ) *ProviderError {
-
 	var errResp ErrorResponse
 
 	if err := json.Unmarshal(body, &errResp); err == nil {

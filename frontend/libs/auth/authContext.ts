@@ -6,6 +6,8 @@ export interface AuthState {
   userId: string | null;
   userManager: UserManager | null;
   loading: boolean;
+  setSession: (token: string, userId: string) => void;
+  clearSession: () => void;
 }
 
 export const AuthContext = createContext<AuthState>({
@@ -13,4 +15,6 @@ export const AuthContext = createContext<AuthState>({
   userId: null,
   userManager: null,
   loading: true,
+  setSession: () => {},
+  clearSession: () => {},
 });

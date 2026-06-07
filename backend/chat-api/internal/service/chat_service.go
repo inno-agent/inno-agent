@@ -127,6 +127,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			s.logger.Error("llm error", zap.String("function", "Stream"), zap.Error(err))
 			return
 		}
+
 		select {
 		case <-ctx.Done():
 		case rawCh <- answer:

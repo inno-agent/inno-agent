@@ -1,20 +1,40 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { AuthProvider } from '@libs/auth/AuthProvider'
-import { MyRuntimeProvider } from '@libs/chat/runtime/MyRuntimeProvider'
+import { useAuth } from '@libs/auth/useAuth'
 import { Sidebar } from '../../../libs/sidebar'
 import styles from './root.module.css'
+
+function AppShell() {
+    const { loading, token } = useAuth()
+    const isCallback = window.location.pathname === '/callback'
+
+    if (isCallback && !token) {
+        return <Outlet />
+    }
+
+    if (loading || !token) {
+        return (
+            <main className={styles.main}>
+                <div>Авторизация...</div>
+            </main>
+        )
+    }
+
+    return (
+        <div className={`${styles.layout} dark`}>
+            <Sidebar />
+            <main className={styles.main}>
+                <Outlet />
+            </main>
+        </div>
+    )
+}
 
 export const Route = createRootRoute({
     component: () => (
         <AuthProvider>
-            <MyRuntimeProvider>
-                <div className={`${styles.layout} dark`}>
-                    <Sidebar />
-                    <main className={styles.main}>
-                        <Outlet />
-                    </main>
-                </div>
-            </MyRuntimeProvider>
+            <AppShell />
         </AuthProvider>
     ),
 })

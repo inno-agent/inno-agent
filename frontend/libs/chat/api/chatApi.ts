@@ -2,6 +2,16 @@ import { parseSseStream } from '@libs/chat/lib/parseSseStream'
 import type { ChatItem, Message } from '@libs/chat/model/types'
 import { apiClient, apiEndpoints } from '@shared/api/axios'
 
+export const chatsUpdatedEventName = 'sidebar:chats-updated'
+
+export const notifyChatsUpdated = (chatId?: string) => {
+    window.dispatchEvent(
+        new CustomEvent(chatsUpdatedEventName, {
+            detail: { chatId },
+        }),
+    )
+}
+
 export const listChats = async (limit?: number, offset?: number) => {
     const { data } = await apiClient.get<{ chats: ChatItem[] }>(apiEndpoints.chats, {
         params: { limit, offset },

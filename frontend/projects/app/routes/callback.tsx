@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuth } from "@libs/auth/useAuth";
@@ -6,10 +7,9 @@ export const Route = createFileRoute("/callback")({
   component: Callback,
 });
 
-// eslint-disable-next-line react-refresh/only-export-components
 function Callback() {
   const navigate = useNavigate();
-  const { userManager } = useAuth();
+  const { userManager, setSession } = useAuth();
 
   useEffect(() => {
     if (!userManager) return;
@@ -29,15 +29,14 @@ function Callback() {
         const payload = JSON.parse(
           atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")),
         );
-        localStorage.setItem("aicore_token", access_token);
-        localStorage.setItem("aicore_user_id", payload.sub as string);
-        navigate({ to: "/" });
+        setSession(access_token, payload.sub as string);
+        navigate({ to: "/", search: { chatId: undefined } });
       })
       .catch((err) => {
         console.error("Auth callback failed:", err);
-        navigate({ to: "/" });
+        navigate({ to: "/", search: { chatId: undefined } });
       });
-  }, [userManager, navigate]);
+  }, [userManager, navigate, setSession]);
 
   return (
     <div

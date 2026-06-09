@@ -134,10 +134,6 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		})
 	}
 
-	llmMessages = append(llmMessages, domain.LLMMessage{
-		Role:    "user",
-		Content: message,
-	})
 
 
 	rawCh := make(chan string, 4)

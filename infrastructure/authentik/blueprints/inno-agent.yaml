@@ -1,0 +1,68 @@
+# Declarative provisioning of the inno-agent OIDC application.
+# Applied automatically by the authentik worker on startup (mounted to /blueprints/custom).
+# Replaces the former terraform-setup flow: client_id is static, so no
+# generated identity.env handoff is needed anymore.
+version: 1
+metadata:
+  name: inno-agent OIDC application
+  labels:
+    blueprints.goauthentik.io/description: OIDC app for the inno-agent frontend
+entries:
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: inno-agent-web
+    attrs:
+      client_id: inno-agent-web
+      client_type: public
+      access_code_validity: minutes=1
+      access_token_validity: hours=1
+      refresh_token_validity: days=30
+      include_claims_in_id_token: true
+      sub_mode: hashed_user_id
+      issuer_mode: per_provider
+      authorization_flow:
+        !Find [
+          authentik_flows.flow,
+          [slug, default-provider-authorization-implicit-consent],
+        ]
+      invalidation_flow:
+        !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      signing_key:
+        !Find [
+          authentik_crypto.certificatekeypair,
+          [name, authentik Self-signed Certificate],
+        ]
+      redirect_uris:
+        - matching_mode: strict
+          url:
+            !Format [
+              "%s://%s/callback",
+              !Env [APP_SCHEME, https],
+              !Env [AUTH_DOMAIN, localhost],
+            ]
+      property_mappings:
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [managed, goauthentik.io/providers/oauth2/scope-openid],
+          ]
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [managed, goauthentik.io/providers/oauth2/scope-email],
+          ]
+        - !Find [
+            authentik_providers_oauth2.scopemapping,
+            [managed, goauthentik.io/providers/oauth2/scope-profile],
+          ]
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: inno-agent
+    attrs:
+      name: InnoAgent
+      provider:
+        !Find [
+          authentik_providers_oauth2.oauth2provider,
+          [name, inno-agent-web],
+        ]
+      policy_engine_mode: any

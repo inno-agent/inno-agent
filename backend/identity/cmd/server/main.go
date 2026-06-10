@@ -55,9 +55,9 @@ func main() {
 		log.Fatalf("issuer: %v", err)
 	}
 
-	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelJWKSURL, cfg.ZitadelClientID)
+	prov, err := provider.NewOIDCProvider(ctx, cfg.OIDCIssuer, cfg.OIDCJWKSURL, cfg.OIDCClientID)
 	if err != nil {
-		log.Fatalf("zitadel provider: %v", err)
+		log.Fatalf("oidc provider: %v", err)
 	}
 
 	repo := user.NewRepository(pool)
@@ -81,7 +81,13 @@ func main() {
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
-	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID, cfg.ZitadelBaseURL)
+	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
+		Authority:    cfg.OIDCIssuer,
+		AuthorizeURL: cfg.OIDCAuthorizeURL,
+		ClientID:     cfg.OIDCClientID,
+		TokenURL:     cfg.OIDCTokenURL,
+		JWKSURL:      cfg.OIDCJWKSURL,
+	})
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

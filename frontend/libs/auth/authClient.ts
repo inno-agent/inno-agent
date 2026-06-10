@@ -10,8 +10,8 @@ export async function createUserManager(): Promise<UserManager> {
         redirect_uri: window.location.origin + '/callback',
         scope: 'openid email profile',
         response_type: 'code',
-        // Proxy Zitadel OIDC endpoints through auth service (HTTPS) to avoid
-        // mixed-content blocks when the app is on HTTPS but Zitadel is on HTTP.
+        // Token/JWKS go through the identity service proxy so the browser
+        // only talks to our origin; authorize is a top-level redirect to the IdP.
         metadata: {
             issuer: authority,
             authorization_endpoint,

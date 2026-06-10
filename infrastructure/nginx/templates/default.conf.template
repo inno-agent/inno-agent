@@ -1,32 +1,13 @@
-# ─── App entrypoint ─────────────────────────────────────────────────────────
+# Websocket upgrade helper (authentik admin UI uses websockets)
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# ─── HTTP → HTTPS redirect ───────────────────────────────────────────────────
 server {
     listen 80;
-    resolver 127.0.0.11 valid=10s ipv6=off;
-
-    location /identity/v1 {
-        set $upstream identity:8081;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://$upstream;
-    }
-
-    location /api/v1 {
-        set $upstream chat-api:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://$upstream;
-    }
-
-    location / {
-        set $upstream frontend:80;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_pass http://$upstream;
-    }
+    return 301 https://$host$request_uri;
 }
 
 # ─── App entrypoint (TLS, self-signed) ─────────────────────────────────────
@@ -40,7 +21,6 @@ server {
 
     location /identity/v1 {
         set $upstream identity:8081;
-
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -64,41 +44,25 @@ server {
     }
 }
 
-# ─── Zitadel entrypoint (REST/JSON + gRPC, multiplexed like Traefik h2c) ───
+# ─── Authentik entrypoint (TLS, self-signed) ────────────────────────────────
+# HTTP/1.1 (no http2): websocket proxying requires it.
 server {
-    listen 8080;
-    http2 on;
+    listen 8080 ssl;
     resolver 127.0.0.11 valid=10s ipv6=off;
 
-    set $zitadel_host "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}";
-
-    location /api/ {
-        set $upstream zitadel-api:8080;
-        rewrite ^/api/(.*)$ /$1 break;
-        proxy_set_header Host $zitadel_host;
-        proxy_set_header X-Forwarded-Host $zitadel_host;
-        proxy_pass http://$upstream;
-
-        if ($content_type ~* "^application/grpc") {
-            return 418;
-        }
-    }
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
     location / {
-        set $upstream zitadel-api:8080;
-        proxy_set_header Host $zitadel_host;
-        proxy_set_header X-Forwarded-Host $zitadel_host;
+        set $upstream authentik-server:9000;
+        proxy_http_version 1.1;
+        # $http_host keeps the :8080 port — authentik builds the OIDC issuer from it.
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_buffering off;
         proxy_pass http://$upstream;
-
-        if ($content_type ~* "^application/grpc") {
-            return 418;
-        }
-    }
-
-    error_page 418 = @grpc;
-    location @grpc {
-        set $grpc_upstream zitadel-api:8080;
-        grpc_set_header Host $zitadel_host;
-        grpc_pass grpc://$grpc_upstream;
     }
 }

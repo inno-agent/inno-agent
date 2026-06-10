@@ -54,7 +54,7 @@ func TestHTTP_Exchange_Success(t *testing.T) {
 	iss := makeTestIssuer(t)
 
 	p := &stubProvider{identity: provider.ExternalIdentity{
-		Provider: "zitadel", Sub: "user-123", Email: "user@example.com",
+		Provider: "authentik", Sub: "user-123", Email: "user@example.com",
 	}}
 	svc := &stubUserSvc{
 		upsertUser: user.User{ID: "uuid-abc", Tier: "user"},
@@ -62,7 +62,7 @@ func TestHTTP_Exchange_Success(t *testing.T) {
 	}
 
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, "http://localhost:8080", "test-client", "http://zitadel-api:8080")
+	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, testOIDCEndpoints())
 
 	body := `{"token": "any-idp-token"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/exchange", strings.NewReader(body))
@@ -83,7 +83,7 @@ func TestHTTP_Exchange_InvalidToken(t *testing.T) {
 
 	p := &stubProvider{err: errors.New("token expired")}
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, nil, iss, 30*time.Minute, "", "", "http://zitadel-api:8080")
+	transport.RegisterHTTPRoutes(r, p, nil, iss, 30*time.Minute, transport.OIDCEndpoints{})
 
 	body := `{"token": "bad-token"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/exchange", strings.NewReader(body))
@@ -102,7 +102,7 @@ func TestHTTP_Config(t *testing.T) {
 	iss := makeTestIssuer(t)
 
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, "http://localhost:8080", "my-client-id", "http://zitadel-api:8080")
+	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, testOIDCEndpoints())
 
 	req := httptest.NewRequest(http.MethodGet, "/identity/v1/config", nil)
 	w := httptest.NewRecorder()
@@ -111,6 +111,17 @@ func TestHTTP_Config(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "http://localhost:8080", resp["authority"])
+	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/", resp["authority"])
 	assert.Equal(t, "my-client-id", resp["client_id"])
+	assert.Equal(t, "https://localhost:8080/application/o/authorize/", resp["authorization_endpoint"])
+}
+
+func testOIDCEndpoints() transport.OIDCEndpoints {
+	return transport.OIDCEndpoints{ //nolint:gosec // test fixture URLs, not credentials
+		Authority:    "https://localhost:8080/application/o/inno-agent/",
+		AuthorizeURL: "https://localhost:8080/application/o/authorize/",
+		ClientID:     "my-client-id",
+		TokenURL:     "http://authentik-server:9000/application/o/token/",
+		JWKSURL:      "http://authentik-server:9000/application/o/inno-agent/jwks/",
+	}
 }

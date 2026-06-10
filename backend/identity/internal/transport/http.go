@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,12 +21,25 @@ type ExchangeServicer interface {
 	GetContext(ctx context.Context, userID string) (user.UserContext, error)
 }
 
-func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServicer, iss *issuer.Issuer, expiry time.Duration, authority, clientID, zitadelBaseURL string) {
+// OIDCEndpoints describes the upstream IdP endpoints exposed to and proxied for the browser.
+type OIDCEndpoints struct {
+	// Authority is the public issuer URL (what the browser validates id_token iss against).
+	Authority string
+	// AuthorizeURL is the public authorization endpoint the browser is redirected to.
+	AuthorizeURL string
+	ClientID     string
+	// TokenURL is the internal token endpoint, proxied via /identity/v1/oidc/token.
+	TokenURL string
+	// JWKSURL is the internal JWKS endpoint, proxied via /identity/v1/oidc/jwks.
+	JWKSURL string
+}
+
+func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServicer, iss *issuer.Issuer, expiry time.Duration, oidc OIDCEndpoints) {
 	r.GET("/identity/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"authority":              authority,
-			"client_id":              clientID,
-			"authorization_endpoint": authority + "/oauth/v2/authorize",
+			"authority":              oidc.Authority,
+			"client_id":              oidc.ClientID,
+			"authorization_endpoint": oidc.AuthorizeURL,
 		})
 	})
 
@@ -33,10 +47,13 @@ func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServ
 		c.JSON(http.StatusOK, iss.PublicKeyJWKS())
 	})
 
-	// Proxy Zitadel OIDC endpoints so browser never makes HTTP requests directly
-	// (avoids mixed-content block when app is on HTTPS but Zitadel is on HTTP).
-	r.GET("/identity/v1/oidc/jwks", proxyGet(zitadelBaseURL+"/oauth/v2/keys"))
-	r.POST("/identity/v1/oidc/token", proxyPost(zitadelBaseURL+"/oauth/v2/token"))
+	// Proxy IdP OIDC endpoints so the browser only talks to our origin.
+	// Host and X-Forwarded-Proto must match the public authority: the IdP
+	// builds the id_token issuer from them, and the browser OIDC client
+	// rejects tokens whose iss differs from the configured authority.
+	authorityHost, authorityScheme := splitAuthority(oidc.Authority)
+	r.GET("/identity/v1/oidc/jwks", proxyGet(oidc.JWKSURL, authorityHost, authorityScheme))
+	r.POST("/identity/v1/oidc/token", proxyPost(oidc.TokenURL, authorityHost, authorityScheme))
 
 	r.POST("/identity/v1/validate", func(c *gin.Context) {
 		var req struct {
@@ -61,34 +78,53 @@ func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServ
 	r.POST("/identity/v1/exchange", exchangeHandler(p, svc, iss, expiry))
 }
 
-func proxyGet(target string) gin.HandlerFunc {
+// splitAuthority extracts host:port and scheme from an authority URL,
+// e.g. "https://localhost:8080/application/o/app/" → ("localhost:8080", "https").
+func splitAuthority(authority string) (host, scheme string) {
+	if u, err := url.Parse(authority); err == nil && u.Host != "" {
+		return u.Host, u.Scheme
+	}
+	return authority, "https"
+}
+
+func proxyRequest(c *gin.Context, req *http.Request, host, scheme string) {
+	req.Host = host
+	req.Header.Set("X-Forwarded-Proto", scheme)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "proxy error"})
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+}
+
+func proxyGet(target, host, scheme string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		resp, err := http.Get(target) //nolint:noctx,gosec
+		req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, target, nil)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "proxy error"})
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
-		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
+		proxyRequest(c, req, host, scheme)
 	}
 }
 
-func proxyPost(target string) gin.HandlerFunc {
+func proxyPost(target, host, scheme string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "read error"})
 			return
 		}
-		resp, err := http.Post(target, c.Request.Header.Get("Content-Type"), bytes.NewReader(body)) //nolint:noctx,gosec
+		req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, target, bytes.NewReader(body))
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": "proxy error"})
 			return
 		}
-		defer func() { _ = resp.Body.Close() }()
-		respBody, _ := io.ReadAll(resp.Body)
-		c.Data(resp.StatusCode, resp.Header.Get("Content-Type"), respBody)
+		req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+		proxyRequest(c, req, host, scheme)
 	}
 }
 

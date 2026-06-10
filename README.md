@@ -4,14 +4,14 @@ An AI chat assistant product, organized as a multi-language monorepo.
 
 ## Overview
 
-A ChatGPT-style assistant with Zitadel-based authentication, a React frontend, a Go backend, and a Python/Ollama service for the model side.
+A ChatGPT-style assistant with authentik-based authentication, a React frontend, a Go backend, and a Python/Ollama service for the model side.
 
 ## Repository layout
 
 | Path | Stack | Purpose |
 |---|---|---|
 | `frontend/` | TypeScript, React 19, Vite, `@assistant-ui/react`, TanStack Router, Zustand, Tailwind v4, shadcn | Chat UI: SSE streaming, message branches, tool calls, markdown, reasoning blocks. Workspace split into `projects/app` (shell) and `libs/{chat,sidebar,shared}`. |
-| `backend/` | Go (golangci-lint) | Auth service (gRPC + HTTP `/auth/v1/exchange`), RSA JWT issuer, Postgres user repo with migrations, Zitadel as OIDC provider. Dockerized; Terraform manages Zitadel setup. Chat API (`backend/chat-api/`) — REST + SSE streaming, chi router, pgx, domain-driven layout. |
+| `backend/` | Go (golangci-lint) | Identity service (gRPC + HTTP `/identity/v1/exchange`), RSA JWT issuer, Postgres user repo with migrations, authentik as OIDC provider (provisioned declaratively via blueprint in `infrastructure/authentik/`). Chat API (`backend/chat-api/`) — REST + SSE streaming, chi router, pgx, domain-driven layout. |
 | `ai/` | Python 3.14, uv, ruff, mypy, pytest | LLM-serving module. Dockerized Ollama deployment in progress. |
 
 ## CI & tooling

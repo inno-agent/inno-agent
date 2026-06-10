@@ -10,6 +10,3 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-
-# generated at runtime by terraform-setup
-infrastructure/setup/auth.env

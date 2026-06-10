@@ -1,5 +1,0 @@
-# jwt_profile_file is set automatically by the terraform-setup Docker service.
-# For manual runs outside Docker:
-#   jwt_profile_file = "/path/to/setup/machinekey/<key-id>.json"
-zitadel_domain = "localhost"
-zitadel_port   = "8080"

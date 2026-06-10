@@ -22,6 +22,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.26"
+          cache-dependency-path: "backend/**/go.mod"
 
       # later will be separated into different CIs on each service
       - name: Find and test services

@@ -71,7 +71,7 @@ func TestChat_Success(t *testing.T) {
 
 	got, err := provider.Chat(
 		context.Background(),
-		"Hello",
+		[]llm.Message{{Role: "user", Content: "Hello"}},
 	)
 	if err != nil {
 		t.Fatalf(
@@ -97,7 +97,7 @@ func TestChat_EmptyMessage(t *testing.T) {
 
 	_, err := provider.Chat(
 		context.Background(),
-		"   ",
+		[]llm.Message{},
 	)
 
 	if !errors.Is(err, llm.ErrEmptyMessage) {
@@ -126,7 +126,7 @@ func TestChat_EmptyChoices(t *testing.T) {
 
 	_, err := provider.Chat(
 		context.Background(),
-		"Hi",
+		[]llm.Message{{Role: "user", Content: "Hi"}},
 	)
 
 	if !errors.Is(err, llm.ErrEmptyResponse) {
@@ -158,7 +158,7 @@ func TestChat_UpstreamError(t *testing.T) {
 
 	_, err := provider.Chat(
 		context.Background(),
-		"Hi",
+		[]llm.Message{{Role: "user", Content: "Hi"}},
 	)
 
 	var provErr *llm.ProviderError
@@ -211,7 +211,7 @@ func TestChat_ContextCancelled(t *testing.T) {
 
 	_, err := provider.Chat(
 		ctx,
-		"Hello",
+		[]llm.Message{{Role: "user", Content: "Hello"}},
 	)
 
 	if err == nil {
@@ -248,7 +248,7 @@ func TestChat_CustomModel(t *testing.T) {
 
 	got, err := provider.Chat(
 		context.Background(),
-		"test message",
+		[]llm.Message{{Role: "user", Content: "test message"}},
 	)
 	if err != nil {
 		t.Fatalf(

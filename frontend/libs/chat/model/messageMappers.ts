@@ -1,9 +1,14 @@
 import type { ThreadMessageLike } from '@assistant-ui/react'
-import type { ChatRequestMessage, MessageContentPart } from './types'
+import type { ChatRequestMessage, Message, MessageContentPart } from './types'
 
 export const createUserTextMessage = (text: string): ThreadMessageLike => ({
     role: 'user',
     content: [{ type: 'text', text }],
+})
+
+export const fromApiMessage = (message: Message): ThreadMessageLike => ({
+    role: message.role as ThreadMessageLike['role'],
+    content: [{ type: 'text', text: message.content }],
 })
 
 export const toChatRequestMessages = (

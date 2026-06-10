@@ -15,8 +15,12 @@ import (
 	"innoagent/internal/orchestrator"
 )
 
+// type ChatRequest struct {
+// 	Message string `json:"message"`
+// }
+
 type ChatRequest struct {
-	Message string `json:"message"`
+    Messages []llm.Message `json:"messages"`
 }
 
 type ChatResponse struct {
@@ -70,15 +74,15 @@ func main() {
 			return
 		}
 
-		if req.Message == "" {
-			http.Error(w, `{"error":"message field is required"}`, http.StatusBadRequest)
+		if len(req.Messages) == 0 {
+			http.Error(w, `{"error":"messages field is required"}`, http.StatusBadRequest)
 			return
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 		defer cancel()
 
-		answer, err := orch.Ask(ctx, req.Message)
+		answer, err := orch.Ask(ctx, req.Messages)	
 		if err != nil {
 			log.Printf("orchestrator error: %v", err)
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)

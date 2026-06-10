@@ -74,8 +74,9 @@
 
 .sectionTitle {
     font-size: 12px;
-    font-weight: 600;
-    color: var(--color-muted);
+    font-weight: 700;
+    color: color-mix(in srgb, var(--color-text-primary) 82%, white 18%);
+    letter-spacing: 0.04em;
     display: block;
     margin-bottom: 12px;
 }

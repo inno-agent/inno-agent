@@ -15,9 +15,23 @@ export function AuthProvider({
       userId: userId && !isCallback ? userId : null,
       userManager: null,
       loading: true,
+      setSession: () => {},
+      clearSession: () => {},
     };
   });
   const initDone = useRef(false);
+
+  const setSession = (token: string, userId: string) => {
+    localStorage.setItem("aicore_token", token);
+    localStorage.setItem("aicore_user_id", userId);
+    setState((prev) => ({ ...prev, token, userId, loading: false }));
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem("aicore_token");
+    localStorage.removeItem("aicore_user_id");
+    setState((prev) => ({ ...prev, token: null, userId: null, loading: false }));
+  };
 
   useEffect(() => {
     if (initDone.current) return;
@@ -37,5 +51,9 @@ export function AuthProvider({
     });
   }, [state.token]);
 
-  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ ...state, setSession, clearSession }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }

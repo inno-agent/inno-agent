@@ -20,10 +20,10 @@ func New(
 
 func (o *AIOrchestrator) Ask(
 	ctx context.Context,
-	prompt string,
+	messages []llm.Message,
 ) (string, error) {
 	return o.provider.Chat(
 		ctx,
-		prompt,
+		messages,
 	)
 }

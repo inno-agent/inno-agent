@@ -92,7 +92,10 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 // Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
+		// chatName := truncateString(message, 30)
+		// chat, err := s.chatRepo.Create(ctx, userID, &chatName)
 		chat, err := s.chatRepo.Create(ctx, userID, nil)
+
 		if err != nil {
 			return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
 		}
@@ -106,7 +109,6 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			return nil, uuid.Nil, fmt.Errorf("Stream: %w", domain.ErrAccessDenied)
 		}
 	}
-
 	_, err := s.messageRepo.Create(ctx, userID, chatID, domain.RoleUser, message)
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
@@ -117,16 +119,34 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			zap.String("function", "Stream"), zap.Error(err))
 	}
 
+	history, _, err := s.GetHistory(ctx, userID, chatID, 50, 0)
+	if err != nil {
+		return nil, uuid.Nil, fmt.Errorf("Stream: get history: %w", err)
+	}
+
+
+	llmMessages := make([]domain.LLMMessage, 0, len(history)+1)
+
+	for _, m := range history {
+		llmMessages = append(llmMessages, domain.LLMMessage{
+			Role:    string(m.Role),
+			Content: m.Content,
+		})
+	}
+
+
+
 	rawCh := make(chan string, 4)
 	outCh := make(chan string, 4)
 
 	go func() {
 		defer close(rawCh)
-		answer, err := s.llm.Chat(ctx, message)
+		answer, _ := s.llm.Chat(ctx, llmMessages)
 		if err != nil {
 			s.logger.Error("llm error", zap.String("function", "Stream"), zap.Error(err))
 			return
 		}
+
 		select {
 		case <-ctx.Done():
 		case rawCh <- answer:
@@ -178,3 +198,4 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 
 	return outCh, chatID, nil
 }
+

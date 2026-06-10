@@ -10,6 +10,7 @@ volumes:
   postgres-data:
   machinekey:
   ollama-data:
+  nginx-certs:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
@@ -36,17 +37,22 @@ services:
 
   # ─── Reverse proxy (nginx) ──────────────────────────────────────────────────
   proxy:
-    image: nginx:1.27-alpine
+    build:
+      context: ./infrastructure/nginx
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env
     ports:
       - "80:80"
+      - "443:443"
       - "8080:8080"
     networks:
       - innoagent
     volumes:
       - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
+      - ./infrastructure/nginx/docker-entrypoint.d/10-gen-self-signed-cert.sh:/docker-entrypoint.d/05-gen-self-signed-cert.sh:ro
+      - nginx-certs:/etc/nginx/certs
     depends_on:
       zitadel-api:
         condition: service_healthy

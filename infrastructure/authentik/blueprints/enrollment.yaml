@@ -1,0 +1,171 @@
+# Self-registration flow with mandatory email verification.
+# User is created inactive; the account is activated only after the
+# confirmation link from the email is opened (email stage, global SMTP settings).
+version: 1
+metadata:
+  name: inno-agent enrollment
+  labels:
+    blueprints.goauthentik.io/description: Self-registration with email verification
+entries:
+  # ─── Flow ───────────────────────────────────────────────────────────────
+  - model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: inno-agent-enrollment
+    attrs:
+      name: inno-agent-enrollment
+      title: Регистрация InnoAgent
+      designation: enrollment
+      authentication: require_unauthenticated
+      denied_action: message_continue
+
+  # ─── Prompt fields ──────────────────────────────────────────────────────
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-username
+    attrs:
+      field_key: username
+      label: Имя пользователя
+      type: username
+      required: true
+      placeholder: username
+      order: 0
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-email
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: you@example.com
+      order: 1
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-password
+    attrs:
+      field_key: password
+      label: Пароль
+      type: password
+      required: true
+      placeholder: Пароль
+      order: 2
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Пароль (ещё раз)
+      type: password
+      required: true
+      placeholder: Пароль (ещё раз)
+      order: 3
+
+  # ─── Stages ─────────────────────────────────────────────────────────────
+  - model: authentik_stages_prompt.promptstage
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-prompt
+    attrs:
+      fields:
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-enrollment-username],
+          ]
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-enrollment-email],
+          ]
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-enrollment-password],
+          ]
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-enrollment-password-repeat],
+          ]
+
+  # User is written as inactive — activated by the email stage below.
+  - model: authentik_stages_user_write.userwritestage
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-user-write
+    attrs:
+      create_users_as_inactive: true
+      user_creation_mode: always_create
+      user_type: internal
+
+  # Sends confirmation email via global SMTP settings (AUTHENTIK_EMAIL__*).
+  - model: authentik_stages_email.emailstage
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-email-verification
+    attrs:
+      use_global_settings: true
+      activate_user_on_success: true
+      subject: Подтверждение аккаунта InnoAgent
+      template: email/account_confirmation.html
+      token_expiry: minutes=30
+
+  # ─── Flow bindings ──────────────────────────────────────────────────────
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]
+      order: 10
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_prompt.promptstage,
+          [name, inno-agent-enrollment-prompt],
+        ]
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]
+      order: 20
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_user_write.userwritestage,
+          [name, inno-agent-enrollment-user-write],
+        ]
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]
+      order: 30
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_email.emailstage,
+          [name, inno-agent-enrollment-email-verification],
+        ]
+  # Reuse the default login stage so the user is signed in right after activation.
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]
+      order: 40
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_user_login.userloginstage,
+          [name, default-authentication-login],
+        ]
+
+  # ─── "Sign up" link on the login page ───────────────────────────────────
+  - model: authentik_stages_identification.identificationstage
+    state: present
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields:
+        - username
+        - email
+      enrollment_flow:
+        !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]

@@ -16,7 +16,7 @@ function Callback() {
         userManager
             .signinRedirectCallback()
             .then((user) =>
-                fetch('/auth/v1/exchange', {
+                fetch('/identity/v1/exchange', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ token: user.id_token }),

@@ -1,7 +1,7 @@
 import { UserManager, type UserManagerSettings } from 'oidc-client-ts'
 
 export async function createUserManager(): Promise<UserManager> {
-    const resp = await fetch('/auth/v1/config')
+    const resp = await fetch('/identity/v1/config')
     const { authority, client_id, authorization_endpoint } = await resp.json()
 
     const settings: UserManagerSettings = {
@@ -15,8 +15,8 @@ export async function createUserManager(): Promise<UserManager> {
         metadata: {
             issuer: authority,
             authorization_endpoint,
-            token_endpoint: window.location.origin + '/auth/v1/oidc/token',
-            jwks_uri: window.location.origin + '/auth/v1/oidc/jwks',
+            token_endpoint: window.location.origin + '/identity/v1/oidc/token',
+            jwks_uri: window.location.origin + '/identity/v1/oidc/jwks',
         },
     }
 

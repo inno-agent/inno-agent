@@ -1,0 +1,68 @@
+# ─── App entrypoint ─────────────────────────────────────────────────────────
+server {
+    listen 80;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    location /auth/v1 {
+        set $upstream auth:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+
+    location /api/v1 {
+        set $upstream chat-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+
+    location / {
+        set $upstream frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+}
+
+# ─── Zitadel entrypoint (REST/JSON + gRPC, multiplexed like Traefik h2c) ───
+server {
+    listen 8080;
+    http2 on;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    set $zitadel_host "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}";
+
+    location /api/ {
+        set $upstream zitadel-api:8080;
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_set_header Host $zitadel_host;
+        proxy_set_header X-Forwarded-Host $zitadel_host;
+        proxy_pass http://$upstream;
+
+        if ($content_type ~* "^application/grpc") {
+            return 418;
+        }
+    }
+
+    location / {
+        set $upstream zitadel-api:8080;
+        proxy_set_header Host $zitadel_host;
+        proxy_set_header X-Forwarded-Host $zitadel_host;
+        proxy_pass http://$upstream;
+
+        if ($content_type ~* "^application/grpc") {
+            return 418;
+        }
+    }
+
+    error_page 418 = @grpc;
+    location @grpc {
+        set $grpc_upstream zitadel-api:8080;
+        grpc_set_header Host $zitadel_host;
+        grpc_pass grpc://$grpc_upstream;
+    }
+}

@@ -32,87 +32,21 @@ configs:
           From: ${ZITADEL_SMTP_FROM}
           FromName: ${ZITADEL_SMTP_FROM_NAME}
 
-  traefik_dynamic:
-    content: |
-      http:
-        middlewares:
-          strip-api:
-            stripPrefix:
-              prefixes:
-                - /api
-          zitadel-host:
-            headers:
-              customRequestHeaders:
-                Host: "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}"
-                X-Forwarded-Host: "${ZITADEL_DOMAIN}:${ZITADEL_EXTERNALPORT}"
-
-        services:
-          zitadel-api:
-            loadBalancer:
-              servers:
-                - url: "h2c://zitadel-api:8080"
-          chat-api:
-            loadBalancer:
-              servers:
-                - url: "http://chat-api:8000"
-          auth-service:
-            loadBalancer:
-              servers:
-                - url: "http://auth:8081"
-          frontend:
-            loadBalancer:
-              servers:
-                - url: "http://frontend:80"
-
-        routers:
-          zitadel-alias:
-            rule: "PathPrefix(`/api`)"
-            entryPoints: [zitadel]
-            middlewares: [strip-api, zitadel-host]
-            service: zitadel-api
-            priority: 200
-          zitadel-canonical:
-            rule: "PathPrefix(`/`)"
-            entryPoints: [zitadel]
-            middlewares: [zitadel-host]
-            service: zitadel-api
-            priority: 100
-          auth-service:
-            rule: "PathPrefix(`/auth/v1`)"
-            entryPoints: [web, websecure]
-            service: auth-service
-            priority: 300
-            tls: {}
-          chat-api:
-            rule: "PathPrefix(`/api/v1`)"
-            entryPoints: [web, websecure]
-            service: chat-api
-            priority: 200
-            tls: {}
-          frontend:
-            rule: "PathPrefix(`/`)"
-            entryPoints: [web, websecure]
-            service: frontend
-            priority: 100
-            tls: {}
-
 services:
 
-  # ─── Reverse proxy (Traefik) ───────────────────────────────────────────────
+  # ─── Reverse proxy (nginx) ──────────────────────────────────────────────────
   proxy:
-    image: ${TRAEFIK_IMAGE}
+    image: nginx:1.27-alpine
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "80:80"
-      - "443:443"
       - "8080:8080"
     networks:
       - innoagent
     volumes:
-      - ./infrastructure/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
-    configs:
-      - source: traefik_dynamic
-        target: /etc/traefik/dynamic.yaml
+      - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
     depends_on:
       zitadel-api:
         condition: service_healthy

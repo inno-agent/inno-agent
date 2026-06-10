@@ -1,54 +1,41 @@
-import { createContext, useEffect, useRef, useState } from 'react'
-import { type UserManager } from 'oidc-client-ts'
-import { createUserManager } from './authClient'
+import { useEffect, useRef, useState } from "react";
+import { type UserManager } from "oidc-client-ts";
+import { createUserManager } from "./authClient";
+import { AuthContext, type AuthState } from "./authContext";
 
-export interface AuthState {
-    token: string | null
-    userId: string | null
-    userManager: UserManager | null
-    loading: boolean
-}
+export function AuthProvider({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  const [state, setState] = useState<AuthState>(() => {
+    const isCallback = window.location.pathname === "/callback";
+    const token = localStorage.getItem("aicore_token");
+    const userId = localStorage.getItem("aicore_user_id");
+    return {
+      token: token && !isCallback ? token : null,
+      userId: userId && !isCallback ? userId : null,
+      userManager: null,
+      loading: true,
+    };
+  });
+  const initDone = useRef(false);
 
-export const AuthContext = createContext<AuthState>({
-    token: null,
-    userId: null,
-    userManager: null,
-    loading: true,
-})
+  useEffect(() => {
+    if (initDone.current) return;
+    initDone.current = true;
 
-export function AuthProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-    const [state, setState] = useState<AuthState>({
-        token: null,
-        userId: null,
-        userManager: null,
-        loading: true,
-    })
-    const initDone = useRef(false)
+    const isCallback = window.location.pathname === "/callback";
 
-    useEffect(() => {
-        if (initDone.current) return
-        initDone.current = true
+    createUserManager().then((um: UserManager) => {
+      setState((prev) => ({
+        ...prev,
+        userManager: um,
+        loading: isCallback ? true : !prev.token,
+      }));
+      if (!isCallback && !state.token) {
+        um.signinRedirect();
+      }
+    });
+  }, [state.token]);
 
-        const isCallback = window.location.pathname === '/callback'
-
-        const storedToken = localStorage.getItem('aicore_token')
-        const storedUserId = localStorage.getItem('aicore_user_id')
-
-        if (storedToken && storedUserId && !isCallback) {
-            setState((prev) => ({ ...prev, token: storedToken, userId: storedUserId, loading: false }))
-            createUserManager().then((um) => setState((prev) => ({ ...prev, userManager: um })))
-            return
-        }
-
-        createUserManager().then((um) => {
-            setState((prev) => ({ ...prev, userManager: um }))
-            if (!isCallback) {
-                um.signinRedirect()
-            } else {
-                setState((prev) => ({ ...prev, loading: false }))
-            }
-        })
-    }, [])
-
-    return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }

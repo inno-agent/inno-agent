@@ -3,7 +3,7 @@ set -e
 
 KEY_FILE="/machinekey/terraform.json"
 
-rm -f /setup/auth.env
+rm -f /setup/identity.env
 
 echo "Waiting for machine key from Zitadel setup..."
 until [ -f "$KEY_FILE" ]; do
@@ -24,5 +24,5 @@ if [ $APPLY_EXIT -ne 0 ]; then
   terraform apply -no-color -auto-approve -var="zitadel_jwt_profile_file=${KEY_FILE}"
 fi
 
-printf 'ZITADEL_CLIENT_ID=%s\n' "$(terraform output -no-color -raw client_id)" > /setup/auth.env
+printf 'ZITADEL_CLIENT_ID=%s\n' "$(terraform output -no-color -raw client_id)" > /setup/identity.env
 echo "Terraform setup complete."

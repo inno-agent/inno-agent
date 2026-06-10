@@ -29,7 +29,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 			}
 
 			body, _ := json.Marshal(map[string]string{"token": token})
-			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, authServiceURL+"/auth/v1/validate", bytes.NewReader(body))
+			req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, authServiceURL+"/identity/v1/validate", bytes.NewReader(body))
 			if err != nil {
 				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 				return

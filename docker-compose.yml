@@ -14,8 +14,8 @@ volumes:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
-  auth_rsa_key:
-    file: ./infrastructure/auth/dev-private-key.pem
+  identity_rsa_key:
+    file: ./backend/identity/dev-private-key.pem
 
 # ─── Configs ──────────────────────────────────────────────────────────────────
 configs:
@@ -117,7 +117,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # ─── Terraform: creates Zitadel OIDC app, writes client_id to auth.env ────
+  # ─── Terraform: creates Zitadel OIDC app, writes client_id to identity.env ────
   terraform-setup:
     image: hashicorp/terraform:1.12
     working_dir: /workspace
@@ -142,18 +142,18 @@ services:
     networks:
       - innoagent
 
-  # ─── Auth service (AICore JWT issuer) ─────────────────────────────────────
-  auth:
+  # ─── Identity service (JWT issuer + user context) ─────────────────────────
+  identity:
     build:
-      context: ./infrastructure/auth
+      context: ./backend/identity
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env
-      - path: ./infrastructure/setup/auth.env
+      - path: ./infrastructure/setup/identity.env
         required: false
     environment:
-      AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/auth_rsa_key
+      AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       ZITADEL_ISSUER: "${ZITADEL_PUBLIC_SCHEME:-http}://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8080}"
       ZITADEL_JWKS_URL: "http://proxy:8080/oauth/v2/keys"
       ZITADEL_BASE_URL: "http://proxy:8080"
@@ -161,9 +161,9 @@ services:
       - "${ZITADEL_DOMAIN:-localhost}:host-gateway"
     volumes:
       - ./infrastructure/setup:/setup:ro
-    entrypoint: ["sh", "-c", "set -a; [ -f /setup/auth.env ] && . /setup/auth.env; set +a; exec ./auth-server"]
+    entrypoint: ["sh", "-c", "set -a; [ -f /setup/identity.env ] && . /setup/identity.env; set +a; exec ./identity-server"]
     secrets:
-      - auth_rsa_key
+      - identity_rsa_key
     networks:
       - innoagent
     depends_on:
@@ -201,14 +201,14 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
-      AUTH_SERVICE_URL: http://auth:8081
+      AUTH_SERVICE_URL: http://identity:8081
       SERVER_PORT: "8000"
     networks:
       - innoagent
     depends_on:
       chat-api-migrate:
         condition: service_completed_successfully
-      auth:
+      identity:
         condition: service_started
       orchestrator:
         condition: service_started

@@ -17,6 +17,11 @@ pre-commit:
       root: backend/innoagent
       run: golangci-lint run ./...
 
+    go-lint-identity:
+      glob: "backend/identity/**/*.go"
+      root: backend/identity
+      run: golangci-lint run ./...
+
     python-fmt:
       glob: "**/*.py"
       root: ai

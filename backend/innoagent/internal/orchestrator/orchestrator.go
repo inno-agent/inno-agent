@@ -1,31 +1,29 @@
 package orchestrator
 
 import (
-    "context"
+	"context"
 
-    "innoagent/internal/llm"
+	"innoagent/internal/llm"
 )
 
 type AIOrchestrator struct {
-    provider llm.Provider
+	provider llm.Provider
 }
 
 func New(
-    provider llm.Provider,
+	provider llm.Provider,
 ) *AIOrchestrator {
-
-    return &AIOrchestrator{
-        provider: provider,
-    }
+	return &AIOrchestrator{
+		provider: provider,
+	}
 }
 
 func (o *AIOrchestrator) Ask(
-    ctx context.Context,
-    prompt string,
+	ctx context.Context,
+	prompt string,
 ) (string, error) {
-
-    return o.provider.Chat(
-        ctx,
-        prompt,
-    )
+	return o.provider.Chat(
+		ctx,
+		prompt,
+	)
 }

@@ -1,0 +1,65 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
+
+type Config struct {
+	ZitadelIssuer     string
+	ZitadelJWKSURL    string
+	ZitadelBaseURL    string
+	ZitadelClientID   string
+	JWTPrivateKeyPath string
+	JWTExpiry         time.Duration
+	DatabaseDSN       string
+	HTTPPort          string
+	GRPCPort          string
+}
+
+func Load() (*Config, error) {
+	return LoadFrom(os.Getenv)
+}
+
+func LoadFrom(getenv func(string) string) (*Config, error) {
+	var missing []string
+	require := func(key string) string {
+		v := getenv(key)
+		if v == "" {
+			missing = append(missing, key)
+		}
+		return v
+	}
+	fallback := func(key, def string) string {
+		if v := getenv(key); v != "" {
+			return v
+		}
+		return def
+	}
+
+	zitadelIssuer := require("ZITADEL_ISSUER")
+	cfg := &Config{
+		ZitadelIssuer:     zitadelIssuer,
+		ZitadelJWKSURL:    fallback("ZITADEL_JWKS_URL", zitadelIssuer+"/oauth/v2/keys"),
+		ZitadelBaseURL:    fallback("ZITADEL_BASE_URL", "http://zitadel-api:8080"),
+		ZitadelClientID:   getenv("ZITADEL_CLIENT_ID"),
+		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
+		DatabaseDSN:       require("AUTH_DATABASE_DSN"),
+		HTTPPort:          fallback("AUTH_HTTP_PORT", "8081"),
+		GRPCPort:          fallback("AUTH_GRPC_PORT", "9091"),
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("missing required env vars: [%s]", strings.Join(missing, ", "))
+	}
+
+	expiry, err := time.ParseDuration(fallback("AUTH_JWT_EXPIRY", "30m"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid AUTH_JWT_EXPIRY: %w", err)
+	}
+	cfg.JWTExpiry = expiry
+
+	return cfg, nil
+}

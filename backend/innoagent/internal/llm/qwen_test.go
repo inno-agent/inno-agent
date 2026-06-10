@@ -16,7 +16,6 @@ func makeServer(
 	status int,
 	body any,
 ) *httptest.Server {
-
 	t.Helper()
 
 	srv := httptest.NewServer(
@@ -24,7 +23,6 @@ func makeServer(
 			w http.ResponseWriter,
 			r *http.Request,
 		) {
-
 			w.Header().Set(
 				"Content-Type",
 				"application/json",
@@ -47,7 +45,6 @@ func makeServer(
 }
 
 func TestChat_Success(t *testing.T) {
-
 	want := "Hello from Qwen!"
 
 	resp := llm.ChatResponse{
@@ -76,7 +73,6 @@ func TestChat_Success(t *testing.T) {
 		context.Background(),
 		"Hello",
 	)
-
 	if err != nil {
 		t.Fatalf(
 			"unexpected error: %v",
@@ -94,7 +90,6 @@ func TestChat_Success(t *testing.T) {
 }
 
 func TestChat_EmptyMessage(t *testing.T) {
-
 	provider := llm.NewQwenProvider(
 		"http://localhost:8000/v1",
 		llm.WithModel("test-model"),
@@ -114,7 +109,6 @@ func TestChat_EmptyMessage(t *testing.T) {
 }
 
 func TestChat_EmptyChoices(t *testing.T) {
-
 	resp := llm.ChatResponse{
 		Choices: []llm.Choice{},
 	}
@@ -144,7 +138,6 @@ func TestChat_EmptyChoices(t *testing.T) {
 }
 
 func TestChat_UpstreamError(t *testing.T) {
-
 	errBody := map[string]any{
 		"error": map[string]any{
 			"message": "model not found",
@@ -194,7 +187,6 @@ func TestChat_UpstreamError(t *testing.T) {
 }
 
 func TestChat_ContextCancelled(t *testing.T) {
-
 	srv := httptest.NewServer(
 		http.HandlerFunc(func(
 			w http.ResponseWriter,
@@ -230,7 +222,6 @@ func TestChat_ContextCancelled(t *testing.T) {
 }
 
 func TestChat_CustomModel(t *testing.T) {
-
 	want := "Custom model response"
 
 	resp := llm.ChatResponse{
@@ -259,7 +250,6 @@ func TestChat_CustomModel(t *testing.T) {
 		context.Background(),
 		"test message",
 	)
-
 	if err != nil {
 		t.Fatalf(
 			"unexpected error: %v",
@@ -277,10 +267,8 @@ func TestChat_CustomModel(t *testing.T) {
 }
 
 func TestProviderInterface(t *testing.T) {
-
-	var _ llm.Provider =
-		llm.NewQwenProvider(
-			"http://localhost:8000/v1",
-			llm.WithModel("test-model"),
-		)
+	var _ llm.Provider = llm.NewQwenProvider(
+		"http://localhost:8000/v1",
+		llm.WithModel("test-model"),
+	)
 }

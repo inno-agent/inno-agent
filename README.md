@@ -67,7 +67,9 @@ docker compose up -d --build
 ```
 
 - Приложение: `https://localhost`
-- Authentik (вход / админка): `https://localhost:8080`
+- Authentik (вход / админка): `https://auth.localhost`
+  (на сервере — поддомен `auth.<домен>`, нужна DNS-запись;
+  в проде ограничьте `/if/admin/` на уровне nginx или firewall)
 
 ⚠️ **SMTP-переменные (`AUTHENTIK_EMAIL__*`) в `.env` обязательны** — саморегистрация
 активирует аккаунт письмом-подтверждением; без SMTP новые пользователи останутся

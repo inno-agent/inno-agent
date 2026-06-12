@@ -11,11 +11,46 @@ volumes:
   redis-data:
   ollama-data:
   nginx-certs:
+  authentik-media:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
   identity_rsa_key:
     file: ./backend/identity/dev-private-key.pem
+
+# ─── Authentik shared definition ────────────────────────────────────────────
+x-authentik: &authentik
+  image: ${AUTHENTIK_IMAGE}
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    AUTHENTIK_POSTGRESQL__HOST: postgres
+    AUTHENTIK_POSTGRESQL__USER: authentik
+    AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
+    AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASSWORD}
+    AUTHENTIK_REDIS__HOST: redis
+    AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+    AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+    AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_ADMIN_PASSWORD}
+    AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
+  volumes:
+    - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
+    - authentik-media:/media
+  healthcheck:
+    test: ["CMD", "ak", "healthcheck"]
+    interval: 30s
+    timeout: 30s
+    retries: 10
+    start_period: 60s
+  networks:
+    - innoagent
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
 
@@ -49,6 +84,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
       POSTGRES_USER: ${POSTGRES_ADMIN_USER}
       POSTGRES_DB: ${POSTGRES_DB}
+      AUTHENTIK_PG_PASSWORD: ${AUTHENTIK_PG_PASSWORD}
+      IDENTITY_PG_PASSWORD: ${IDENTITY_PG_PASSWORD}
+      CHAT_PG_PASSWORD: ${CHAT_PG_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}"]
       interval: 10s
@@ -79,71 +117,13 @@ services:
 
   # ─── Authentik IdP ──────────────────────────────────────────────────────────
   authentik-server:
-    image: ${AUTHENTIK_IMAGE}
-    restart: unless-stopped
+    <<: *authentik
     command: server
-    env_file:
-      - .env
-    environment:
-      AUTHENTIK_POSTGRESQL__HOST: postgres
-      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_ADMIN_USER}
-      AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
-      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
-      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_ADMIN_PASSWORD}
-      AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
-    volumes:
-      - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
-    healthcheck:
-      test: ["CMD", "ak", "healthcheck"]
-      interval: 30s
-      timeout: 30s
-      retries: 10
-      start_period: 60s
-    networks:
-      - innoagent
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   # ─── Authentik worker (applies blueprints, async tasks) ────────────────────
   authentik-worker:
-    image: ${AUTHENTIK_IMAGE}
-    restart: unless-stopped
+    <<: *authentik
     command: worker
-    env_file:
-      - .env
-    environment:
-      AUTHENTIK_POSTGRESQL__HOST: postgres
-      AUTHENTIK_POSTGRESQL__USER: ${POSTGRES_ADMIN_USER}
-      AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
-      AUTHENTIK_POSTGRESQL__PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
-      AUTHENTIK_REDIS__HOST: redis
-      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
-      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
-      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
-      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_ADMIN_PASSWORD}
-      AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
-    volumes:
-      - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
-    healthcheck:
-      test: ["CMD", "ak", "healthcheck"]
-      interval: 30s
-      timeout: 30s
-      retries: 10
-      start_period: 60s
-    networks:
-      - innoagent
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
@@ -151,10 +131,9 @@ services:
       context: ./backend/identity
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
+      AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://${AUTH_DOMAIN:-localhost}:${AUTH_PORT:-8080}/application/o/inno-agent/"
       OIDC_AUTHORIZE_URL: "${AUTH_SCHEME:-https}://${AUTH_DOMAIN:-localhost}:${AUTH_PORT:-8080}/application/o/authorize/"
       OIDC_CLIENT_ID: "inno-agent-web"
@@ -177,7 +156,7 @@ services:
       - ./backend/chat-api/migrations:/migrations:ro
     command:
       - -path=/migrations
-      - -database=postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      - -database=postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       - up
     networks:
       - innoagent
@@ -193,7 +172,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
       SERVER_PORT: "8000"

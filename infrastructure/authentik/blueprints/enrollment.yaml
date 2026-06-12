@@ -65,6 +65,30 @@ entries:
       placeholder: Пароль (ещё раз)
       order: 3
 
+  # ─── Policies ───────────────────────────────────────────────────────────
+  # Minimal password strength; validated on prompt submission.
+  - model: authentik_policies_password.passwordpolicy
+    state: present
+    identifiers:
+      name: inno-agent-password-policy
+    attrs:
+      password_field: password
+      length_min: 8
+      error_message: Пароль должен быть не короче 8 символов
+
+  # Reject registration if the email is already taken (case-insensitive).
+  - model: authentik_policies_expression.expressionpolicy
+    state: present
+    identifiers:
+      name: inno-agent-enrollment-unique-email
+    attrs:
+      expression: |
+        email = request.context.get("prompt_data", {}).get("email", "")
+        if email and ak_user_by(email__iexact=email):
+            ak_message("Пользователь с таким email уже существует")
+            return False
+        return True
+
   # ─── Stages ─────────────────────────────────────────────────────────────
   - model: authentik_stages_prompt.promptstage
     state: present
@@ -87,6 +111,15 @@ entries:
         - !Find [
             authentik_stages_prompt.prompt,
             [name, inno-agent-enrollment-password-repeat],
+          ]
+      validation_policies:
+        - !Find [
+            authentik_policies_password.passwordpolicy,
+            [name, inno-agent-password-policy],
+          ]
+        - !Find [
+            authentik_policies_expression.expressionpolicy,
+            [name, inno-agent-enrollment-unique-email],
           ]
 
   # User is written as inactive — activated by the email stage below.

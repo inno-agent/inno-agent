@@ -6,9 +6,11 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,6 +99,18 @@ func TestOIDCProvider_ExpiredToken(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestOIDCProvider_WrongIssuer(t *testing.T) {
+	key := makeRSAKey(t)
+	srv := makeJWKSServer(t, key, "")
+
+	p, err := provider.NewOIDCProvider(context.Background(), srv.URL, srv.URL+"/oauth/v2/keys", testClientID)
+	require.NoError(t, err)
+
+	token := makeToken(t, key, "https://evil.example.com", "user-123", "alice@example.com", time.Now().Add(time.Hour))
+	_, err = p.Validate(context.Background(), token)
+	require.Error(t, err)
+}
+
 func TestOIDCProvider_WrongAudience(t *testing.T) {
 	key := makeRSAKey(t)
 	srv := makeJWKSServer(t, key, "")
@@ -106,5 +120,39 @@ func TestOIDCProvider_WrongAudience(t *testing.T) {
 
 	token := makeToken(t, key, srv.URL, "user-123", "alice@example.com", time.Now().Add(time.Hour))
 	_, err = p.Validate(context.Background(), token)
+	require.Error(t, err)
+}
+
+func TestNewOIDCProviderWithRetry_SucceedsAfter404s(t *testing.T) {
+	key := makeRSAKey(t)
+	jwksSrv := makeJWKSServer(t, key, "")
+
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) <= 2 {
+			http.NotFound(w, r)
+			return
+		}
+		resp, err := http.Get(jwksSrv.URL)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := provider.NewOIDCProviderWithRetry(context.Background(), srv.URL, srv.URL+"/jwks", testClientID, 5, 10*time.Millisecond)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	assert.GreaterOrEqual(t, atomic.LoadInt32(&calls), int32(3))
+}
+
+func TestNewOIDCProviderWithRetry_GivesUp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := provider.NewOIDCProviderWithRetry(context.Background(), srv.URL, srv.URL+"/jwks", testClientID, 2, 10*time.Millisecond)
 	require.Error(t, err)
 }

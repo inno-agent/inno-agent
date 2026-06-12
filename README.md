@@ -56,3 +56,19 @@ lefthook install
 ```
  
 Это зарегистрирует хуки из `lefthook.yml` в локальном `.git/hooks`.
+
+## 2. Запуск проекта
+
+```bash
+cp .env.example .env   # заполнить значения (см. комментарии внутри)
+# RSA-ключ identity-сервиса (не в git, без него compose не стартует):
+openssl genrsa -out backend/identity/dev-private-key.pem 2048
+docker compose up -d --build
+```
+
+- Приложение: `https://localhost`
+- Authentik (вход / админка): `https://localhost:8080`
+
+⚠️ **SMTP-переменные (`AUTHENTIK_EMAIL__*`) в `.env` обязательны** — саморегистрация
+активирует аккаунт письмом-подтверждением; без SMTP новые пользователи останутся
+неактивными.

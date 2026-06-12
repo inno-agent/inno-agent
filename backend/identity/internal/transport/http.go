@@ -87,10 +87,13 @@ func splitAuthority(authority string) (host, scheme string) {
 	return authority, "https"
 }
 
+// proxyClient bounds calls to the IdP so a hung authentik can't pile up goroutines.
+var proxyClient = &http.Client{Timeout: 10 * time.Second}
+
 func proxyRequest(c *gin.Context, req *http.Request, host, scheme string) {
 	req.Host = host
 	req.Header.Set("X-Forwarded-Proto", scheme)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := proxyClient.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "proxy error"})
 		return

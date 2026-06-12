@@ -55,7 +55,9 @@ func main() {
 		log.Fatalf("issuer: %v", err)
 	}
 
-	prov, err := provider.NewOIDCProvider(ctx, cfg.OIDCIssuer, cfg.OIDCJWKSURL, cfg.OIDCClientID)
+	// Retry: on first boot the authentik worker applies the OIDC blueprint
+	// after authentik-server is already healthy, so JWKS 404s briefly.
+	prov, err := provider.NewOIDCProviderWithRetry(ctx, cfg.OIDCIssuer, cfg.OIDCJWKSURL, cfg.OIDCClientID, 30, 2*time.Second)
 	if err != nil {
 		log.Fatalf("oidc provider: %v", err)
 	}

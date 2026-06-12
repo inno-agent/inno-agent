@@ -19,4 +19,4 @@ echo "10-gen-self-signed-cert.sh: generating self-signed cert for CN=$DOMAIN"
 openssl req -x509 -newkey rsa:2048 -days 825 -nodes \
     -keyout "$KEY" -out "$CERT" \
     -subj "/CN=$DOMAIN" \
-    -addext "subjectAltName=DNS:$DOMAIN,DNS:localhost,IP:127.0.0.1"
+    -addext "subjectAltName=DNS:$DOMAIN,DNS:auth.$DOMAIN,DNS:localhost,DNS:auth.localhost,IP:127.0.0.1"

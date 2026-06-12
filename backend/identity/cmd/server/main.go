@@ -55,9 +55,11 @@ func main() {
 		log.Fatalf("issuer: %v", err)
 	}
 
-	prov, err := provider.NewZitadelProvider(ctx, cfg.ZitadelIssuer, cfg.ZitadelJWKSURL, cfg.ZitadelClientID)
+	// Retry: on first boot the authentik worker applies the OIDC blueprint
+	// after authentik-server is already healthy, so JWKS 404s briefly.
+	prov, err := provider.NewOIDCProviderWithRetry(ctx, cfg.OIDCIssuer, cfg.OIDCJWKSURL, cfg.OIDCClientID, 30, 2*time.Second)
 	if err != nil {
-		log.Fatalf("zitadel provider: %v", err)
+		log.Fatalf("oidc provider: %v", err)
 	}
 
 	repo := user.NewRepository(pool)
@@ -81,7 +83,13 @@ func main() {
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
-	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, cfg.ZitadelIssuer, cfg.ZitadelClientID, cfg.ZitadelBaseURL)
+	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
+		Authority:    cfg.OIDCIssuer,
+		AuthorizeURL: cfg.OIDCAuthorizeURL,
+		ClientID:     cfg.OIDCClientID,
+		TokenURL:     cfg.OIDCTokenURL,
+		JWKSURL:      cfg.OIDCJWKSURL,
+	})
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

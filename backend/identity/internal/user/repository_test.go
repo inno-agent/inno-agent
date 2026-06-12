@@ -33,7 +33,7 @@ func TestRepository_UpsertIdentity_NewUser(t *testing.T) {
 	repo := user.NewRepository(pool)
 
 	ctx := context.Background()
-	u, err := repo.UpsertIdentity(ctx, "zitadel", "ext-sub-001", "alice@example.com")
+	u, err := repo.UpsertIdentity(ctx, "authentik", "ext-sub-001", "alice@example.com")
 	require.NoError(t, err)
 	assert.NotEmpty(t, u.ID)
 	assert.Equal(t, "user", u.Tier)
@@ -44,10 +44,10 @@ func TestRepository_UpsertIdentity_ExistingUser(t *testing.T) {
 	repo := user.NewRepository(pool)
 
 	ctx := context.Background()
-	u1, err := repo.UpsertIdentity(ctx, "zitadel", "ext-sub-002", "bob@example.com")
+	u1, err := repo.UpsertIdentity(ctx, "authentik", "ext-sub-002", "bob@example.com")
 	require.NoError(t, err)
 
-	u2, err := repo.UpsertIdentity(ctx, "zitadel", "ext-sub-002", "bob@example.com")
+	u2, err := repo.UpsertIdentity(ctx, "authentik", "ext-sub-002", "bob@example.com")
 	require.NoError(t, err)
 	assert.Equal(t, u1.ID, u2.ID, "same user returned on second call")
 }
@@ -57,7 +57,7 @@ func TestRepository_GetContext(t *testing.T) {
 	repo := user.NewRepository(pool)
 
 	ctx := context.Background()
-	u, err := repo.UpsertIdentity(ctx, "zitadel", "ext-sub-003", "carol@example.com")
+	u, err := repo.UpsertIdentity(ctx, "authentik", "ext-sub-003", "carol@example.com")
 	require.NoError(t, err)
 
 	uctx, err := repo.GetContext(ctx, u.ID)
@@ -71,7 +71,7 @@ func TestRepository_UpdateContext(t *testing.T) {
 	repo := user.NewRepository(pool)
 
 	ctx := context.Background()
-	u, err := repo.UpsertIdentity(ctx, "zitadel", "ext-sub-004", "dave@example.com")
+	u, err := repo.UpsertIdentity(ctx, "authentik", "ext-sub-004", "dave@example.com")
 	require.NoError(t, err)
 
 	data := []byte(`{"language":"typescript"}`)

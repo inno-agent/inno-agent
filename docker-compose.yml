@@ -8,30 +8,49 @@ networks:
 # ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
   postgres-data:
-  machinekey:
+  redis-data:
   ollama-data:
   nginx-certs:
+  authentik-media:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
   identity_rsa_key:
     file: ./backend/identity/dev-private-key.pem
 
-# ─── Configs ──────────────────────────────────────────────────────────────────
-configs:
-  zitadel_secrets:
-    content: |
-      DefaultInstance:
-        SMTPConfiguration:
-          Description: ${ZITADEL_SMTP_DESCRIPTION}
-          SMTP:
-            Host: ${ZITADEL_SMTP_HOST}
-            PlainAuth:
-              User: ${ZITADEL_SMTP_USER}
-              Password: ${ZITADEL_SMTP_PASSWORD}
-          TLS: ${ZITADEL_SMTP_TLS}
-          From: ${ZITADEL_SMTP_FROM}
-          FromName: ${ZITADEL_SMTP_FROM_NAME}
+# ─── Authentik shared definition ────────────────────────────────────────────
+x-authentik: &authentik
+  image: ${AUTHENTIK_IMAGE}
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    AUTHENTIK_POSTGRESQL__HOST: postgres
+    AUTHENTIK_POSTGRESQL__USER: authentik
+    AUTHENTIK_POSTGRESQL__NAME: ${POSTGRES_DB}
+    AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_PG_PASSWORD}
+    AUTHENTIK_REDIS__HOST: redis
+    AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+    AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+    AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_ADMIN_PASSWORD}
+    AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
+  volumes:
+    - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
+    - authentik-media:/media
+  healthcheck:
+    test: ["CMD", "ak", "healthcheck"]
+    interval: 30s
+    timeout: 30s
+    retries: 10
+    start_period: 60s
+  networks:
+    - innoagent
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
 
 services:
 
@@ -54,7 +73,7 @@ services:
       - ./infrastructure/nginx/docker-entrypoint.d/10-gen-self-signed-cert.sh:/docker-entrypoint.d/05-gen-self-signed-cert.sh:ro
       - nginx-certs:/etc/nginx/certs
     depends_on:
-      zitadel-api:
+      authentik-server:
         condition: service_healthy
 
   # ─── PostgreSQL ────────────────────────────────────────────────────────────
@@ -65,6 +84,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
       POSTGRES_USER: ${POSTGRES_ADMIN_USER}
       POSTGRES_DB: ${POSTGRES_DB}
+      AUTHENTIK_PG_PASSWORD: ${AUTHENTIK_PG_PASSWORD}
+      IDENTITY_PG_PASSWORD: ${IDENTITY_PG_PASSWORD}
+      CHAT_PG_PASSWORD: ${CHAT_PG_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}"]
       interval: 10s
@@ -77,70 +99,31 @@ services:
     networks:
       - innoagent
 
-  # ─── Zitadel IdP ──────────────────────────────────────────────────────────
-  zitadel-api:
-    image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION}
+  # ─── Redis (authentik cache/broker) ────────────────────────────────────────
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
-    user: "0"
-    command: start-from-init --masterkey "${ZITADEL_MASTERKEY}" --config /zitadel.yaml --config /zitadel-secrets.yaml
-    env_file:
-      - .env
-    environment:
-      ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH: /machinekey/terraform.json
-      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: terraform-provisioner
-      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Terraform Provisioner
-      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE: "1"
-      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_EXPIRATIONDATE: "2030-01-01T00:00:00Z"
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: admin
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_FIRSTNAME: Admin
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_LASTNAME: Inno
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: admin@localhost
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_VERIFIED: "true"
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD}
-      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
-    volumes:
-      - ./infrastructure/zitadel.yaml:/zitadel.yaml:ro
-      - machinekey:/machinekey
-    configs:
-      - source: zitadel_secrets
-        target: /zitadel-secrets.yaml
-        mode: 0400
+    command: --save 60 1 --loglevel warning
     healthcheck:
-      test: ["CMD", "/app/zitadel", "ready", "--config", "/zitadel.yaml"]
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 10s
-      timeout: 30s
-      retries: 12
-      start_period: 20s
-    networks:
-      - innoagent
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # ─── Terraform: creates Zitadel OIDC app, writes client_id to identity.env ────
-  terraform-setup:
-    image: hashicorp/terraform:1.12
-    working_dir: /workspace
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     volumes:
-      - ./infrastructure/terraform:/workspace
-      - ./infrastructure/setup:/setup
-      - machinekey:/machinekey:ro
-    environment:
-      TF_IN_AUTOMATION: "1"
-      TF_INPUT: "0"
-      ZITADEL_DOMAIN: "${ZITADEL_DOMAIN:-localhost}"
-      TF_VAR_zitadel_domain: "${ZITADEL_DOMAIN:-localhost}"
-      TF_VAR_zitadel_port: "${ZITADEL_EXTERNALPORT:-8080}"
-      TF_VAR_app_scheme: "${APP_SCHEME:-http}"
-    entrypoint: ["sh", "-c", "echo \"$(getent hosts proxy | awk '{print $1}') $$ZITADEL_DOMAIN\" >> /etc/hosts && sh /workspace/setup.sh"]
-    depends_on:
-      zitadel-api:
-        condition: service_healthy
-      proxy:
-        condition: service_started
-    restart: "no"
+      - redis-data:/data
     networks:
       - innoagent
+
+  # ─── Authentik IdP ──────────────────────────────────────────────────────────
+  authentik-server:
+    <<: *authentik
+    command: server
+
+  # ─── Authentik worker (applies blueprints, async tasks) ────────────────────
+  authentik-worker:
+    <<: *authentik
+    command: worker
 
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
@@ -148,20 +131,14 @@ services:
       context: ./backend/identity
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
-      - path: ./infrastructure/setup/identity.env
-        required: false
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
-      ZITADEL_ISSUER: "${ZITADEL_PUBLIC_SCHEME:-http}://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8080}"
-      ZITADEL_JWKS_URL: "http://proxy:8080/oauth/v2/keys"
-      ZITADEL_BASE_URL: "http://proxy:8080"
-    extra_hosts:
-      - "${ZITADEL_DOMAIN:-localhost}:host-gateway"
-    volumes:
-      - ./infrastructure/setup:/setup:ro
-    entrypoint: ["sh", "-c", "set -a; [ -f /setup/identity.env ] && . /setup/identity.env; set +a; exec ./identity-server"]
+      AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      OIDC_ISSUER: "${AUTH_SCHEME:-https}://${AUTH_DOMAIN:-localhost}:${AUTH_PORT:-8080}/application/o/inno-agent/"
+      OIDC_AUTHORIZE_URL: "${AUTH_SCHEME:-https}://${AUTH_DOMAIN:-localhost}:${AUTH_PORT:-8080}/application/o/authorize/"
+      OIDC_CLIENT_ID: "inno-agent-web"
+      OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
+      OIDC_TOKEN_URL: "http://authentik-server:9000/application/o/token/"
     secrets:
       - identity_rsa_key
     networks:
@@ -169,12 +146,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      zitadel-api:
+      authentik-server:
         condition: service_healthy
-      terraform-setup:
-        condition: service_completed_successfully
-      proxy:
-        condition: service_started
 
   # ─── Chat API DB migrations ────────────────────────────────────────────────
   chat-api-migrate:
@@ -183,7 +156,7 @@ services:
       - ./backend/chat-api/migrations:/migrations:ro
     command:
       - -path=/migrations
-      - -database=postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      - -database=postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       - up
     networks:
       - innoagent
@@ -199,7 +172,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER}:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
+      DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
       SERVER_PORT: "8000"

@@ -12,7 +12,7 @@ fi
 
 mkdir -p "$CERT_DIR"
 
-DOMAIN="${ZITADEL_DOMAIN:-localhost}"
+DOMAIN="${AUTH_DOMAIN:-localhost}"
 
 echo "10-gen-self-signed-cert.sh: generating self-signed cert for CN=$DOMAIN"
 

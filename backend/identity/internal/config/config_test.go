@@ -18,8 +18,10 @@ func TestLoad_MissingRequired(t *testing.T) {
 
 func TestLoad_AllSet(t *testing.T) {
 	env := map[string]string{ //nolint:gosec
-		"ZITADEL_ISSUER":            "http://localhost:8080",
-		"ZITADEL_CLIENT_ID":         "test-client",
+		"OIDC_ISSUER":               "https://localhost:8080/application/o/inno-agent/",
+		"OIDC_AUTHORIZE_URL":        "https://localhost:8080/application/o/authorize/",
+		"OIDC_TOKEN_URL":            "http://authentik-server:9000/application/o/token/",
+		"OIDC_CLIENT_ID":            "test-client",
 		"AUTH_JWT_PRIVATE_KEY_PATH": "/tmp/key.pem",
 		"AUTH_DATABASE_DSN":         "postgresql://postgres:postgres@localhost:5432/inno_auth", //nolint:gosec
 		"AUTH_JWT_EXPIRY":           "15m",
@@ -29,16 +31,18 @@ func TestLoad_AllSet(t *testing.T) {
 	get := func(key string) string { return env[key] }
 	cfg, err := config.LoadFrom(get)
 	require.NoError(t, err)
-	assert.Equal(t, "http://localhost:8080", cfg.ZitadelIssuer)
-	assert.Equal(t, "test-client", cfg.ZitadelClientID)
+	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/", cfg.OIDCIssuer)
+	assert.Equal(t, "https://localhost:8080/application/o/authorize/", cfg.OIDCAuthorizeURL)
+	assert.Equal(t, "test-client", cfg.OIDCClientID)
 	assert.Equal(t, 15*time.Minute, cfg.JWTExpiry)
 	assert.Equal(t, "8082", cfg.HTTPPort)
 }
 
-func TestLoad_DefaultPorts(t *testing.T) {
+func TestLoad_DefaultPortsAndJWKS(t *testing.T) {
 	env := map[string]string{ //nolint:gosec
-		"ZITADEL_ISSUER":            "http://localhost:8080",
-		"ZITADEL_CLIENT_ID":         "client",
+		"OIDC_ISSUER":               "https://localhost:8080/application/o/inno-agent/",
+		"OIDC_AUTHORIZE_URL":        "https://localhost:8080/application/o/authorize/",
+		"OIDC_TOKEN_URL":            "http://authentik-server:9000/application/o/token/",
 		"AUTH_JWT_PRIVATE_KEY_PATH": "/tmp/key.pem",
 		"AUTH_DATABASE_DSN":         "postgresql://localhost/inno_auth",
 	}
@@ -48,4 +52,6 @@ func TestLoad_DefaultPorts(t *testing.T) {
 	assert.Equal(t, "8081", cfg.HTTPPort)
 	assert.Equal(t, "9091", cfg.GRPCPort)
 	assert.Equal(t, 30*time.Minute, cfg.JWTExpiry)
+	// JWKS defaults to issuer + "jwks/" (no double slash).
+	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/jwks/", cfg.OIDCJWKSURL)
 }

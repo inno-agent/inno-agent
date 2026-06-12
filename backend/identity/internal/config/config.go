@@ -8,10 +8,16 @@ import (
 )
 
 type Config struct {
-	ZitadelIssuer     string
-	ZitadelJWKSURL    string
-	ZitadelBaseURL    string
-	ZitadelClientID   string
+	// OIDCIssuer is the public issuer URL the browser sees,
+	// e.g. https://localhost:8080/application/o/inno-agent/
+	OIDCIssuer string
+	// OIDCAuthorizeURL is the public authorization endpoint (browser redirect target).
+	OIDCAuthorizeURL string
+	// OIDCJWKSURL is the internal URL to fetch the IdP signing keys from.
+	OIDCJWKSURL string
+	// OIDCTokenURL is the internal token endpoint, proxied for the browser.
+	OIDCTokenURL      string
+	OIDCClientID      string
 	JWTPrivateKeyPath string
 	JWTExpiry         time.Duration
 	DatabaseDSN       string
@@ -39,12 +45,13 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return def
 	}
 
-	zitadelIssuer := require("ZITADEL_ISSUER")
+	issuer := require("OIDC_ISSUER")
 	cfg := &Config{
-		ZitadelIssuer:     zitadelIssuer,
-		ZitadelJWKSURL:    fallback("ZITADEL_JWKS_URL", zitadelIssuer+"/oauth/v2/keys"),
-		ZitadelBaseURL:    fallback("ZITADEL_BASE_URL", "http://zitadel-api:8080"),
-		ZitadelClientID:   getenv("ZITADEL_CLIENT_ID"),
+		OIDCIssuer:        issuer,
+		OIDCAuthorizeURL:  require("OIDC_AUTHORIZE_URL"),
+		OIDCJWKSURL:       fallback("OIDC_JWKS_URL", strings.TrimSuffix(issuer, "/")+"/jwks/"),
+		OIDCTokenURL:      require("OIDC_TOKEN_URL"),
+		OIDCClientID:      getenv("OIDC_CLIENT_ID"),
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),
 		HTTPPort:          fallback("AUTH_HTTP_PORT", "8081"),

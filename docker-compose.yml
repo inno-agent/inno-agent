@@ -134,10 +134,8 @@ services:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
-      OIDC_AUTHORIZE_URL: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/authorize/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      OIDC_TOKEN_URL: "http://authentik-server:9000/application/o/token/"
     secrets:
       - identity_rsa_key
     networks:

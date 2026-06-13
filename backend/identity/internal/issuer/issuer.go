@@ -32,17 +32,30 @@ func New(privateKeyPEM []byte, expiry time.Duration) (*Issuer, error) {
 		return nil, errors.New("failed to decode PEM block")
 	}
 
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	rsaKey, err := parseRSAPrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parse private key: %w", err)
-	}
-
-	rsaKey, ok := key.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("private key is not RSA")
+		return nil, err
 	}
 
 	return &Issuer{privateKey: rsaKey, expiry: expiry}, nil
+}
+
+// parseRSAPrivateKey accepts both PKCS#8 (-----BEGIN PRIVATE KEY-----) and
+// PKCS#1 (-----BEGIN RSA PRIVATE KEY-----) encodings; openssl emits one or the
+// other depending on its version and the command used.
+func parseRSAPrivateKey(der []byte) (*rsa.PrivateKey, error) {
+	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		rsaKey, ok := key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, errors.New("private key is not RSA")
+		}
+		return rsaKey, nil
+	}
+	rsaKey, err := x509.ParsePKCS1PrivateKey(der)
+	if err != nil {
+		return nil, fmt.Errorf("parse private key (PKCS#8/PKCS#1): %w", err)
+	}
+	return rsaKey, nil
 }
 
 func (i *Issuer) Issue(userID, tier string, ctxVersion int32) (string, error) {

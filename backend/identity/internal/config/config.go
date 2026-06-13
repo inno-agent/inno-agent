@@ -11,12 +11,8 @@ type Config struct {
 	// OIDCIssuer is the public issuer URL the browser sees,
 	// e.g. https://localhost:8080/application/o/inno-agent/
 	OIDCIssuer string
-	// OIDCAuthorizeURL is the public authorization endpoint (browser redirect target).
-	OIDCAuthorizeURL string
 	// OIDCJWKSURL is the internal URL to fetch the IdP signing keys from.
-	OIDCJWKSURL string
-	// OIDCTokenURL is the internal token endpoint, proxied for the browser.
-	OIDCTokenURL      string
+	OIDCJWKSURL       string
 	OIDCClientID      string
 	JWTPrivateKeyPath string
 	JWTExpiry         time.Duration
@@ -48,9 +44,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 	issuer := require("OIDC_ISSUER")
 	cfg := &Config{
 		OIDCIssuer:        issuer,
-		OIDCAuthorizeURL:  require("OIDC_AUTHORIZE_URL"),
 		OIDCJWKSURL:       fallback("OIDC_JWKS_URL", strings.TrimSuffix(issuer, "/")+"/jwks/"),
-		OIDCTokenURL:      require("OIDC_TOKEN_URL"),
 		OIDCClientID:      getenv("OIDC_CLIENT_ID"),
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),

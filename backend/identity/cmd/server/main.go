@@ -84,11 +84,8 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
-		Authority:    cfg.OIDCIssuer,
-		AuthorizeURL: cfg.OIDCAuthorizeURL,
-		ClientID:     cfg.OIDCClientID,
-		TokenURL:     cfg.OIDCTokenURL,
-		JWKSURL:      cfg.OIDCJWKSURL,
+		Authority: cfg.OIDCIssuer,
+		ClientID:  cfg.OIDCClientID,
 	})
 
 	httpSrv := &http.Server{

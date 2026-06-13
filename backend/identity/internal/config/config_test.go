@@ -19,8 +19,6 @@ func TestLoad_MissingRequired(t *testing.T) {
 func TestLoad_AllSet(t *testing.T) {
 	env := map[string]string{ //nolint:gosec
 		"OIDC_ISSUER":               "https://localhost:8080/application/o/inno-agent/",
-		"OIDC_AUTHORIZE_URL":        "https://localhost:8080/application/o/authorize/",
-		"OIDC_TOKEN_URL":            "http://authentik-server:9000/application/o/token/",
 		"OIDC_CLIENT_ID":            "test-client",
 		"AUTH_JWT_PRIVATE_KEY_PATH": "/tmp/key.pem",
 		"AUTH_DATABASE_DSN":         "postgresql://postgres:postgres@localhost:5432/inno_auth", //nolint:gosec
@@ -32,7 +30,6 @@ func TestLoad_AllSet(t *testing.T) {
 	cfg, err := config.LoadFrom(get)
 	require.NoError(t, err)
 	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/", cfg.OIDCIssuer)
-	assert.Equal(t, "https://localhost:8080/application/o/authorize/", cfg.OIDCAuthorizeURL)
 	assert.Equal(t, "test-client", cfg.OIDCClientID)
 	assert.Equal(t, 15*time.Minute, cfg.JWTExpiry)
 	assert.Equal(t, "8082", cfg.HTTPPort)
@@ -41,8 +38,6 @@ func TestLoad_AllSet(t *testing.T) {
 func TestLoad_DefaultPortsAndJWKS(t *testing.T) {
 	env := map[string]string{ //nolint:gosec
 		"OIDC_ISSUER":               "https://localhost:8080/application/o/inno-agent/",
-		"OIDC_AUTHORIZE_URL":        "https://localhost:8080/application/o/authorize/",
-		"OIDC_TOKEN_URL":            "http://authentik-server:9000/application/o/token/",
 		"AUTH_JWT_PRIVATE_KEY_PATH": "/tmp/key.pem",
 		"AUTH_DATABASE_DSN":         "postgresql://localhost/inno_auth",
 	}

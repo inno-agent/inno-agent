@@ -111,17 +111,13 @@ func TestHTTP_Config(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/", resp["authority"])
+	assert.Equal(t, "https://auth.localhost/application/o/inno-agent/", resp["authority"])
 	assert.Equal(t, "my-client-id", resp["client_id"])
-	assert.Equal(t, "https://localhost:8080/application/o/authorize/", resp["authorization_endpoint"])
 }
 
 func testOIDCEndpoints() transport.OIDCEndpoints {
-	return transport.OIDCEndpoints{ //nolint:gosec // test fixture URLs, not credentials
-		Authority:    "https://localhost:8080/application/o/inno-agent/",
-		AuthorizeURL: "https://localhost:8080/application/o/authorize/",
-		ClientID:     "my-client-id",
-		TokenURL:     "http://authentik-server:9000/application/o/token/",
-		JWKSURL:      "http://authentik-server:9000/application/o/inno-agent/jwks/",
+	return transport.OIDCEndpoints{
+		Authority: "https://auth.localhost/application/o/inno-agent/",
+		ClientID:  "my-client-id",
 	}
 }

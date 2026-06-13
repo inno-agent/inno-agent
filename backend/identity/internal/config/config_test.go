@@ -38,6 +38,7 @@ func TestLoad_AllSet(t *testing.T) {
 func TestLoad_DefaultPortsAndJWKS(t *testing.T) {
 	env := map[string]string{ //nolint:gosec
 		"OIDC_ISSUER":               "https://localhost:8080/application/o/inno-agent/",
+		"OIDC_CLIENT_ID":            "test-client",
 		"AUTH_JWT_PRIVATE_KEY_PATH": "/tmp/key.pem",
 		"AUTH_DATABASE_DSN":         "postgresql://localhost/inno_auth",
 	}

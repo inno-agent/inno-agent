@@ -22,6 +22,26 @@ func makePrivateKeyPEM(t *testing.T) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
+func makePKCS1PrivateKeyPEM(t *testing.T) []byte {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	der := x509.MarshalPKCS1PrivateKey(key)
+	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der})
+}
+
+func TestIssuer_AcceptsPKCS1Key(t *testing.T) {
+	iss, err := issuer.New(makePKCS1PrivateKeyPEM(t), 30*time.Minute)
+	require.NoError(t, err)
+
+	token, err := iss.Issue("user-1", "user", 0)
+	require.NoError(t, err)
+
+	claims, err := iss.Verify(token)
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", claims.UserID)
+}
+
 func TestIssuer_IssueAndVerify(t *testing.T) {
 	keyPEM := makePrivateKeyPEM(t)
 	iss, err := issuer.New(keyPEM, 30*time.Minute)

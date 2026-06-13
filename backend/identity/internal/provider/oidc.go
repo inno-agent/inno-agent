@@ -109,6 +109,7 @@ func NewOIDCProviderWithRetry(ctx context.Context, issuer, jwksURL, clientID str
 
 func (p *OIDCProvider) Validate(_ context.Context, tokenStr string) (ExternalIdentity, error) {
 	opts := []jwt.ParserOption{
+		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),
 	}

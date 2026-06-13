@@ -45,7 +45,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 	cfg := &Config{
 		OIDCIssuer:        issuer,
 		OIDCJWKSURL:       fallback("OIDC_JWKS_URL", strings.TrimSuffix(issuer, "/")+"/jwks/"),
-		OIDCClientID:      getenv("OIDC_CLIENT_ID"),
+		OIDCClientID:      require("OIDC_CLIENT_ID"),
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),
 		HTTPPort:          fallback("AUTH_HTTP_PORT", "8081"),

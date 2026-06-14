@@ -237,3 +237,18 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen]
 }
+
+func (s *ChatService) DeleteChat(ctx context.Context, userID string, chatID uuid.UUID) error {
+	ok, err := s.chatRepo.ExistsForUser(ctx, chatID, userID)
+	if err != nil {
+		return fmt.Errorf("delete chat: check ownership: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("chat not found")
+	}
+
+	if err := s.chatRepo.SoftDelete(ctx, chatID, userID); err != nil {
+		return fmt.Errorf("delete chat: %w", err)
+	}
+	return nil
+}

@@ -1,6 +1,19 @@
 import { createParser, type EventSourceMessage } from 'eventsource-parser'
 import type { ChatStreamEvent } from '@libs/chat/model/types'
 
+interface AsyncQueueItem<T> {
+    done: boolean
+    value?: T
+}
+
+const debugSseEvent = (event: ChatStreamEvent) => {
+    console.log('[chat:sse] received', {
+        type: event.type,
+        at: new Date().toISOString(),
+        chunkLength: event.type === 'chunk' ? event.content.length : undefined,
+    })
+}
+
 export async function* parseSseStream(
     response: Response,
 ): AsyncGenerator<ChatStreamEvent, void, unknown> {
@@ -8,37 +21,82 @@ export async function* parseSseStream(
     if (!reader) throw new Error('No reader available')
 
     const decoder = new TextDecoder()
-    const events: ChatStreamEvent[] = []
-    let done = false
+    const bufferedItems: AsyncQueueItem<ChatStreamEvent>[] = []
+    let pendingResolve: ((item: AsyncQueueItem<ChatStreamEvent>) => void) | null = null
+    let streamClosed = false
+
+    const pushItem = (item: AsyncQueueItem<ChatStreamEvent>) => {
+        if (pendingResolve) {
+            const resolve = pendingResolve
+            pendingResolve = null
+            resolve(item)
+            return
+        }
+
+        bufferedItems.push(item)
+    }
+
+    const nextItem = () => {
+        const item = bufferedItems.shift()
+        if (item) {
+            return Promise.resolve(item)
+        }
+
+        return new Promise<AsyncQueueItem<ChatStreamEvent>>((resolve) => {
+            pendingResolve = resolve
+        })
+    }
 
     const parser = createParser({
         onEvent: (event: EventSourceMessage) => {
             if (event.data === '[DONE]') {
-                done = true
+                streamClosed = true
+                pushItem({ done: true })
                 return
             }
 
             try {
                 const payload = JSON.parse(event.data)
-                events.push({ type: event.event ?? 'message', ...payload } as ChatStreamEvent)
+                const streamEvent = {
+                    type: event.event ?? 'message',
+                    ...payload,
+                } as ChatStreamEvent
+
+                debugSseEvent(streamEvent)
+                pushItem({
+                    done: false,
+                    value: streamEvent,
+                })
             } catch {
                 // Ignore malformed SSE payloads and keep consuming the stream.
             }
         },
     })
 
-    while (!done) {
-        const result = await reader.read()
-        if (result.done) break
+    const pump = (async () => {
+        while (!streamClosed) {
+            const result = await reader.read()
+            if (result.done) {
+                break
+            }
 
-        parser.feed(decoder.decode(result.value, { stream: true }))
-
-        while (events.length > 0) {
-            yield events.shift()!
+            parser.feed(decoder.decode(result.value, { stream: true }))
         }
+
+        if (!streamClosed) {
+            streamClosed = true
+            pushItem({ done: true })
+        }
+    })()
+
+    while (true) {
+        const item = await nextItem()
+        if (item.done) {
+            break
+        }
+
+        yield item.value!
     }
 
-    while (events.length > 0) {
-        yield events.shift()!
-    }
+    await pump
 }

@@ -3,22 +3,21 @@ import {
     AssistantRuntimeProvider,
     useExternalStoreRuntime,
 } from '@assistant-ui/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
+import type { ReactNode } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { getChatHistory, notifyChatsUpdated, streamMessage } from '@libs/chat/api/chatApi'
 import {
     appendAssistantError,
-    fromApiMessage,
     createUserTextMessage,
-    upsertAssistantText,
 } from '@libs/chat/model/messageMappers'
+import { runMessageStream } from './runMessageStream'
+import { useChatHistory } from './useChatHistory'
 
 export function MyRuntimeProvider({
     children,
     initialChatId,
 }: Readonly<{
-    children: React.ReactNode
+    children: ReactNode
     initialChatId?: string
 }>) {
     const navigate = useNavigate({ from: '/' })
@@ -27,45 +26,12 @@ export function MyRuntimeProvider({
     const chatIdRef = useRef<string>(initialChatId ?? 'new')
     const pendingNavigationChatIdRef = useRef<string | null>(null)
 
-    useEffect(() => {
-        let isMounted = true
-
-        chatIdRef.current = initialChatId ?? 'new'
-        pendingNavigationChatIdRef.current = null
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setMessages([])
-
-        if (!initialChatId) {
-            return () => {
-                isMounted = false
-            }
-        }
-
-        const loadChatHistory = async () => {
-            try {
-                const { messages: historyMessages } = await getChatHistory(initialChatId)
-
-                if (!isMounted) {
-                    return
-                }
-
-                setMessages(historyMessages.map(fromApiMessage))
-            } catch (error) {
-                if (!isMounted) {
-                    return
-                }
-
-                console.error('Failed to load chat history', error)
-                setMessages([])
-            }
-        }
-
-        void loadChatHistory()
-
-        return () => {
-            isMounted = false
-        }
-    }, [initialChatId])
+    useChatHistory({
+        initialChatId,
+        setMessages,
+        chatIdRef,
+        pendingNavigationChatIdRef,
+    })
 
     const onNew = useCallback(
         async (message: AppendMessage) => {
@@ -79,40 +45,20 @@ export function MyRuntimeProvider({
             setIsRunning(true)
 
             try {
-                const stream = await streamMessage(chatIdRef.current, firstPart.text)
-                let textContent = ''
-
-                for await (const event of stream) {
-                    switch (event.type) {
-                        case 'status':
-                            if ('chat_id' in event && event.chat_id) {
-                                chatIdRef.current = event.chat_id
-                                if (!initialChatId) {
-                                    pendingNavigationChatIdRef.current = event.chat_id
-                                }
-                            }
-                            break
-                        case 'chunk':
-                            textContent += event.content
-                            flushSync(() => {
-                                setMessages((prev) => upsertAssistantText(prev, textContent))
-                            })
-                            break
-                        case 'done':
-                            if (pendingNavigationChatIdRef.current) {
-                                void navigate({
-                                    to: '/',
-                                    search: { chatId: pendingNavigationChatIdRef.current },
-                                    replace: true,
-                                })
-                                pendingNavigationChatIdRef.current = null
-                            }
-                            notifyChatsUpdated(chatIdRef.current)
-                            break
-                        case 'error':
-                            throw new Error(event.message)
-                    }
-                }
+                await runMessageStream({
+                    initialChatId,
+                    prompt: firstPart.text,
+                    chatIdRef,
+                    pendingNavigationChatIdRef,
+                    setMessages,
+                    navigateToChat: async (chatId) => {
+                        await navigate({
+                            to: '/',
+                            search: { chatId },
+                            replace: true,
+                        })
+                    },
+                })
             } catch (error) {
                 console.error('Error:', error)
                 setMessages((prev) => appendAssistantError(prev))

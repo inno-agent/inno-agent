@@ -38,6 +38,12 @@ export const handleChunkEvent = (
         setMessages((prev) => upsertAssistantText(prev, nextTextContent))
     })
 
+    console.log('[chat:sse] chunk committed', {
+        at: new Date().toISOString(),
+        chunkLength: event.content.length,
+        totalLength: nextTextContent.length,
+    })
+
     return nextTextContent
 }
 

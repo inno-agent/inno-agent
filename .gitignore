@@ -10,3 +10,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# local dev certs (mkcert output — never commit)
+infrastructure/nginx/certs/*.pem

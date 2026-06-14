@@ -59,12 +59,21 @@ lefthook install
 
 ## 2. Запуск проекта
 
+**Пререквизит — [mkcert](https://github.com/FiloSottile/mkcert)** (доверенный локальный CA, один раз):
+
 ```bash
-cp .env.example .env   # заполнить значения (см. комментарии внутри)
-# RSA-ключ identity-сервиса (не в git, без него compose не стартует):
-openssl genrsa -out backend/identity/dev-private-key.pem 2048
+# macOS:   brew install mkcert nss
+# Linux:   apt install mkcert libnss3-tools   (или пакеты твоего дистрибутива)
+# Windows: choco install mkcert   (дальше запускай из Git Bash/WSL; mkcert ставь на Windows-хост)
+```
+
+```bash
+./scripts/dev-setup.sh         # mkcert-серты + ключ identity + .env (идемпотентно)
 docker compose up -d --build
 ```
+
+> Сброс с нуля: `docker compose down -v`, затем снова `./scripts/dev-setup.sh && docker compose up -d --build`.
+> Firefox требует `certutil` (nss), иначе mkcert не пропишет CA в его стор.
 
 - Приложение: `https://localhost`
 - Authentik (вход / админка): `https://auth.localhost`

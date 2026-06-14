@@ -7,8 +7,8 @@ import (
 )
 
 type LLMMessage struct {
-    Role    string `json:"role"`
-    Content string `json:"content"`
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // ChatRepository defines persistence operations for chats.
@@ -28,6 +28,7 @@ type MessageRepository interface {
 // LLMProvider sends a prompt and returns a response from the language model.
 type LLMProvider interface {
 	Chat(ctx context.Context, messages []LLMMessage) (string, error)
+	Stream(ctx context.Context, messages []LLMMessage) (<-chan string, error)
 }
 
 // ChatService defines the application use cases for chat and messaging.

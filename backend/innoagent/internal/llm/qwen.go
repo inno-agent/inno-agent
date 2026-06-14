@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -152,6 +153,99 @@ func (p *QwenProvider) Chat(
 	return strings.TrimSpace(
 		chatResp.Choices[0].Message.Content,
 	), nil
+}
+
+func (p *QwenProvider) Stream(ctx context.Context, messages []Message) (<-chan string, error) {
+	if len(messages) == 0 {
+		return nil, ErrEmptyMessage
+	}
+
+	chatMessages := make([]ChatMessage, len(messages))
+	for i, m := range messages {
+		chatMessages[i] = ChatMessage(m)
+	}
+
+	reqBody := ChatRequest{
+		Model:       p.model,
+		Messages:    chatMessages,
+		Temperature: 0.7,
+		MaxTokens:   2048,
+		Stream:      true,
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("llm: failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+chatCompletionsPath, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("llm: failed to build request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	httpResp, err := p.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("llm: request failed: %w", err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(httpResp.Body)
+		_ = httpResp.Body.Close()
+		return nil, p.parseErrorResponse(httpResp.StatusCode, body)
+	}
+
+	ch := make(chan string, 4)
+	go func() {
+		defer func() { _ = httpResp.Body.Close() }()
+		defer close(ch)
+
+		scanner := bufio.NewScanner(httpResp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				return
+			}
+
+			var chunk struct {
+				Answer string `json:"answer"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				var openaiChunk struct {
+					Choices []struct {
+						Delta struct {
+							Content string `json:"content"`
+						} `json:"delta"`
+					} `json:"choices"`
+				}
+				if err := json.Unmarshal([]byte(data), &openaiChunk); err != nil {
+					continue
+				}
+				if len(openaiChunk.Choices) > 0 && openaiChunk.Choices[0].Delta.Content != "" {
+					select {
+					case <-ctx.Done():
+						return
+					case ch <- openaiChunk.Choices[0].Delta.Content:
+					}
+				}
+				continue
+			}
+			if chunk.Answer != "" {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- chunk.Answer:
+				}
+			}
+		}
+	}()
+
+	return ch, nil
 }
 
 func (p *QwenProvider) parseErrorResponse(

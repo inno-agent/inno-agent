@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,12 +16,9 @@ import (
 	"innoagent/internal/orchestrator"
 )
 
-// type ChatRequest struct {
-// 	Message string `json:"message"`
-// }
-
 type ChatRequest struct {
-    Messages []llm.Message `json:"messages"`
+	Messages []llm.Message `json:"messages"`
+	Stream   bool          `json:"stream"`
 }
 
 type ChatResponse struct {
@@ -79,10 +77,48 @@ func main() {
 			return
 		}
 
+		if req.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, `{"error":"streaming not supported"}`, http.StatusInternalServerError)
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+			defer cancel()
+
+			ch, err := orch.AskStream(ctx, req.Messages)
+			if err != nil {
+				if _, err := fmt.Fprintf(w, "data: {\"error\":\"%s\"}\n\n", err.Error()); err != nil {
+					log.Printf("failed to write error response: %v", err)
+				}
+				flusher.Flush()
+				return
+			}
+
+			for chunk := range ch {
+				data, _ := json.Marshal(map[string]string{"answer": chunk})
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+					log.Printf("failed to write chunk: %v", err)
+				}
+				flusher.Flush()
+			}
+			if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
+				log.Printf("failed to write DONE signal: %v", err)
+			}
+			flusher.Flush()
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 		defer cancel()
 
-		answer, err := orch.Ask(ctx, req.Messages)	
+		answer, err := orch.Ask(ctx, req.Messages)
 		if err != nil {
 			log.Printf("orchestrator error: %v", err)
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)

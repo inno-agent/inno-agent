@@ -55,9 +55,7 @@ services:
 
   # ─── Reverse proxy (nginx) ──────────────────────────────────────────────────
   proxy:
-    build:
-      context: ./infrastructure/nginx
-      dockerfile: Dockerfile
+    image: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
     env_file:
       - .env

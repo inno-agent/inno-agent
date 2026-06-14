@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	    "github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 )
 
 type OrchestratorClient struct {
@@ -25,8 +25,10 @@ func NewOrchestratorClient(baseURL string) *OrchestratorClient {
 	}
 }
 
+type Message = domain.LLMMessage
+
 func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (string, error) {
-    payload, _ := json.Marshal(map[string]interface{}{"messages": messages})
+	payload, _ := json.Marshal(map[string]interface{}{"messages": messages})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payload))
 	if err != nil {
 		return "", fmt.Errorf("llm client: build request: %w", err)
@@ -52,6 +54,3 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (stri
 
 	return result.Answer, nil
 }
-
-
-type Message = domain.LLMMessage

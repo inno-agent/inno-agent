@@ -7,8 +7,8 @@ import (
 )
 
 type LLMMessage struct {
-    Role    string `json:"role"`
-    Content string `json:"content"`
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // ChatRepository defines persistence operations for chats.

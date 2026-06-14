@@ -92,8 +92,6 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 // Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
-		// chatName := truncateString(message, 30)
-		// chat, err := s.chatRepo.Create(ctx, userID, &chatName)
 		chat, err := s.chatRepo.Create(ctx, userID, nil)
 
 		if err != nil {
@@ -124,7 +122,6 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		return nil, uuid.Nil, fmt.Errorf("Stream: get history: %w", err)
 	}
 
-
 	llmMessages := make([]domain.LLMMessage, 0, len(history)+1)
 
 	for _, m := range history {
@@ -134,14 +131,12 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		})
 	}
 
-
-
 	rawCh := make(chan string, 4)
 	outCh := make(chan string, 4)
 
 	go func() {
 		defer close(rawCh)
-		answer, _ := s.llm.Chat(ctx, llmMessages)
+		answer, err := s.llm.Chat(ctx, llmMessages)
 		if err != nil {
 			s.logger.Error("llm error", zap.String("function", "Stream"), zap.Error(err))
 			return
@@ -198,4 +193,3 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 
 	return outCh, chatID, nil
 }
-

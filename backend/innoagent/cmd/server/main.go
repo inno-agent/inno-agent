@@ -20,7 +20,7 @@ import (
 // }
 
 type ChatRequest struct {
-    Messages []llm.Message `json:"messages"`
+	Messages []llm.Message `json:"messages"`
 }
 
 type ChatResponse struct {
@@ -82,7 +82,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 		defer cancel()
 
-		answer, err := orch.Ask(ctx, req.Messages)	
+		answer, err := orch.Ask(ctx, req.Messages)
 		if err != nil {
 			log.Printf("orchestrator error: %v", err)
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)

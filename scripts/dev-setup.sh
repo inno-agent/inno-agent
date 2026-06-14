@@ -12,10 +12,7 @@ CERT_DIR="infrastructure/nginx/certs"
 IDENTITY_KEY="backend/identity/dev-private-key.pem"
 
 if ! command -v mkcert >/dev/null 2>&1; then
-    echo "ERROR: mkcert not found. Install it first:"
-    echo "  macOS:   brew install mkcert nss"
-    echo "  Linux:   apt install mkcert libnss3-tools   (or your distro's packages)"
-    echo "  Windows: choco install mkcert   (run this script in Git Bash/WSL; mkcert on the Windows host)"
+    echo "ERROR: mkcert not found. Install it as shown in README.md, then re-run!"
     exit 1
 fi
 

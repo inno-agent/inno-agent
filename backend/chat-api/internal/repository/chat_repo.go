@@ -40,7 +40,7 @@ const (
                ) AS last_message,
                COUNT(*) OVER() AS total
         FROM chats c
-        WHERE c.user_id = $1
+        WHERE c.user_id = $1 AND c.deleted_at IS NULL
         ORDER BY c.updated_at DESC
         LIMIT $2 OFFSET $3
     `
@@ -49,7 +49,16 @@ const (
         UPDATE chats SET updated_at = now() WHERE id = $1
     `
 
-	queryExistsChatForUser = `SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND user_id = $2)`
+	querySoftDeleteChat = `
+		UPDATE chats SET deleted_at = now(), updated_at = now() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`
+
+	queryExistsChatForUser = `
+    	SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)
+	`
+
+	queryExistsChatByID = `
+		SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND deleted_at IS NULL)
+	`
 )
 
 // Create inserts a new chat row and returns the created Chat.
@@ -119,11 +128,11 @@ func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID s
 	)
 
 	var exists bool
-	if err := r.pool.QueryRow(ctx, queryExistsChatForUser, chatID, userID).Scan(&exists); err != nil {
+	err := r.pool.QueryRow(ctx, queryExistsChatForUser, chatID, userID).Scan(&exists)
+	if err != nil {
 		log.Error("exists chat for user failed", zap.Error(err))
 		return false, fmt.Errorf("exists chat for user: %w", err)
 	}
-
 	return exists, nil
 }
 
@@ -141,6 +150,31 @@ func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("update timestamp: chat not found")
+	}
+
+	return nil
+}
+
+// SoftDelete marks a chat as deleted by setting the deleted_at timestamp.
+func (r *ChatRepo) SoftDelete(ctx context.Context, chatID uuid.UUID, userID string) error {
+	log := r.logger.With(
+		zap.String("operation", "SoftDelete"),
+		zap.String("chat_id", chatID.String()),
+		zap.String("user_id", userID),
+	)
+
+	tag, err := r.pool.Exec(ctx, querySoftDeleteChat, chatID, userID)
+	if err != nil {
+		log.Error("soft delete chat failed", zap.Error(err))
+		return fmt.Errorf("soft delete chat: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		var exists bool
+		_ = r.pool.QueryRow(ctx, queryExistsChatByID, chatID).Scan(&exists)
+		if !exists {
+			return fmt.Errorf("soft delete: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("soft delete: %w", domain.ErrAccessDenied)
 	}
 
 	return nil

@@ -49,6 +49,49 @@ paths:
         '400':
           $ref: '#/components/responses/400'
 
+  /chats/{chat_id}:
+    delete:
+      summary: Soft-delete a chat
+      operationId: deleteChat
+      description: |
+        Marks the chat as deleted (sets `deleted_at`). The chat and its messages are
+        not removed from the database, but the chat will no longer appear in the list
+        of chats. Only the owner can delete a chat.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chat_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Chat successfully deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, chat_id]
+                properties:
+                  status:
+                    type: string
+                    enum: [deleted]
+                  chat_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/401'
+        '403':
+          description: Access denied (user does not own the chat)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/404'
+
   /chats/{chat_id}/messages:
     get:
       summary: Get chat history

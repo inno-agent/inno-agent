@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
@@ -50,5 +53,36 @@ func (h *ChatHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"chats": chats,
 		"total": total,
+	})
+}
+
+func (h *ChatHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	chatID, err := uuid.Parse(chi.URLParam(r, "chat_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chat_id")
+		return
+	}
+	if err := h.service.DeleteChat(ctx, userID, chatID); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "chat not found")
+			return
+		}
+		if errors.Is(err, domain.ErrAccessDenied) {
+			writeError(w, http.StatusForbidden, "access denied")
+			return
+		}
+		h.logger.Error("failed to delete chat", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "failed to delete chat")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "deleted",
+		"chat_id": chatID.String(),
 	})
 }

@@ -22,6 +22,7 @@ type Chat struct {
 	LastMessage string
 	UpdatedAt   time.Time
 	CreatedAt   time.Time
+	DeletedAt   *time.Time
 }
 
 // Message represents a single turn in a chat conversation.

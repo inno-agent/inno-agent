@@ -212,34 +212,21 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message) (<-chan s
 				return
 			}
 
-			var chunk struct {
-				Answer string `json:"answer"`
+			var openaiChunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
 			}
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				var openaiChunk struct {
-					Choices []struct {
-						Delta struct {
-							Content string `json:"content"`
-						} `json:"delta"`
-					} `json:"choices"`
-				}
-				if err := json.Unmarshal([]byte(data), &openaiChunk); err != nil {
-					continue
-				}
-				if len(openaiChunk.Choices) > 0 && openaiChunk.Choices[0].Delta.Content != "" {
-					select {
-					case <-ctx.Done():
-						return
-					case ch <- openaiChunk.Choices[0].Delta.Content:
-					}
-				}
+			if err := json.Unmarshal([]byte(data), &openaiChunk); err != nil {
 				continue
 			}
-			if chunk.Answer != "" {
+			if len(openaiChunk.Choices) > 0 && openaiChunk.Choices[0].Delta.Content != "" {
 				select {
 				case <-ctx.Done():
 					return
-				case ch <- chunk.Answer:
+				case ch <- openaiChunk.Choices[0].Delta.Content:
 				}
 			}
 		}

@@ -2,8 +2,6 @@ package orchestrator
 
 import (
 	"context"
-	"strings"
-	"time"
 
 	"innoagent/internal/llm"
 )
@@ -21,25 +19,5 @@ func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message) (strin
 }
 
 func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message) (<-chan string, error) {
-	answer, err := o.provider.Chat(ctx, messages)
-	if err != nil {
-		return nil, err
-	}
-
-	ch := make(chan string, 4)
-	go func() {
-		defer close(ch)
-		words := strings.Fields(answer)
-		for i, w := range words {
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- w + " ":
-			}
-			if i < len(words)-1 {
-				time.Sleep(30 * time.Millisecond)
-			}
-		}
-	}()
-	return ch, nil
+	return o.provider.Stream(ctx, messages)
 }

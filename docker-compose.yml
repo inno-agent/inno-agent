@@ -10,7 +10,6 @@ volumes:
   postgres-data:
   redis-data:
   ollama-data:
-  nginx-certs:
   authentik-media:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
@@ -56,9 +55,7 @@ services:
 
   # ─── Reverse proxy (nginx) ──────────────────────────────────────────────────
   proxy:
-    build:
-      context: ./infrastructure/nginx
-      dockerfile: Dockerfile
+    image: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
     env_file:
       - .env
@@ -69,8 +66,7 @@ services:
       - innoagent
     volumes:
       - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
-      - ./infrastructure/nginx/docker-entrypoint.d/10-gen-self-signed-cert.sh:/docker-entrypoint.d/05-gen-self-signed-cert.sh:ro
-      - nginx-certs:/etc/nginx/certs
+      - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       authentik-server:
         condition: service_healthy

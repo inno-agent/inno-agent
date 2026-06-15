@@ -230,7 +230,7 @@ services:
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend/chat-front
       dockerfile: Dockerfile
     restart: unless-stopped
     networks:

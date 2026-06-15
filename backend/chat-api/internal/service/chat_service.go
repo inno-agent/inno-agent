@@ -89,15 +89,12 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 	return items, total, nil
 }
 
-// Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
-		// chatName := truncateString(message, 30)
-		// chat, err := s.chatRepo.Create(ctx, userID, &chatName)
-		chat, err := s.chatRepo.Create(ctx, userID, nil)
-
+		title := s.generateTitle(ctx, message)
+		chat, err := s.chatRepo.Create(ctx, userID, &title)
 		if err != nil {
-			return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
+			return nil, uuid.Nil, fmt.Errorf("Stream: create chat: %w", err)
 		}
 		chatID = chat.ID
 	} else {
@@ -109,9 +106,10 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 			return nil, uuid.Nil, fmt.Errorf("Stream: %w", domain.ErrAccessDenied)
 		}
 	}
+
 	_, err := s.messageRepo.Create(ctx, userID, chatID, domain.RoleUser, message)
 	if err != nil {
-		return nil, uuid.Nil, fmt.Errorf("Stream failed: %w", err)
+		return nil, uuid.Nil, fmt.Errorf("Stream: save user message: %w", err)
 	}
 
 	if err := s.chatRepo.UpdateTimestamp(ctx, chatID); err != nil {
@@ -124,9 +122,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		return nil, uuid.Nil, fmt.Errorf("Stream: get history: %w", err)
 	}
 
-
 	llmMessages := make([]domain.LLMMessage, 0, len(history)+1)
-
 	for _, m := range history {
 		llmMessages = append(llmMessages, domain.LLMMessage{
 			Role:    string(m.Role),
@@ -134,63 +130,73 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		})
 	}
 
+	rawCh, err := s.llm.Stream(ctx, llmMessages)
+	if err != nil {
+		return nil, uuid.Nil, fmt.Errorf("Stream: llm stream: %w", err)
+	}
 
-
-	rawCh := make(chan string, 4)
 	outCh := make(chan string, 4)
 
-	go func() {
-		defer close(rawCh)
-		answer, _ := s.llm.Chat(ctx, llmMessages)
-		if err != nil {
-			s.logger.Error("llm error", zap.String("function", "Stream"), zap.Error(err))
-			return
-		}
-
-		select {
-		case <-ctx.Done():
-		case rawCh <- answer:
-		}
-	}()
-
-	//nolint:gosec // context.Background intentional: save must complete even if request context is cancelled
+	//nolint:gosec
 	go func() {
 		defer close(outCh)
 		var sb strings.Builder
+		const maxLen = 100000
+
+		saveAssistantMessage := func() {
+			if sb.String() == "" {
+				return
+			}
+			saveCtx, saveCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer saveCancel()
+			if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
+				s.logger.Error(
+					"failed to save assistant message",
+					zap.String("function", "Stream"),
+					zap.Error(err),
+				)
+			}
+			if err := s.chatRepo.UpdateTimestamp(saveCtx, chatID); err != nil {
+				s.logger.Warn(
+					"failed to update chat timestamp",
+					zap.String("function", "Stream"),
+					zap.Error(err),
+				)
+			}
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
+				for chunk := range rawCh {
+					if sb.Len() < maxLen {
+						sb.WriteString(chunk)
+					}
+				}
+				saveAssistantMessage()
 				return
+
 			case chunk, ok := <-rawCh:
 				if !ok {
-					// rawCh closed: natural completion or goroutine1 exited via ctx.Done().
-					// Both cases make this select branch ready simultaneously — check explicitly.
-					if ctx.Err() != nil {
-						return
-					}
-					saveCtx, saveCancel := context.WithTimeout(context.Background(), 10*time.Second)
-					defer saveCancel()
-					if _, err := s.messageRepo.Create(saveCtx, userID, chatID, domain.RoleAssistant, sb.String()); err != nil {
-						s.logger.Error(
-							"failed to save assistant message",
-							zap.String("function", "Stream"),
-							zap.Error(err),
-						)
-					}
-					if err := s.chatRepo.UpdateTimestamp(saveCtx, chatID); err != nil {
-						s.logger.Warn(
-							"failed to update chat timestamp",
-							zap.String("function", "Stream"),
-							zap.Error(err),
-						)
+					if ctx.Err() == nil {
+						saveAssistantMessage()
 					}
 					return
 				}
+
 				select {
 				case <-ctx.Done():
+					for remaining := range rawCh {
+						if sb.Len() < maxLen {
+							sb.WriteString(remaining)
+						}
+					}
+					saveAssistantMessage()
 					return
 				case outCh <- chunk:
-					sb.WriteString(chunk)
+					if sb.Len() < maxLen {
+						sb.WriteString(chunk)
+					}
 				}
 			}
 		}
@@ -199,3 +205,35 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 	return outCh, chatID, nil
 }
 
+func (s *ChatService) generateTitle(ctx context.Context, message string) string {
+	titleCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	title, err := s.llm.Chat(titleCtx, []domain.LLMMessage{
+		{
+			Role:    "user",
+			Content: fmt.Sprintf("Summarize the following text in 3-5 words in the same language as the text. Reply ONLY with the summary, no quotes, no explanations. If you cannot summarize, reply with an empty string:\n\n%s", message),
+		},
+	})
+	if err != nil {
+		s.logger.Warn(
+			"failed to generate title, using fallback",
+			zap.String("function", "generateTitle"),
+			zap.Error(err),
+		)
+		return truncateString(message, 30)
+	}
+
+	title = strings.TrimSpace(title)
+	if title == "" || len(title) > 60 {
+		return truncateString(message, 30)
+	}
+	return title
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen]
+}

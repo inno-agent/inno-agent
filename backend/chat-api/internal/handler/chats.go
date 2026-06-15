@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -68,8 +69,12 @@ func (h *ChatHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.DeleteChat(ctx, userID, chatID); err != nil {
-		if err.Error() == "delete chat: soft delete chat: chat not found or already deleted" {
+		if errors.Is(err, domain.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "chat not found")
+			return
+		}
+		if errors.Is(err, domain.ErrAccessDenied) {
+			writeError(w, http.StatusForbidden, "access denied")
 			return
 		}
 		h.logger.Error("failed to delete chat", zap.Error(err))

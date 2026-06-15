@@ -55,6 +55,10 @@ const (
 	queryExistsChatForUser = `
     	SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)
 	`
+
+	queryExistsChatByID = `
+		SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1 AND deleted_at IS NULL)
+	`
 )
 
 // Create inserts a new chat row and returns the created Chat.
@@ -165,7 +169,12 @@ func (r *ChatRepo) SoftDelete(ctx context.Context, chatID uuid.UUID, userID stri
 		return fmt.Errorf("soft delete chat: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("soft delete chat: chat not found or not owned by user")
+		var exists bool
+		_ = r.pool.QueryRow(ctx, queryExistsChatByID, chatID).Scan(&exists)
+		if !exists {
+			return fmt.Errorf("soft delete: %w", domain.ErrNotFound)
+		}
+		return fmt.Errorf("soft delete: %w", domain.ErrAccessDenied)
 	}
 
 	return nil

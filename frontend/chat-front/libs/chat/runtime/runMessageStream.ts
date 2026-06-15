@@ -11,6 +11,7 @@ import {
 interface RunMessageStreamParams {
     initialChatId?: string
     prompt: string
+    model?: string
     chatIdRef: MutableRefObject<string>
     pendingNavigationChatIdRef: MutableRefObject<string | null>
     setMessages: Dispatch<SetStateAction<readonly ThreadMessageLike[]>>
@@ -20,12 +21,13 @@ interface RunMessageStreamParams {
 export async function runMessageStream({
     initialChatId,
     prompt,
+    model,
     chatIdRef,
     pendingNavigationChatIdRef,
     setMessages,
     navigateToChat,
 }: RunMessageStreamParams) {
-    const stream = await streamMessage(chatIdRef.current, prompt)
+    const stream = await streamMessage(chatIdRef.current, prompt, model)
     let textContent = ''
 
     for await (const event of stream) {

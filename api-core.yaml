@@ -22,7 +22,11 @@ paths:
               properties:
                 model:
                   type: string
-                  default: qwen3-coder
+                  default: llama3.2:3b
+                  enum:
+                    - llama3.2:3b
+                    - qwen2.5-coder:7b
+                    - deepseek-r1:8b
                 messages:
                   type: array
                   items:

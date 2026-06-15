@@ -164,6 +164,14 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 10000
+                model:
+                  type: string
+                  description: AI model ID to use for this request
+                  enum:
+                    - llama3.2:3b
+                    - qwen2.5-coder:7b
+                    - deepseek-r1:8b
+                  example: llama3.2:3b
                 temperature:
                   type: number
                   minimum: 0

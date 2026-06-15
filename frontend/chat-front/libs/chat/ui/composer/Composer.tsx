@@ -7,8 +7,12 @@ import {
 } from '@libs/chat/ui/attachments'
 import { TooltipIconButton } from '@libs/chat/ui/common/TooltipIconButton'
 import { Button } from '@shared/ui/button'
+import { AVAILABLE_MODELS } from '@libs/chat/model/availableModels'
+import { useModelContext } from '@libs/chat/runtime/ModelContext'
 
 export const Composer: FC = () => {
+    const { selectedModelId, setSelectedModelId } = useModelContext()
+
     return (
         <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
             <ComposerPrimitive.AttachmentDropzone asChild>
@@ -24,10 +28,38 @@ export const Composer: FC = () => {
                         autoFocus
                         aria-label="Message input"
                     />
-                    <ComposerAction />
+                    <div className="flex items-center justify-between">
+                        <ModelSelector
+                            selectedModelId={selectedModelId}
+                            onChange={setSelectedModelId}
+                        />
+                        <ComposerAction />
+                    </div>
                 </div>
             </ComposerPrimitive.AttachmentDropzone>
         </ComposerPrimitive.Root>
+    )
+}
+
+interface ModelSelectorProps {
+    selectedModelId: string
+    onChange: (modelId: string) => void
+}
+
+const ModelSelector: FC<ModelSelectorProps> = ({ selectedModelId, onChange }) => {
+    return (
+        <select
+            value={selectedModelId}
+            onChange={(e) => onChange(e.target.value)}
+            className="text-muted-foreground hover:text-foreground focus:ring-ring text-xs bg-transparent px-2 py-1 outline-none focus:ring-1 rounded"
+            aria-label="Select AI model"
+        >
+            {AVAILABLE_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                    {model.label}
+                </option>
+            ))}
+        </select>
     )
 }
 

@@ -61,6 +61,7 @@ func NewQwenProvider(
 func (p *QwenProvider) Chat(
 	ctx context.Context,
 	messages []Message,
+	modelName string,
 ) (string, error) {
 	if len(messages) == 0 {
 		return "", ErrEmptyMessage
@@ -71,8 +72,13 @@ func (p *QwenProvider) Chat(
 		chatMessages[i] = ChatMessage(m)
 	}
 
+	model := modelName
+	if model == "" {
+		model = p.model
+	}
+
 	reqBody := ChatRequest{
-		Model:       p.model,
+		Model:       model,
 		Messages:    chatMessages,
 		Temperature: 0.7,
 		MaxTokens:   1024,
@@ -155,7 +161,7 @@ func (p *QwenProvider) Chat(
 	), nil
 }
 
-func (p *QwenProvider) Stream(ctx context.Context, messages []Message) (<-chan string, error) {
+func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName string) (<-chan string, error) {
 	if len(messages) == 0 {
 		return nil, ErrEmptyMessage
 	}
@@ -165,8 +171,13 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message) (<-chan s
 		chatMessages[i] = ChatMessage(m)
 	}
 
+	model := modelName
+	if model == "" {
+		model = p.model
+	}
+
 	reqBody := ChatRequest{
-		Model:       p.model,
+		Model:       model,
 		Messages:    chatMessages,
 		Temperature: 0.7,
 		MaxTokens:   2048,

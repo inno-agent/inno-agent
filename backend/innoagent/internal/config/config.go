@@ -32,7 +32,7 @@ func Load() Config {
 		model = os.Getenv("LLM_MODEL")
 	}
 	if model == "" {
-		model = "qwen2.5:0.5b"
+		model = "llama3.2:3b"
 	}
 
 	serverPort := os.Getenv("API_PORT")

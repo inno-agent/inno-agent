@@ -89,7 +89,8 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 	return items, total, nil
 }
 
-func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
+// Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
+func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
 		title := s.generateTitle(ctx, message)
 		chat, err := s.chatRepo.Create(ctx, userID, &title)
@@ -130,14 +131,14 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		})
 	}
 
-	rawCh, err := s.llm.Stream(ctx, llmMessages)
+	rawCh, err := s.llm.Stream(ctx, llmMessages, modelName)
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("Stream: llm stream: %w", err)
 	}
 
 	outCh := make(chan string, 4)
 
-	//nolint:gosec
+	//nolint:gosec // context.Background intentional: save must complete even if request context is cancelled
 	go func() {
 		defer close(outCh)
 		var sb strings.Builder
@@ -214,7 +215,7 @@ func (s *ChatService) generateTitle(ctx context.Context, message string) string 
 			Role:    "user",
 			Content: fmt.Sprintf("Summarize the following text in 3-5 words in the same language as the text. Reply ONLY with the summary, no quotes, no explanations. If you cannot summarize, reply with an empty string:\n\n%s", message),
 		},
-	})
+	}, "")
 	if err != nil {
 		s.logger.Warn(
 			"failed to generate title, using fallback",

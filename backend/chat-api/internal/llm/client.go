@@ -27,12 +27,18 @@ func NewOrchestratorClient(baseURL string) *OrchestratorClient {
 	}
 }
 
-func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (string, error) {
-	payload, err := json.Marshal(map[string]interface{}{"messages": messages})
+func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message, modelName string) (string, error) {
+	payload := map[string]interface{}{
+		"messages": messages,
+	}
+	if modelName != "" {
+		payload["model_name"] = modelName
+	}
+	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("llm client: marshal payload: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payloadBytes))
 	if err != nil {
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
@@ -62,16 +68,20 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (stri
 
 type Message = domain.LLMMessage
 
-func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message) (<-chan string, error) {
-	payload, err := json.Marshal(map[string]interface{}{
+func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, modelName string) (<-chan string, error) {
+	payload := map[string]interface{}{
 		"messages": messages,
 		"stream":   true,
-	})
+	}
+	if modelName != "" {
+		payload["model_name"] = modelName
+	}
+	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("llm client: marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("llm client: build request: %w", err)
 	}
@@ -126,7 +136,6 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message) (<-
 			}
 		}
 
-		// Игнорируем ошибку scanner'а
 		_ = scanner.Err()
 	}()
 

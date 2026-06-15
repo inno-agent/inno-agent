@@ -17,8 +17,9 @@ import (
 )
 
 type ChatRequest struct {
-	Messages []llm.Message `json:"messages"`
-	Stream   bool          `json:"stream"`
+	Messages  []llm.Message `json:"messages"`
+	ModelName string        `json:"model_name,omitempty"`
+	Stream    bool          `json:"stream"`
 }
 
 type ChatResponse struct {
@@ -64,8 +65,6 @@ func main() {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-
 		var req ChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -76,6 +75,9 @@ func main() {
 			http.Error(w, `{"error":"messages field is required"}`, http.StatusBadRequest)
 			return
 		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		defer cancel()
 
 		if req.Stream {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -88,12 +90,10 @@ func main() {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
-			defer cancel()
-
-			ch, err := orch.AskStream(ctx, req.Messages)
+			ch, err := orch.AskStream(ctx, req.Messages, req.ModelName)
 			if err != nil {
-				if _, err := fmt.Fprintf(w, "data: {\"error\":\"%s\"}\n\n", err.Error()); err != nil {
+				data, _ := json.Marshal(map[string]string{"error": err.Error()})
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 					log.Printf("failed to write error response: %v", err)
 				}
 				flusher.Flush()
@@ -115,10 +115,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
-		defer cancel()
-
-		answer, err := orch.Ask(ctx, req.Messages)
+		answer, err := orch.Ask(ctx, req.Messages, req.ModelName)
 		if err != nil {
 			log.Printf("orchestrator error: %v", err)
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)

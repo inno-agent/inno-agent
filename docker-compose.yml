@@ -196,14 +196,14 @@ services:
       retries: 5
       start_period: 30s
 
-  # ─── Pull model on first boot ─────────────────────────────────────────────
+  # ─── Pull models on first boot ────────────────────────────────────────────
   ollama-pull:
     image: ollama/ollama:latest
     networks:
       - innoagent
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["sh", "-c", "ollama pull ${MODEL_NAME:-qwen2.5:0.5b}"]
+    entrypoint: ["sh", "-c", "ollama pull llama3.2:3b && ollama pull qwen2.5-coder:7b && ollama pull deepseek-r1:8b"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -218,7 +218,7 @@ services:
     networks:
       - innoagent
     environment:
-      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
+      MODEL_NAME: ${MODEL_NAME:-llama3.2:3b}
       LLM_BASE_URL: http://ollama:11434/v1
       API_PORT: "8080"
     depends_on:

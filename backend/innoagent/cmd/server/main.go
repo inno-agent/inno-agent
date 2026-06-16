@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"innoagent/internal/catalog"
 	"innoagent/internal/config"
 	"innoagent/internal/llm"
 	"innoagent/internal/orchestrator"
@@ -40,6 +41,11 @@ func main() {
 	log.Printf("model: %s", cfg.Model)
 	log.Printf("api port: %s", cfg.ServerPort)
 
+	cat, err := catalog.Load()
+	if err != nil {
+		log.Fatalf("catalog: %v", err)
+	}
+
 	provider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.Model),
@@ -48,6 +54,15 @@ func main() {
 	orch := orchestrator.New(provider)
 
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cat)
+	})
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

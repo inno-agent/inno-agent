@@ -1,0 +1,8 @@
+{
+  "models": [
+    { "id": "llama3.2:3b", "name": "General", "description": "General Q&A and conversation" },
+    { "id": "qwen2.5-coder:7b", "name": "Code", "description": "Programming, debugging, code generation" },
+    { "id": "deepseek-r1:8b", "name": "Math", "description": "Mathematics and complex reasoning" }
+  ],
+  "default": "llama3.2:3b"
+}

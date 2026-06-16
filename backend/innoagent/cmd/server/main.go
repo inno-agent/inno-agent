@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"innoagent/internal/auth"
 	"innoagent/internal/catalog"
 	"innoagent/internal/config"
 	"innoagent/internal/llm"
@@ -52,17 +53,23 @@ func main() {
 	)
 
 	orch := orchestrator.New(provider)
+	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+	modelsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cat)
+		out := cat
+		if res := auth.FromContext(r.Context()); res != nil {
+			out = cat.Filter(res.AllowedModels)
+		}
+		_ = json.NewEncoder(w).Encode(out)
 	})
+	mux.Handle("/v1/models", auth.Middleware(identityClient)(modelsHandler))
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

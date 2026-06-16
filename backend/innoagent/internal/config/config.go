@@ -6,9 +6,10 @@ import (
 )
 
 type Config struct {
-	BaseURL    string
-	Model      string
-	ServerPort string
+	BaseURL     string
+	Model       string
+	ServerPort  string
+	IdentityURL string
 }
 
 func Load() Config {
@@ -43,9 +44,15 @@ func Load() Config {
 		serverPort = "8080"
 	}
 
+	identityURL := os.Getenv("IDENTITY_URL")
+	if identityURL == "" {
+		identityURL = "http://identity:8081"
+	}
+
 	return Config{
-		BaseURL:    baseURL,
-		Model:      model,
-		ServerPort: serverPort,
+		BaseURL:     baseURL,
+		Model:       model,
+		ServerPort:  serverPort,
+		IdentityURL: identityURL,
 	}
 }

@@ -123,9 +123,9 @@ func TestAuthorize_ValidTokenKnownModel(t *testing.T) {
 
 	r := gin.New()
 	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, testOIDCEndpoints(),
-		[]string{"llama3.2:3b", "qwen2.5-coder:7b"})
+		[]string{"qwen2.5:0.5b", "qwen2.5-coder:1.5b"})
 
-	body := `{"token": "` + token + `", "model": "qwen2.5-coder:7b"}`
+	body := `{"token": "` + token + `", "model": "qwen2.5-coder:1.5b"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/authorize", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -136,7 +136,7 @@ func TestAuthorize_ValidTokenKnownModel(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "user-1", resp["user_id"])
 	assert.Equal(t, true, resp["allowed"])
-	assert.Equal(t, []any{"llama3.2:3b", "qwen2.5-coder:7b"}, resp["allowed_models"])
+	assert.Equal(t, []any{"qwen2.5:0.5b", "qwen2.5-coder:1.5b"}, resp["allowed_models"])
 }
 
 func TestAuthorize_UnknownModelNotAllowed(t *testing.T) {
@@ -147,7 +147,7 @@ func TestAuthorize_UnknownModelNotAllowed(t *testing.T) {
 
 	r := gin.New()
 	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, testOIDCEndpoints(),
-		[]string{"llama3.2:3b", "qwen2.5-coder:7b"})
+		[]string{"qwen2.5:0.5b", "qwen2.5-coder:1.5b"})
 
 	body := `{"token": "` + token + `", "model": "gpt-4"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/authorize", strings.NewReader(body))
@@ -169,7 +169,7 @@ func TestAuthorize_NoModelReturnsCatalogPolicy(t *testing.T) {
 
 	r := gin.New()
 	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, testOIDCEndpoints(),
-		[]string{"llama3.2:3b", "qwen2.5-coder:7b"})
+		[]string{"qwen2.5:0.5b", "qwen2.5-coder:1.5b"})
 
 	body := `{"token": "` + token + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/authorize", strings.NewReader(body))
@@ -181,7 +181,7 @@ func TestAuthorize_NoModelReturnsCatalogPolicy(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, true, resp["allowed"])
-	assert.Equal(t, []any{"llama3.2:3b", "qwen2.5-coder:7b"}, resp["allowed_models"])
+	assert.Equal(t, []any{"qwen2.5:0.5b", "qwen2.5-coder:1.5b"}, resp["allowed_models"])
 }
 
 func TestAuthorize_InvalidToken(t *testing.T) {
@@ -190,7 +190,7 @@ func TestAuthorize_InvalidToken(t *testing.T) {
 
 	r := gin.New()
 	transport.RegisterHTTPRoutes(r, &stubProvider{}, nil, iss, 30*time.Minute, testOIDCEndpoints(),
-		[]string{"llama3.2:3b"})
+		[]string{"qwen2.5:0.5b"})
 
 	body := `{"token": "garbage"}`
 	req := httptest.NewRequest(http.MethodPost, "/identity/v1/authorize", strings.NewReader(body))

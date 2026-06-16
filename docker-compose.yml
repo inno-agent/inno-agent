@@ -132,7 +132,7 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      LLM_MODELS: ${LLM_MODELS:-llama3.2:3b qwen2.5-coder:7b deepseek-r1:8b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
     secrets:
       - identity_rsa_key
     networks:
@@ -204,7 +204,8 @@ services:
       - innoagent
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["sh", "-c", "ollama pull llama3.2:3b && ollama pull qwen2.5-coder:7b && ollama pull deepseek-r1:8b"]
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+    entrypoint: ["sh", "-c", "for m in $$LLM_MODELS; do ollama pull $$m; done"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -219,11 +220,11 @@ services:
     networks:
       - innoagent
     environment:
-      MODEL_NAME: ${MODEL_NAME:-llama3.2:3b}
+      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       LLM_BASE_URL: http://ollama:11434/v1
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
-      LLM_MODELS: ${LLM_MODELS:-llama3.2:3b qwen2.5-coder:7b deepseek-r1:8b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
     depends_on:
       ollama:
         condition: service_healthy

@@ -63,7 +63,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 	}
 	cfg.JWTExpiry = expiry
 
-	cfg.AllowedModels = strings.Fields(fallback("LLM_MODELS", "llama3.2:3b qwen2.5-coder:7b deepseek-r1:8b"))
+	cfg.AllowedModels = strings.Fields(fallback("LLM_MODELS", "qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b"))
 
 	return cfg, nil
 }

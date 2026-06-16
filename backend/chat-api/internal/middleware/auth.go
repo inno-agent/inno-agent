@@ -9,7 +9,10 @@ import (
 
 type contextKey string
 
-const UserIDKey contextKey = "user_id"
+const (
+	UserIDKey contextKey = "user_id"
+	TokenKey  contextKey = "auth_token"
+)
 
 type validateResponse struct {
 	UserID string `json:"user_id"`
@@ -50,6 +53,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, vr.UserID)
+			ctx = context.WithValue(ctx, TokenKey, token)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -58,5 +62,11 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 // UserIDFromContext extracts user_id from context set by Auth middleware.
 func UserIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(UserIDKey).(string)
+	return v
+}
+
+// TokenFromContext extracts the raw bearer token set by Auth middleware.
+func TokenFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(TokenKey).(string)
 	return v
 }

@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 var _ domain.ChatService = (*ChatService)(nil)
@@ -207,7 +208,8 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 }
 
 func (s *ChatService) generateTitle(ctx context.Context, message string) string {
-	titleCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	titleCtx := context.WithValue(context.Background(), middleware.TokenKey, middleware.TokenFromContext(ctx))
+	titleCtx, cancel := context.WithTimeout(titleCtx, 15*time.Second)
 	defer cancel()
 
 	title, err := s.llm.Chat(titleCtx, []domain.LLMMessage{

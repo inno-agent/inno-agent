@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 type OrchestratorClient struct {
@@ -38,11 +39,14 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message, model
 	if err != nil {
 		return "", fmt.Errorf("llm client: marshal payload: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat", bytes.NewReader(payloadBytes))
 	if err != nil {
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := middleware.TokenFromContext(ctx); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -81,11 +85,14 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		return nil, fmt.Errorf("llm client: marshal payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payloadBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat", bytes.NewReader(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := middleware.TokenFromContext(ctx); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

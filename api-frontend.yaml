@@ -210,6 +210,56 @@ paths:
         '500':
           $ref: '#/components/responses/500'
 
+  /review:
+    post:
+      summary: Generate AI pull request review
+      operationId: reviewPullRequest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pr_id]
+              properties:
+                pr_id:
+                  type: string
+                  minLength: 1
+                  example: "123"
+                diff:
+                  type: string
+                  description: Optional unified diff. When provided, GitFlame lookup is skipped.
+                  example: |
+                    diff --git a/main.go b/main.go
+                    index 1234567..89abcde 100644
+                    --- a/main.go
+                    +++ b/main.go
+                    @@ -1 +1 @@
+                    -fmt.Println("old")
+                    +fmt.Println("new")
+      responses:
+        '200':
+          description: Markdown review
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [review_markdown]
+                properties:
+                  review_markdown:
+                    type: string
+                    example: |
+                      # Summary
+                      The changes look solid overall.
+        '400':
+          $ref: '#/components/responses/400'
+        '401':
+          $ref: '#/components/responses/401'
+        '500':
+          $ref: '#/components/responses/500'
+
 components:
 
   schemas:
@@ -262,6 +312,12 @@ components:
           type: string
         retry_allowed:
           type: boolean
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
   responses:
 

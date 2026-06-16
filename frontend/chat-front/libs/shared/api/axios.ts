@@ -6,6 +6,7 @@ export const apiEndpoints = {
     chats: '/chats',
     chatMessages: (chatId: string) => `/chats/${chatId}/messages`,
     chatStream: (chatId: string) => `/chats/${chatId}/stream`,
+    review: '/review',
 }
 
 export const apiClient = axios.create({

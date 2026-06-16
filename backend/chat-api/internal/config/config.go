@@ -11,6 +11,8 @@ type Config struct {
 	ServerPort      string
 	OrchestratorURL string
 	AuthServiceURL  string
+	GitFlameBaseURL string
+	GitFlameToken   string
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
@@ -23,6 +25,8 @@ func Load() *Config {
 		ServerPort:      getEnv("SERVER_PORT", "8000"),
 		OrchestratorURL: getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
 		AuthServiceURL:  getEnv("AUTH_SERVICE_URL", "http://identity:8081"),
+		GitFlameBaseURL: getEnv("GITFLAME_BASE_URL", ""),
+		GitFlameToken:   getEnv("GITFLAME_TOKEN", ""),
 		ReadTimeout:     getDuration("READ_TIMEOUT", 10*time.Second),
 		WriteTimeout:    getDuration("WRITE_TIMEOUT", 0),
 		IdleTimeout:     getDuration("IDLE_TIMEOUT", 120*time.Second),

@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/config"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/handler"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/repository"
@@ -48,15 +49,18 @@ func main() {
 	chatRepo := repository.NewChatRepo(pool, logger)
 	messageRepo := repository.NewMessageRepo(pool, logger)
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
+	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 
 	chatService := service.NewChatService(chatRepo, messageRepo, llmClient, logger)
+	reviewService := service.NewReviewService(gitFlameClient, llmClient, logger)
 
 	chatHandler := handler.NewChatHandler(chatService, logger)
 	messageHandler := handler.NewMessageHandler(chatService, logger)
 	streamHandler := handler.NewStreamHandler(chatService, logger)
+	reviewHandler := handler.NewReviewHandler(reviewService, logger)
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, reviewHandler, cfg.AuthServiceURL)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

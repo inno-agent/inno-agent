@@ -86,7 +86,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	})
+	}, cfg.AllowedModels)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

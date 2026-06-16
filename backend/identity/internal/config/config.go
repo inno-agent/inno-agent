@@ -19,6 +19,7 @@ type Config struct {
 	DatabaseDSN       string
 	HTTPPort          string
 	GRPCPort          string
+	AllowedModels     []string
 }
 
 func Load() (*Config, error) {
@@ -61,6 +62,8 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("invalid AUTH_JWT_EXPIRY: %w", err)
 	}
 	cfg.JWTExpiry = expiry
+
+	cfg.AllowedModels = strings.Fields(fallback("LLM_MODELS", "llama3.2:3b qwen2.5-coder:7b deepseek-r1:8b"))
 
 	return cfg, nil
 }

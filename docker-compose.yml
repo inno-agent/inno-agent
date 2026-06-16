@@ -167,6 +167,8 @@ services:
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8000"
     networks:
       - innoagent

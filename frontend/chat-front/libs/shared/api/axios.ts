@@ -8,6 +8,7 @@ export const apiEndpoints = {
     chats: '/chats',
     chatMessages: (chatId: string) => `/chats/${chatId}/messages`,
     chatStream: (chatId: string) => `/chats/${chatId}/stream`,
+    review: '/review',
 }
 
 // withAuth attaches the bearer token and the shared 401 -> logout behaviour so

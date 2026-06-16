@@ -7,11 +7,11 @@ import {
 } from '@libs/chat/ui/attachments'
 import { TooltipIconButton } from '@libs/chat/ui/common/TooltipIconButton'
 import { Button } from '@shared/ui/button'
-import { AVAILABLE_MODELS } from '@libs/chat/model/availableModels'
+import type { ModelOption } from '@libs/chat/model/availableModels'
 import { useModelContext } from '@libs/chat/runtime/ModelContext'
 
 export const Composer: FC = () => {
-    const { selectedModelId, setSelectedModelId } = useModelContext()
+    const { models, selectedModelId, setSelectedModelId } = useModelContext()
 
     return (
         <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
@@ -30,6 +30,7 @@ export const Composer: FC = () => {
                     />
                     <div className="flex items-center justify-between">
                         <ModelSelector
+                            models={models}
                             selectedModelId={selectedModelId}
                             onChange={setSelectedModelId}
                         />
@@ -42,11 +43,12 @@ export const Composer: FC = () => {
 }
 
 interface ModelSelectorProps {
+    models: ModelOption[]
     selectedModelId: string
     onChange: (modelId: string) => void
 }
 
-const ModelSelector: FC<ModelSelectorProps> = ({ selectedModelId, onChange }) => {
+const ModelSelector: FC<ModelSelectorProps> = ({ models, selectedModelId, onChange }) => {
     return (
         <select
             value={selectedModelId}
@@ -54,7 +56,7 @@ const ModelSelector: FC<ModelSelectorProps> = ({ selectedModelId, onChange }) =>
             className="text-muted-foreground hover:text-foreground focus:ring-ring text-xs bg-transparent px-2 py-1 outline-none focus:ring-1 rounded"
             aria-label="Select AI model"
         >
-            {AVAILABLE_MODELS.map((model) => (
+            {models.map((model) => (
                 <option key={model.id} value={model.id}>
                     {model.label}
                 </option>

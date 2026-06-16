@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react'
+import type { ModelOption } from '@libs/chat/model/availableModels'
 
 export interface ModelContextValue {
+    models: ModelOption[]
     selectedModelId: string
     setSelectedModelId: (modelId: string) => void
 }

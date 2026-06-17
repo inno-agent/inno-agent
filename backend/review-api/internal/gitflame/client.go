@@ -117,7 +117,7 @@ func (c *Client) listPRFiles(ctx context.Context, repoBase string) ([]prFile, er
 	if err != nil {
 		return nil, fmt.Errorf("%w: gitflame files request failed: %w", domain.ErrDiffUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := checkStatus(resp, "files"); err != nil {
 		return nil, err
@@ -147,7 +147,7 @@ func (c *Client) getFileDiff(ctx context.Context, repoBase, filename string) (st
 	if err != nil {
 		return "", fmt.Errorf("%w: gitflame diff request failed for %s: %w", domain.ErrDiffUnavailable, filename, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := checkStatus(resp, "diff/"+filename); err != nil {
 		return "", err

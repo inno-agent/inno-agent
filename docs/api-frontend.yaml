@@ -218,6 +218,7 @@ paths:
         '500':
           $ref: '#/components/responses/500'
 
+
 components:
 
   schemas:
@@ -271,6 +272,12 @@ components:
         retry_allowed:
           type: boolean
 
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   responses:
 
     '400':
@@ -282,6 +289,13 @@ components:
 
     '404':
       description: Chat not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    '401':
+      description: Missing or invalid authentication token
       content:
         application/json:
           schema:

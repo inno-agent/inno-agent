@@ -21,45 +21,38 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-type Result struct {
-	UserID        string   `json:"user_id"`
-	Tier          string   `json:"tier"`
-	Allowed       bool     `json:"allowed"`
-	AllowedModels []string `json:"allowed_models"`
-}
+var ErrUnauthorized = fmt.Errorf("unauthorized")
 
-// Authorize asks identity whether the token is valid and (optionally) whether
-// the given model is permitted. An empty model only checks the token and
-// returns the policy list.
-func (c *Client) Authorize(ctx context.Context, token, model string) (*Result, error) {
-	payload, err := json.Marshal(map[string]string{"token": token, "model": model})
+// Validate checks the token against identity and returns the user_id.
+func (c *Client) Validate(ctx context.Context, token string) (string, error) {
+	payload, err := json.Marshal(map[string]string{"token": token})
 	if err != nil {
-		return nil, fmt.Errorf("auth: marshal: %w", err)
+		return "", fmt.Errorf("auth: marshal: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/identity/v1/authorize", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/identity/v1/validate", bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("auth: build request: %w", err)
+		return "", fmt.Errorf("auth: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("auth: request: %w", err)
+		return "", fmt.Errorf("auth: request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, ErrUnauthorized
+		return "", ErrUnauthorized
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("auth: identity status %d", resp.StatusCode)
+		return "", fmt.Errorf("auth: identity status %d", resp.StatusCode)
 	}
 
-	var out Result
+	var out struct {
+		UserID string `json:"user_id"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("auth: decode: %w", err)
+		return "", fmt.Errorf("auth: decode: %w", err)
 	}
-	return &out, nil
+	return out.UserID, nil
 }
-
-var ErrUnauthorized = fmt.Errorf("unauthorized")

@@ -34,11 +34,11 @@ func makeTestIssuer(t *testing.T) *issuer.Issuer {
 	return iss
 }
 
-func startGRPCServer(t *testing.T, iss *issuer.Issuer, userSvc transport.UserServicer) *grpc.ClientConn {
+func startGRPCServer(t *testing.T, iss *issuer.Issuer) *grpc.ClientConn {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
-	identityv1.RegisterIdentityServiceServer(srv, transport.NewGRPCServer(iss, userSvc))
+	identityv1.RegisterIdentityServiceServer(srv, transport.NewGRPCServer(iss))
 
 	go func() { srv.Serve(lis) }() //nolint:errcheck,gosec
 	t.Cleanup(func() { srv.GracefulStop() })
@@ -57,22 +57,20 @@ func startGRPCServer(t *testing.T, iss *issuer.Issuer, userSvc transport.UserSer
 
 func TestGRPC_ValidateToken_Valid(t *testing.T) {
 	iss := makeTestIssuer(t)
-	token, err := iss.Issue("user-xyz", "premium", 3)
+	token, err := iss.Issue("user-xyz")
 	require.NoError(t, err)
 
-	conn := startGRPCServer(t, iss, nil)
+	conn := startGRPCServer(t, iss)
 	client := identityv1.NewIdentityServiceClient(conn)
 
 	resp, err := client.ValidateToken(context.Background(), &identityv1.ValidateTokenRequest{Token: token})
 	require.NoError(t, err)
 	assert.Equal(t, "user-xyz", resp.UserId)
-	assert.Equal(t, "premium", resp.Tier)
-	assert.Equal(t, int32(3), resp.CtxVersion)
 }
 
 func TestGRPC_ValidateToken_Invalid(t *testing.T) {
 	iss := makeTestIssuer(t)
-	conn := startGRPCServer(t, iss, nil)
+	conn := startGRPCServer(t, iss)
 	client := identityv1.NewIdentityServiceClient(conn)
 
 	_, err := client.ValidateToken(context.Background(), &identityv1.ValidateTokenRequest{Token: "bad.token.here"})

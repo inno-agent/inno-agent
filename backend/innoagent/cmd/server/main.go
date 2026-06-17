@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -65,11 +64,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		out := cat
-		if res := auth.FromContext(r.Context()); res != nil {
-			out = cat.Filter(res.AllowedModels)
-		}
-		_ = json.NewEncoder(w).Encode(out)
+		_ = json.NewEncoder(w).Encode(cat)
 	})
 	mux.Handle("/v1/models", auth.Middleware(identityClient)(modelsHandler))
 
@@ -100,25 +95,17 @@ func main() {
 			return
 		}
 
-		token := ""
-		if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {
-			token = h[7:]
-		}
+		token := auth.Bearer(r)
 		if token == "" {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		authz, err := identityClient.Authorize(r.Context(), token, req.ModelName)
-		if err != nil {
+		if _, err := identityClient.Validate(r.Context(), token); err != nil {
 			if errors.Is(err, auth.ErrUnauthorized) {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			} else {
 				http.Error(w, `{"error":"identity unavailable"}`, http.StatusBadGateway)
 			}
-			return
-		}
-		if !authz.Allowed {
-			http.Error(w, `{"error":"model not allowed"}`, http.StatusForbidden)
 			return
 		}
 

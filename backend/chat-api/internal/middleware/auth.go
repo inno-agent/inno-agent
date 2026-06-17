@@ -16,7 +16,6 @@ const (
 
 type validateResponse struct {
 	UserID string `json:"user_id"`
-	Tier   string `json:"tier"`
 }
 
 // Auth validates the Bearer token against the auth service and injects user_id into context.

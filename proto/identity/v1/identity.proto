@@ -3,14 +3,10 @@ syntax = "proto3";
 
 package identity.v1;
 
-import "google/protobuf/empty.proto";
-
 option go_package = "github.com/inno-agent/identity/proto/identity/v1;identityv1";
 
 service IdentityService {
   rpc ValidateToken(ValidateTokenRequest) returns (UserInfo);
-  rpc GetUserContext(GetUserContextRequest) returns (UserContext);
-  rpc UpdateUserContext(UpdateUserContextRequest) returns (google.protobuf.Empty);
 }
 
 message ValidateTokenRequest {
@@ -18,22 +14,5 @@ message ValidateTokenRequest {
 }
 
 message UserInfo {
-  string user_id     = 1;
-  string tier        = 2;
-  int32  ctx_version = 3;
-}
-
-message GetUserContextRequest {
   string user_id = 1;
-}
-
-message UserContext {
-  string user_id  = 1;
-  bytes  data     = 2;
-  int32  version  = 3;
-}
-
-message UpdateUserContextRequest {
-  string user_id = 1;
-  bytes  data    = 2;
 }

@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-func TestMiddleware_InjectsResultOnValidToken(t *testing.T) {
+func TestMiddleware_InjectsUserIDOnValidToken(t *testing.T) {
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"user_id":"u1","tier":"free","allowed":true,"allowed_models":["llama3.2:3b"]}`))
+		_, _ = w.Write([]byte(`{"user_id":"u1"}`))
 	}))
 	defer idp.Close()
 
-	var got *Result
+	var got string
 	h := Middleware(NewClient(idp.URL))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = FromContext(r.Context())
+		got = UserIDFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -27,8 +27,8 @@ func TestMiddleware_InjectsResultOnValidToken(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
-	if got == nil || got.UserID != "u1" || len(got.AllowedModels) != 1 {
-		t.Fatalf("result not injected: %+v", got)
+	if got != "u1" {
+		t.Fatalf("user_id not injected: %q", got)
 	}
 }
 

@@ -131,7 +131,6 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
     secrets:
       - identity_rsa_key
     networks:

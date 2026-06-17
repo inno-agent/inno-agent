@@ -9,21 +9,19 @@ import (
 
 type ctxKey string
 
-const resultKey ctxKey = "authz_result"
+const userIDKey ctxKey = "user_id"
 
-// Middleware extracts the Bearer token, authorizes it against identity, and
-// injects the Result into the request context. The model is not checked here
-// (the body is not yet parsed) — handlers that need model authz call
-// client.Authorize again with the model, or read the policy from the Result.
+// Middleware extracts the Bearer token, validates it against identity (authN),
+// and injects the user_id into the request context.
 func Middleware(client *Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := bearer(r)
+			token := Bearer(r)
 			if token == "" {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-			res, err := client.Authorize(r.Context(), token, "")
+			userID, err := client.Validate(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, ErrUnauthorized) {
 					http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -32,13 +30,14 @@ func Middleware(client *Client) func(http.Handler) http.Handler {
 				http.Error(w, `{"error":"identity unavailable"}`, http.StatusBadGateway)
 				return
 			}
-			ctx := context.WithValue(r.Context(), resultKey, res)
+			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-func bearer(r *http.Request) string {
+// Bearer extracts the bearer token from the Authorization header, or "".
+func Bearer(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {
 		return h[7:]
@@ -46,8 +45,8 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
-// FromContext returns the authorization result set by Middleware, or nil.
-func FromContext(ctx context.Context) *Result {
-	v, _ := ctx.Value(resultKey).(*Result)
+// UserIDFromContext returns the user_id set by Middleware, or "".
+func UserIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(userIDKey).(string)
 	return v
 }

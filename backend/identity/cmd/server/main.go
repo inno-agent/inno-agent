@@ -67,7 +67,7 @@ func main() {
 
 	// gRPC server
 	grpcSrv := grpc.NewServer()
-	identityv1.RegisterIdentityServiceServer(grpcSrv, transport.NewGRPCServer(iss, svc))
+	identityv1.RegisterIdentityServiceServer(grpcSrv, transport.NewGRPCServer(iss))
 
 	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
@@ -86,7 +86,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	}, cfg.AllowedModels)
+	})
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

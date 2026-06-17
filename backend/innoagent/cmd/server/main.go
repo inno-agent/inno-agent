@@ -43,7 +43,7 @@ func main() {
 	log.Printf("model: %s", cfg.Model)
 	log.Printf("api port: %s", cfg.ServerPort)
 
-	cat, err := catalog.Load()
+	cat, err := catalog.Load(cfg.Models)
 	if err != nil {
 		log.Fatalf("catalog: %v", err)
 	}
@@ -84,17 +84,7 @@ func main() {
 			return
 		}
 
-		var req ChatRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-			return
-		}
-
-		if len(req.Messages) == 0 {
-			http.Error(w, `{"error":"messages field is required"}`, http.StatusBadRequest)
-			return
-		}
-
+		// Authenticate before doing any work (parsing the body, etc.).
 		token := auth.Bearer(r)
 		if token == "" {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -109,6 +99,17 @@ func main() {
 			return
 		}
 
+		var req ChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Messages) == 0 {
+			http.Error(w, `{"error":"messages field is required"}`, http.StatusBadRequest)
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
 		defer cancel()
 
@@ -116,6 +117,7 @@ func main() {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("X-Accel-Buffering", "no")
 
 			flusher, ok := w.(http.Flusher)
 			if !ok {

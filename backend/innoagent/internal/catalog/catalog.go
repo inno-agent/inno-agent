@@ -7,7 +7,7 @@ import (
 )
 
 //go:embed models.json
-var modelsJSON []byte
+var metadataJSON []byte
 
 type Model struct {
 	ID          string `json:"id"`
@@ -20,14 +20,33 @@ type Catalog struct {
 	Default string  `json:"default"`
 }
 
-// Load parses the embedded catalog.
-func Load() (*Catalog, error) {
-	var c Catalog
-	if err := json.Unmarshal(modelsJSON, &c); err != nil {
-		return nil, fmt.Errorf("catalog: unmarshal: %w", err)
+// Load builds the catalog for the given model IDs (order preserved), enriching
+// each from the embedded metadata registry. LLM_MODELS is the single source of
+// truth for which models exist; models.json only supplies display metadata.
+// The first ID is the default. An ID without a registry entry falls back to its
+// own ID as the display name.
+func Load(ids []string) (*Catalog, error) {
+	var reg struct {
+		Models []Model `json:"models"`
 	}
-	if c.Default == "" && len(c.Models) > 0 {
+	if err := json.Unmarshal(metadataJSON, &reg); err != nil {
+		return nil, fmt.Errorf("catalog: unmarshal metadata: %w", err)
+	}
+	meta := make(map[string]Model, len(reg.Models))
+	for _, m := range reg.Models {
+		meta[m.ID] = m
+	}
+
+	c := &Catalog{}
+	for _, id := range ids {
+		if m, ok := meta[id]; ok {
+			c.Models = append(c.Models, m)
+		} else {
+			c.Models = append(c.Models, Model{ID: id, Name: id})
+		}
+	}
+	if len(c.Models) > 0 {
 		c.Default = c.Models[0].ID
 	}
-	return &c, nil
+	return c, nil
 }

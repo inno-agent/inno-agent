@@ -3,6 +3,5 @@
     { "id": "qwen2.5:0.5b", "name": "Fast", "description": "Tiny model, fastest responses" },
     { "id": "llama3.2:1b", "name": "General", "description": "General Q&A and conversation" },
     { "id": "qwen2.5-coder:1.5b", "name": "Code", "description": "Programming, debugging, code generation" }
-  ],
-  "default": "qwen2.5:0.5b"
+  ]
 }

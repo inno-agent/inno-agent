@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	BaseURL     string
+	Models      []string
 	Model       string
 	ServerPort  string
 	IdentityURL string
@@ -29,13 +30,11 @@ func Load() Config {
 		baseURL = fmt.Sprintf("http://%s:%s/v1", ollamaHost, ollamaPort)
 	}
 
-	// Default model = first entry of LLM_MODELS (used when a request omits the model).
-	model := ""
-	if models := strings.Fields(os.Getenv("LLM_MODELS")); len(models) > 0 {
-		model = models[0]
-	}
-	if model == "" {
-		model = "qwen2.5:0.5b"
+	// LLM_MODELS is the single source of truth for which models exist. The first
+	// entry is the default (used when a request omits the model).
+	models := strings.Fields(os.Getenv("LLM_MODELS"))
+	if len(models) == 0 {
+		models = []string{"qwen2.5:0.5b"}
 	}
 
 	serverPort := os.Getenv("API_PORT")
@@ -53,7 +52,8 @@ func Load() Config {
 
 	return Config{
 		BaseURL:     baseURL,
-		Model:       model,
+		Models:      models,
+		Model:       models[0],
 		ServerPort:  serverPort,
 		IdentityURL: identityURL,
 	}

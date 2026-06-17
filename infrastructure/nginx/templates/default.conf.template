@@ -36,6 +36,18 @@ server {
         proxy_pass http://$upstream;
     }
 
+    # Orchestrator (LLM platform API): strip /llm prefix so /llm/v1/models
+    # reaches the orchestrator as /v1/models.
+    location /llm/ {
+        set $upstream orchestrator:8080;
+        rewrite ^/llm/(.*)$ /$1 break;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass http://$upstream;
+    }
+
     location / {
         set $upstream frontend:80;
         proxy_set_header Host $host;

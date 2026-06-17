@@ -14,10 +14,10 @@ func New(provider llm.Provider) *AIOrchestrator {
 	return &AIOrchestrator{provider: provider}
 }
 
-func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message) (string, error) {
-	return o.provider.Chat(ctx, messages)
+func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message, modelName string) (string, error) {
+	return o.provider.Chat(ctx, messages, modelName)
 }
 
-func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message) (<-chan string, error) {
-	return o.provider.Stream(ctx, messages)
+func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message, modelName string) (<-chan string, error) {
+	return o.provider.Stream(ctx, messages, modelName)
 }

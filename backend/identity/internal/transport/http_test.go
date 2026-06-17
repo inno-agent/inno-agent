@@ -2,7 +2,11 @@ package transport_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,12 +15,25 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func makeTestIssuer(t *testing.T) *issuer.Issuer {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	iss, err := issuer.New(pemBytes, 30*time.Minute)
+	require.NoError(t, err)
+	return iss
+}
 
 // --- stub provider ---
 
@@ -34,18 +51,11 @@ func (s *stubProvider) Validate(_ context.Context, _ string) (provider.ExternalI
 type stubUserSvc struct {
 	upsertUser user.User
 	upsertErr  error
-	ctx        user.UserContext
-	ctxErr     error
 }
 
 func (s *stubUserSvc) UpsertIdentity(_ context.Context, _, _, _ string) (user.User, error) {
 	return s.upsertUser, s.upsertErr
 }
-
-func (s *stubUserSvc) GetContext(_ context.Context, _ string) (user.UserContext, error) {
-	return s.ctx, s.ctxErr
-}
-func (s *stubUserSvc) UpdateContext(_ context.Context, _ string, _ []byte) error { return nil }
 
 // --- test ---
 
@@ -57,8 +67,7 @@ func TestHTTP_Exchange_Success(t *testing.T) {
 		Provider: "authentik", Sub: "user-123", Email: "user@example.com",
 	}}
 	svc := &stubUserSvc{
-		upsertUser: user.User{ID: "uuid-abc", Tier: "user"},
-		ctx:        user.UserContext{UserID: "uuid-abc", Version: 1},
+		upsertUser: user.User{ID: "uuid-abc"},
 	}
 
 	r := gin.New()

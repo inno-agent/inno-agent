@@ -34,7 +34,7 @@ func TestIssuer_AcceptsPKCS1Key(t *testing.T) {
 	iss, err := issuer.New(makePKCS1PrivateKeyPEM(t), 30*time.Minute)
 	require.NoError(t, err)
 
-	token, err := iss.Issue("user-1", "user", 0)
+	token, err := iss.Issue("user-1")
 	require.NoError(t, err)
 
 	claims, err := iss.Verify(token)
@@ -47,15 +47,13 @@ func TestIssuer_IssueAndVerify(t *testing.T) {
 	iss, err := issuer.New(keyPEM, 30*time.Minute)
 	require.NoError(t, err)
 
-	token, err := iss.Issue("user-uuid-123", "premium", 7)
+	token, err := iss.Issue("user-uuid-123")
 	require.NoError(t, err)
 	assert.NotEmpty(t, token)
 
 	claims, err := iss.Verify(token)
 	require.NoError(t, err)
 	assert.Equal(t, "user-uuid-123", claims.UserID)
-	assert.Equal(t, "premium", claims.Tier)
-	assert.Equal(t, int32(7), claims.CtxVersion)
 }
 
 func TestIssuer_VerifyExpired(t *testing.T) {
@@ -63,7 +61,7 @@ func TestIssuer_VerifyExpired(t *testing.T) {
 	iss, err := issuer.New(keyPEM, -time.Second) // already expired
 	require.NoError(t, err)
 
-	token, err := iss.Issue("user-123", "user", 0)
+	token, err := iss.Issue("user-123")
 	require.NoError(t, err)
 
 	_, err = iss.Verify(token)

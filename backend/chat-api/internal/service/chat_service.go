@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 var _ domain.ChatService = (*ChatService)(nil)
@@ -89,7 +91,8 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 	return items, total, nil
 }
 
-func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
+// Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
+func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
 		title := s.generateTitle(ctx, message)
 		chat, err := s.chatRepo.Create(ctx, userID, &title)
@@ -130,14 +133,14 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 		})
 	}
 
-	rawCh, err := s.llm.Stream(ctx, llmMessages)
+	rawCh, err := s.llm.Stream(ctx, llmMessages, modelName)
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("Stream: llm stream: %w", err)
 	}
 
 	outCh := make(chan string, 4)
 
-	//nolint:gosec
+	//nolint:gosec // context.Background intentional: save must complete even if request context is cancelled
 	go func() {
 		defer close(outCh)
 		var sb strings.Builder
@@ -206,15 +209,16 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 }
 
 func (s *ChatService) generateTitle(ctx context.Context, message string) string {
-	titleCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	titleCtx := context.WithValue(context.Background(), middleware.TokenKey, middleware.TokenFromContext(ctx))
+	titleCtx, cancel := context.WithTimeout(titleCtx, 15*time.Second)
 	defer cancel()
 
 	title, err := s.llm.Chat(titleCtx, []domain.LLMMessage{
 		{
 			Role:    "user",
-			Content: fmt.Sprintf("Summarize the following text in 3-5 words in the same language as the text. Reply ONLY with the summary, no quotes, no explanations. If you cannot summarize, reply with an empty string:\n\n%s", message),
+			Content: fmt.Sprintf("Write a short chat title (3-5 words) in the same language as the message below. Reply with ONLY the title — no quotes, no labels, no explanation.\n\nMessage:\n%s", message),
 		},
-	})
+	}, "")
 	if err != nil {
 		s.logger.Warn(
 			"failed to generate title, using fallback",
@@ -224,18 +228,31 @@ func (s *ChatService) generateTitle(ctx context.Context, message string) string 
 		return truncateString(message, 30)
 	}
 
-	title = strings.TrimSpace(title)
-	if title == "" || len(title) > 60 {
+	title = cleanTitle(title)
+	if title == "" || utf8.RuneCountInString(title) > 40 {
 		return truncateString(message, 30)
 	}
 	return title
 }
 
+// cleanTitle strips the noise weak models add around a one-line title:
+// trailing explanations on later lines, wrapping quotes, and markdown.
+func cleanTitle(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.Trim(s, " \t\"'`*.")
+}
+
+// truncateString trims s to at most maxLen runes (not bytes), so multibyte
+// text (e.g. Cyrillic) is never cut mid-rune.
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string(r[:maxLen])
 }
 
 func (s *ChatService) DeleteChat(ctx context.Context, userID string, chatID uuid.UUID) error {

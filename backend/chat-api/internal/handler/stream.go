@@ -16,6 +16,7 @@ import (
 
 type streamRequest struct {
 	Message string `json:"message"`
+	Model   string `json:"model,omitempty"`
 }
 
 // StreamHandler handles SSE streaming of LLM responses.
@@ -79,7 +80,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	writeSSEEvent(w, "status", map[string]string{"stage": "context_loading"})
 	flusher.Flush()
 
-	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, req.Message)
+	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, req.Message, req.Model)
 	if err != nil {
 		h.logger.Error("failed to start stream", zap.Error(err))
 		switch {

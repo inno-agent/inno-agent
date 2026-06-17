@@ -2,7 +2,6 @@ package transport
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 // ExchangeServicer is the subset of user.Service used by the HTTP handler.
 type ExchangeServicer interface {
 	UpsertIdentity(ctx context.Context, provider, sub, email string) (user.User, error)
-	GetContext(ctx context.Context, userID string) (user.UserContext, error)
 }
 
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
@@ -51,9 +49,7 @@ func RegisterHTTPRoutes(r *gin.Engine, p provider.AuthProvider, svc ExchangeServ
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"user_id":     claims.UserID,
-			"tier":        claims.Tier,
-			"ctx_version": claims.CtxVersion,
+			"user_id": claims.UserID,
 		})
 	})
 
@@ -82,13 +78,7 @@ func exchangeHandler(p provider.AuthProvider, svc ExchangeServicer, iss *issuer.
 			return
 		}
 
-		uctx, err := svc.GetContext(c.Request.Context(), u.ID)
-		if err != nil && !errors.Is(err, user.ErrNotFound) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
-			return
-		}
-
-		token, err := iss.Issue(u.ID, u.Tier, uctx.Version)
+		token, err := iss.Issue(u.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return

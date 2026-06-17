@@ -63,10 +63,43 @@ Edit `.env` before starting if you want to change model/hostname/ollama port/api
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODEL_NAME` | `qwen2.5:0.5b` | Ollama model to pull and use |
+| `LLM_MODELS` | `qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b` | Space-separated models; first is the default |
 | `OLLAMA_HOST` | `ollama` | Ollama hostname (inside Docker network) |
 | `OLLAMA_PORT` | `11434` | Ollama port exposed on host |
 | `API_PORT` | `8080` | Orchestrator API port exposed on host |
+| `IDENTITY_URL` | `http://identity:8081` | Identity service used to validate tokens |
+
+### Models: `LLM_MODELS` vs `models.json`
+
+`LLM_MODELS` is the **single source of truth** for which models exist. The same
+space-separated list drives three things, so they never drift:
+
+1. **Pulling** — `ollama-pull` pulls exactly these models on startup.
+2. **Default** — the first entry is used when a request omits `model_name`.
+3. **Catalog** — `GET /v1/models` returns exactly these models, in this order.
+
+`internal/catalog/models.json` is **only a display-metadata registry** — it maps
+a model id to a `name` and `description` for the UI. It does **not** decide which
+models are available.
+
+```jsonc
+// models.json — metadata lookup keyed by id
+{ "models": [
+  { "id": "qwen2.5:0.5b", "name": "Fast", "description": "Tiny model, fastest responses" }
+] }
+```
+
+How `GET /v1/models` is built: for each id in `LLM_MODELS`, look up its metadata
+in `models.json`. **An id with no entry still appears** — its `name` falls back to
+the id itself. So:
+
+- **Add/remove a model** → edit `LLM_MODELS` only. It gets pulled, served, and can
+  be the default. No code change.
+- **Give it a nice label/description** → add an entry to `models.json` (optional)
+  and rebuild the orchestrator (the file is embedded via `go:embed`).
+
+`models.json` is embedded at build time — editing it requires a rebuild; editing
+`LLM_MODELS` only requires a restart.
 
 ---
 
@@ -183,7 +216,7 @@ docker compose logs innoagent-ollama
 
 Common causes:
 - Model pull did not complete
-- `MODEL_NAME` in `.env` does not match what was pulled
+- `LLM_MODELS` in `.env` does not match what was pulled
 
 ### Port already in use
 

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"google.golang.org/grpc"
 
 	"github.com/inno-agent/identity/internal/config"
 	"github.com/inno-agent/identity/internal/db"
@@ -19,7 +17,6 @@ import (
 	"github.com/inno-agent/identity/internal/provider"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
-	identityv1 "github.com/inno-agent/identity/proto/identity/v1"
 )
 
 func main() {
@@ -65,21 +62,6 @@ func main() {
 	repo := user.NewRepository(pool)
 	svc := user.NewService(repo)
 
-	// gRPC server
-	grpcSrv := grpc.NewServer()
-	identityv1.RegisterIdentityServiceServer(grpcSrv, transport.NewGRPCServer(iss, svc))
-
-	grpcLis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
-	if err != nil {
-		log.Fatalf("grpc listen: %v", err)
-	}
-	go func() {
-		log.Printf("gRPC listening on :%s", cfg.GRPCPort)
-		if err := grpcSrv.Serve(grpcLis); err != nil {
-			log.Printf("gRPC serve: %v", err)
-		}
-	}()
-
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -102,8 +84,6 @@ func main() {
 
 	<-ctx.Done()
 	log.Println("shutting down...")
-
-	grpcSrv.GracefulStop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

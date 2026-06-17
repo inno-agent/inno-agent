@@ -16,9 +16,7 @@ import (
 const issuerName = "inno-agent-identity"
 
 type Claims struct {
-	UserID     string
-	Tier       string
-	CtxVersion int32
+	UserID string
 }
 
 type Issuer struct {
@@ -58,15 +56,13 @@ func parseRSAPrivateKey(der []byte) (*rsa.PrivateKey, error) {
 	return rsaKey, nil
 }
 
-func (i *Issuer) Issue(userID, tier string, ctxVersion int32) (string, error) {
+func (i *Issuer) Issue(userID string) (string, error) {
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"sub":         userID,
-		"tier":        tier,
-		"ctx_version": ctxVersion,
-		"iss":         issuerName,
-		"iat":         jwt.NewNumericDate(now),
-		"exp":         jwt.NewNumericDate(now.Add(i.expiry)),
+		"sub": userID,
+		"iss": issuerName,
+		"iat": jwt.NewNumericDate(now),
+		"exp": jwt.NewNumericDate(now.Add(i.expiry)),
 	})
 	signed, err := token.SignedString(i.privateKey)
 	if err != nil {
@@ -112,12 +108,6 @@ func (i *Issuer) Verify(tokenStr string) (Claims, error) {
 	}
 
 	sub, _ := mc["sub"].(string)
-	tier, _ := mc["tier"].(string)
-	ctxVersionFloat, _ := mc["ctx_version"].(float64)
 
-	return Claims{
-		UserID:     sub,
-		Tier:       tier,
-		CtxVersion: int32(ctxVersionFloat),
-	}, nil
+	return Claims{UserID: sub}, nil
 }

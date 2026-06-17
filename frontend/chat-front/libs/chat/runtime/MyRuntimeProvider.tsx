@@ -12,6 +12,7 @@ import {
 } from '@libs/chat/model/messageMappers'
 import { runMessageStream } from './runMessageStream'
 import { useChatHistory } from './useChatHistory'
+import { useModelContext } from './ModelContext'
 
 export function MyRuntimeProvider({
     children,
@@ -25,6 +26,7 @@ export function MyRuntimeProvider({
     const [isRunning, setIsRunning] = useState<boolean>(false)
     const chatIdRef = useRef<string>(initialChatId ?? 'new')
     const pendingNavigationChatIdRef = useRef<string | null>(null)
+    const { selectedModelId } = useModelContext()
 
     useChatHistory({
         initialChatId,
@@ -48,6 +50,7 @@ export function MyRuntimeProvider({
                 await runMessageStream({
                     initialChatId,
                     prompt: firstPart.text,
+                    model: selectedModelId,
                     chatIdRef,
                     pendingNavigationChatIdRef,
                     setMessages,
@@ -66,7 +69,7 @@ export function MyRuntimeProvider({
                 setIsRunning(false)
             }
         },
-        [initialChatId, navigate],
+        [initialChatId, navigate, selectedModelId],
     )
 
     const runtime = useExternalStoreRuntime<ThreadMessageLike>({

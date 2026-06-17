@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 type contextKey string
 
-const UserIDKey contextKey = "user_id"
+const (
+	UserIDKey contextKey = "user_id"
+	TokenKey  contextKey = "auth_token"
+)
 
 type validateResponse struct {
 	UserID string `json:"user_id"`
-	Tier   string `json:"tier"`
 }
 
 // Auth validates the Bearer token against the auth service and injects user_id into context.
@@ -21,7 +24,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get("Authorization")
-			if len(token) > 7 && token[:7] == "Bearer " {
+			if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 				token = token[7:]
 			} else {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -50,6 +53,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), UserIDKey, vr.UserID)
+			ctx = context.WithValue(ctx, TokenKey, token)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -58,5 +62,11 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 // UserIDFromContext extracts user_id from context set by Auth middleware.
 func UserIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(UserIDKey).(string)
+	return v
+}
+
+// TokenFromContext extracts the raw bearer token set by Auth middleware.
+func TokenFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(TokenKey).(string)
 	return v
 }

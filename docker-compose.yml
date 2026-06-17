@@ -9,7 +9,6 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-  ollama-data:
   authentik-media:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
@@ -186,7 +185,8 @@ services:
     networks:
       - innoagent
     volumes:
-      - ollama-data:/root/.ollama
+      # Bind-mount to host so models survive `docker compose down -v`.
+      - ./.ollama:/root/.ollama
     environment:
       OLLAMA_HOST: "0.0.0.0"
     healthcheck:
@@ -196,14 +196,15 @@ services:
       retries: 5
       start_period: 30s
 
-  # ─── Pull model on first boot ─────────────────────────────────────────────
+  # ─── Pull models on first boot ────────────────────────────────────────────
   ollama-pull:
     image: ollama/ollama:latest
     networks:
       - innoagent
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["sh", "-c", "ollama pull ${MODEL_NAME:-qwen2.5:0.5b}"]
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+    entrypoint: ["sh", "-c", "for m in $$LLM_MODELS; do ollama pull $$m; done"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -218,9 +219,10 @@ services:
     networks:
       - innoagent
     environment:
-      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       LLM_BASE_URL: http://ollama:11434/v1
       API_PORT: "8080"
+      IDENTITY_URL: http://identity:8081
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
     depends_on:
       ollama:
         condition: service_healthy

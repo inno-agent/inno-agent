@@ -18,11 +18,11 @@ import (
 
 type mockStreamService struct {
 	domain.ChatService
-	streamFn func(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error)
+	streamFn func(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error)
 }
 
-func (m *mockStreamService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string) (<-chan string, uuid.UUID, error) {
-	return m.streamFn(ctx, userID, chatID, message)
+func (m *mockStreamService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
+	return m.streamFn(ctx, userID, chatID, message, modelName)
 }
 
 func newStreamRouter(h *StreamHandler) *chi.Mux {
@@ -74,7 +74,7 @@ func TestStream_MissingMessage(t *testing.T) {
 func TestStream_NewChat_SendsChunks(t *testing.T) {
 	resolvedID := uuid.New()
 	svc := &mockStreamService{
-		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string) (<-chan string, uuid.UUID, error) {
+		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string, _ string) (<-chan string, uuid.UUID, error) {
 			ch := make(chan string, 2)
 			ch <- "hello"
 			ch <- " world"
@@ -104,7 +104,7 @@ func TestStream_NewChat_SendsChunks(t *testing.T) {
 
 func TestStream_AccessDenied_ReturnsSSEError(t *testing.T) {
 	svc := &mockStreamService{
-		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string) (<-chan string, uuid.UUID, error) {
+		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string, _ string) (<-chan string, uuid.UUID, error) {
 			return nil, uuid.Nil, fmt.Errorf("service: %w", domain.ErrAccessDenied)
 		},
 	}
@@ -124,7 +124,7 @@ func TestStream_AccessDenied_ReturnsSSEError(t *testing.T) {
 
 func TestStream_NotFound_ReturnsSSEError(t *testing.T) {
 	svc := &mockStreamService{
-		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string) (<-chan string, uuid.UUID, error) {
+		streamFn: func(_ context.Context, _ string, _ uuid.UUID, _ string, _ string) (<-chan string, uuid.UUID, error) {
 			return nil, uuid.Nil, fmt.Errorf("service: %w", domain.ErrNotFound)
 		},
 	}

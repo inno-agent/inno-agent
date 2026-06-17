@@ -1,5 +1,8 @@
 import { AuiProvider, Suggestions, useAui } from '@assistant-ui/react'
+import { useMemo } from 'react'
 import { Thread } from '@libs/chat/ui/thread'
+import { ModelContext } from '@libs/chat/runtime/ModelContext'
+import { useSelectedModel } from '@libs/chat/runtime/useSelectedModel'
 
 const suggestions = Suggestions([
     {
@@ -16,10 +19,17 @@ const suggestions = Suggestions([
 
 export const ChatWindow = () => {
     const aui = useAui({ suggestions })
+    const { models, selectedModelId, setSelectedModelId } = useSelectedModel()
+    const modelState = useMemo(
+        () => ({ models, selectedModelId, setSelectedModelId }),
+        [models, selectedModelId, setSelectedModelId],
+    )
 
     return (
-        <AuiProvider value={aui}>
-            <Thread />
-        </AuiProvider>
+        <ModelContext.Provider value={modelState}>
+            <AuiProvider value={aui}>
+                <Thread />
+            </AuiProvider>
+        </ModelContext.Provider>
     )
 }

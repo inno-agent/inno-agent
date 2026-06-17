@@ -15,11 +15,12 @@ type Provider interface {
 	// Chat sends a user message and returns the model's text response.
 	// The caller is responsible for supplying a context that carries
 	// deadlines, cancellation signals, and request-scoped values.
+	// modelName allows overriding the default model for this request.
 	//
 	// Returns a non-nil error on network failure, non-2xx HTTP status,
 	// or malformed response from the upstream API.
-	Chat(ctx context.Context, messages []Message) (string, error)
-	Stream(ctx context.Context, messages []Message) (<-chan string, error)
+	Chat(ctx context.Context, messages []Message, modelName string) (string, error)
+	Stream(ctx context.Context, messages []Message, modelName string) (<-chan string, error)
 }
 
 type Message struct {

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/gitflame"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
 )
 
 func TestClient_GetPRDiff_NotConfigured(t *testing.T) {

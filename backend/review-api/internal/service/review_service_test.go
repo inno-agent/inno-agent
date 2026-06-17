@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
 
 type mockDiffProvider struct {
@@ -31,16 +31,12 @@ func (m *mockLLMProvider) Chat(_ context.Context, messages []domain.LLMMessage) 
 	return m.answer, m.err
 }
 
-func (m *mockLLMProvider) Stream(_ context.Context, _ []domain.LLMMessage) (<-chan string, error) {
-	return nil, errors.New("not implemented")
-}
-
 func TestReviewService_WithProvidedDiff_SkipsDiffProvider(t *testing.T) {
 	diffProvider := &mockDiffProvider{err: errors.New("should not be called")}
 	llm := &mockLLMProvider{answer: "# Summary\nAll good."}
 	svc := NewReviewService(diffProvider, llm, zap.NewNop())
 
-	review, err := svc.ReviewPR(context.Background(), "123", "diff --git a/main.go")
+	review, err := svc.ReviewPR(context.Background(), "my-org/repo/1", "diff --git a/main.go")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +56,7 @@ func TestReviewService_WithoutDiff_UsesDiffProvider(t *testing.T) {
 	llm := &mockLLMProvider{answer: "# Summary\nReview complete."}
 	svc := NewReviewService(diffProvider, llm, zap.NewNop())
 
-	review, err := svc.ReviewPR(context.Background(), "456", "")
+	review, err := svc.ReviewPR(context.Background(), "my-org/repo/2", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,7 +69,7 @@ func TestReviewService_WithoutDiff_ReturnsUnavailable(t *testing.T) {
 	diffProvider := &mockDiffProvider{err: domain.ErrDiffUnavailable}
 	svc := NewReviewService(diffProvider, &mockLLMProvider{}, zap.NewNop())
 
-	_, err := svc.ReviewPR(context.Background(), "456", "")
+	_, err := svc.ReviewPR(context.Background(), "my-org/repo/3", "")
 	if !errors.Is(err, domain.ErrDiffUnavailable) {
 		t.Fatalf("expected ErrDiffUnavailable, got %v", err)
 	}

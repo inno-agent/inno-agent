@@ -32,20 +32,10 @@ type LLMProvider interface {
 	Stream(ctx context.Context, messages []LLMMessage, modelName string) (<-chan string, error)
 }
 
-// DiffProvider fetches pull request diffs from an external source.
-type DiffProvider interface {
-	GetPRDiff(ctx context.Context, prID string) (string, error)
-}
-
 // ChatService defines the application use cases for chat and messaging.
 type ChatService interface {
 	ListChats(ctx context.Context, userID string, limit, offset int) ([]ChatItem, int, error)
 	GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]MessageDTO, int, error)
 	Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error)
 	DeleteChat(ctx context.Context, userID string, chatID uuid.UUID) error
-}
-
-// ReviewService generates AI-powered pull request reviews.
-type ReviewService interface {
-	ReviewPR(ctx context.Context, prID string, diff string) (string, error)
 }

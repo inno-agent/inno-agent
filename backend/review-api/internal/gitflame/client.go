@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
 
 var _ domain.DiffProvider = (*Client)(nil)
@@ -56,7 +56,6 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 		return "", fmt.Errorf("%w: pr_index must be integer, got %q", domain.ErrValidation, parts[2])
 	}
 
-	// GET /repos/{owner}/{repo}/pulls/{index}.diff
 	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d.diff",
 		strings.TrimRight(c.baseURL, "/"),
 		url.PathEscape(owner),

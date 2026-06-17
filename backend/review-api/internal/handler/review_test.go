@@ -11,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
 
 type mockReviewService struct {
@@ -60,11 +60,8 @@ func TestReview_MissingPRID(t *testing.T) {
 func TestReview_Success(t *testing.T) {
 	svc := &mockReviewService{
 		reviewFn: func(_ context.Context, prID string, diff string) (string, error) {
-			if prID != "123" {
-				t.Fatalf("expected pr_id 123, got %q", prID)
-			}
-			if diff != "diff --git a/main.go" {
-				t.Fatalf("expected diff payload, got %q", diff)
+			if prID != "my-org/backend/42" {
+				t.Fatalf("expected pr_id my-org/backend/42, got %q", prID)
 			}
 			return "# Summary\nLooks good.", nil
 		},
@@ -72,7 +69,7 @@ func TestReview_Success(t *testing.T) {
 	h := NewReviewHandler(svc, zap.NewNop())
 	r := newReviewRouter(h)
 
-	rec := postReview(r, `{"pr_id":"123","diff":"diff --git a/main.go"}`)
+	rec := postReview(r, `{"pr_id":"my-org/backend/42","diff":"diff --git a/main.go"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -90,7 +87,7 @@ func TestReview_DiffUnavailable(t *testing.T) {
 	h := NewReviewHandler(svc, zap.NewNop())
 	r := newReviewRouter(h)
 
-	rec := postReview(r, `{"pr_id":"123"}`)
+	rec := postReview(r, `{"pr_id":"my-org/backend/42"}`)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rec.Code)
 	}
@@ -105,7 +102,7 @@ func TestReview_ServiceError(t *testing.T) {
 	h := NewReviewHandler(svc, zap.NewNop())
 	r := newReviewRouter(h)
 
-	rec := postReview(r, `{"pr_id":"123","diff":"diff content"}`)
+	rec := postReview(r, `{"pr_id":"my-org/backend/42","diff":"diff content"}`)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}

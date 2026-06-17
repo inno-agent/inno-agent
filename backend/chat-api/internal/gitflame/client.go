@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,10 +50,14 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 
 	owner := parts[0]
 	repo := parts[1]
-	prIndex := parts[2]
+
+	prIndex, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("gitflame: pr_index must be integer, got %q", parts[2])
+	}
 
 	// GET /repos/{owner}/{repo}/pulls/{index}.diff
-	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%s.diff",
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d.diff",
 		strings.TrimRight(c.baseURL, "/"),
 		url.PathEscape(owner),
 		url.PathEscape(repo),
@@ -65,7 +70,6 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 	}
 
 	req.Header.Set("Authorization", "token "+c.token)
-	req.Header.Set("Accept", "text/plain")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -86,14 +90,11 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 		}
 		return diff, nil
 
-	case http.StatusNotFound:
-		return "", fmt.Errorf("gitflame: PR not found (404): %s/%s/%s", owner, repo, prIndex)
-
 	case http.StatusUnauthorized:
 		return "", fmt.Errorf("%w: gitflame authentication failed (401)", domain.ErrDiffUnavailable)
 
-	case http.StatusForbidden:
-		return "", fmt.Errorf("%w: gitflame access denied (403)", domain.ErrDiffUnavailable)
+	case http.StatusNotFound:
+		return "", fmt.Errorf("%w: gitflame PR %s/%s/%d not found", domain.ErrDiffUnavailable, owner, repo, prIndex)
 
 	default:
 		return "", fmt.Errorf(

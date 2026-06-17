@@ -64,18 +64,14 @@ func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string) 
 		}
 	}
 
-	if diff == "" {
-		return "", fmt.Errorf("ReviewPR: %w", domain.ErrDiffUnavailable)
-	}
-
 	messages := []domain.LLMMessage{
 		{
 			Role:    "system",
-			Content: reviewSystemPrompt + "\n\nPR diff:\n" + diff,
+			Content: reviewSystemPrompt,
 		},
 		{
 			Role:    "user",
-			Content: fmt.Sprintf("Review pull request %s.", prID),
+			Content: fmt.Sprintf("Review pull request %s.\n\nDiff:\n%s", prID, diff),
 		},
 	}
 

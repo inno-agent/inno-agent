@@ -50,9 +50,9 @@ func (h *ReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrValidation):
-			writeError(w, http.StatusBadRequest, "pr_id is required")
+			writeError(w, http.StatusBadRequest, "invalid pr_id format")
 		case errors.Is(err, domain.ErrDiffUnavailable):
-			writeError(w, http.StatusBadRequest, "diff is required when GitFlame is unavailable")
+			writeError(w, http.StatusBadGateway, "failed to fetch PR diff from upstream")
 		default:
 			h.logger.Error("failed to review PR", zap.String("pr_id", req.PRID), zap.Error(err))
 			writeError(w, http.StatusInternalServerError, "failed to generate review")

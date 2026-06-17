@@ -91,8 +91,8 @@ func TestReview_DiffUnavailable(t *testing.T) {
 	r := newReviewRouter(h)
 
 	rec := postReview(r, `{"pr_id":"123"}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
 	}
 }
 

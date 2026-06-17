@@ -50,8 +50,8 @@ func TestReviewService_WithProvidedDiff_SkipsDiffProvider(t *testing.T) {
 	if len(llm.last) != 2 {
 		t.Fatalf("expected 2 llm messages, got %d", len(llm.last))
 	}
-	if !strings.Contains(llm.last[0].Content, "diff --git a/main.go") {
-		t.Fatalf("expected diff in system prompt, got %q", llm.last[0].Content)
+	if !strings.Contains(llm.last[1].Content, "diff --git a/main.go") {
+		t.Fatalf("expected diff in user message, got %q", llm.last[1].Content)
 	}
 }
 

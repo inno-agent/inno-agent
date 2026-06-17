@@ -45,7 +45,7 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 
 	parts := strings.Split(prID, "/")
 	if len(parts) != 3 {
-		return "", fmt.Errorf("gitflame: invalid pr_id format, expected owner/repo/pr_index")
+		return "", fmt.Errorf("%w: invalid pr_id format, expected owner/repo/pr_index", domain.ErrValidation)
 	}
 
 	owner := parts[0]
@@ -53,7 +53,7 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 
 	prIndex, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("gitflame: pr_index must be integer, got %q", parts[2])
+		return "", fmt.Errorf("%w: pr_index must be integer, got %q", domain.ErrValidation, parts[2])
 	}
 
 	// GET /repos/{owner}/{repo}/pulls/{index}.diff
@@ -66,7 +66,7 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("gitflame: failed to create request: %w", err)
+		return "", fmt.Errorf("%w: failed to create request: %w", domain.ErrDiffUnavailable, err)
 	}
 
 	req.Header.Set("Authorization", "token "+c.token)
@@ -77,13 +77,12 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10 MB limit
-	if err != nil {
-		return "", fmt.Errorf("%w: failed to read response: %w", domain.ErrDiffUnavailable, err)
-	}
-
 	switch resp.StatusCode {
 	case http.StatusOK:
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		if err != nil {
+			return "", fmt.Errorf("%w: failed to read response: %w", domain.ErrDiffUnavailable, err)
+		}
 		diff := string(body)
 		if diff == "" {
 			return "", fmt.Errorf("%w: empty diff from gitflame", domain.ErrDiffUnavailable)
@@ -97,11 +96,12 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 		return "", fmt.Errorf("%w: gitflame PR %s/%s/%d not found", domain.ErrDiffUnavailable, owner, repo, prIndex)
 
 	default:
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return "", fmt.Errorf(
 			"%w: gitflame returned status %d: %s",
 			domain.ErrDiffUnavailable,
 			resp.StatusCode,
-			strings.TrimSpace(string(body)),
+			strings.TrimSpace(string(snippet)),
 		)
 	}
 }

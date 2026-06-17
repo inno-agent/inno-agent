@@ -13,9 +13,6 @@ on:
 jobs:
   ci-frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
 
     steps:
       - name: Checkout code
@@ -26,14 +23,16 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Lint
-        run: npm run lint
-
-      # - name: Test
-      #   run: npm test
-
-      - name: Build
-        run: npm run build
+      # later will be separated into different CIs on each app
+      - name: Find, lint and build apps
+        run: |
+          for dir in frontend/*/; do
+            if [ -f "${dir}package.json" ]; then
+              echo "Building $dir"
+              cd "$dir"
+              npm ci
+              npm run lint
+              npm run build
+              cd -
+            fi
+          done

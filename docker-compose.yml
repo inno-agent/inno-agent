@@ -9,7 +9,6 @@ networks:
 volumes:
   postgres-data:
   redis-data:
-  ollama-data:
   authentik-media:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
@@ -187,7 +186,8 @@ services:
     networks:
       - innoagent
     volumes:
-      - ollama-data:/root/.ollama
+      # Bind-mount to host so models survive `docker compose down -v`.
+      - ./.ollama:/root/.ollama
     environment:
       OLLAMA_HOST: "0.0.0.0"
     healthcheck:

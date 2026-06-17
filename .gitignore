@@ -13,3 +13,6 @@ Thumbs.db
 
 # local dev certs (mkcert output — never commit)
 infrastructure/nginx/certs/*.pem
+
+# Локальные модели ollama (bind-mount, переживают down -v)
+.ollama/

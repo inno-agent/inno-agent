@@ -1,0 +1,109 @@
+openapi: 3.0.3
+info:
+  title: PR Review API
+  version: 0.1.0
+
+servers:
+  - url: http://localhost:8000/api/v1
+
+paths:
+
+  /review:
+    post:
+      summary: Generate AI pull request review
+      operationId: reviewPullRequest
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pr_id]
+              properties:
+                pr_id:
+                  type: string
+                  description: |
+                    Pull request identifier in the format `owner/repo/pr_index`.
+                    Example: `my-org/backend-service/42`.
+                  pattern: '^[^/]+/[^/]+/[0-9]+$'
+                  example: "my-org/backend-service/42"
+                diff:
+                  type: string
+                  description: |
+                    Optional unified diff. When provided, the GitFlame lookup is skipped
+                    and this diff is reviewed directly.
+                  example: |
+                    diff --git a/main.go b/main.go
+                    index 1234567..89abcde 100644
+                    --- a/main.go
+                    +++ b/main.go
+                    @@ -1 +1 @@
+                    -fmt.Println("old")
+                    +fmt.Println("new")
+      responses:
+        '200':
+          description: Markdown review
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [review_markdown]
+                properties:
+                  review_markdown:
+                    type: string
+                    example: |
+                      # Summary
+                      The changes look solid overall.
+        '400':
+          description: Invalid request — missing or malformed `pr_id`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/401'
+        '502':
+          description: Failed to fetch diff from GitFlame (upstream unreachable or returned an error)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/500'
+
+components:
+
+  schemas:
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+
+    '401':
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    '500':
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

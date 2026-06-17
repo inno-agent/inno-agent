@@ -20,7 +20,7 @@ func Load() *Config {
 	return &Config{
 		ServerPort:      getEnv("SERVER_PORT", "8001"),
 		OrchestratorURL: getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
-		AuthServiceURL:  getEnv("AUTH_SERVICE_URL", "http://identity:8081"),
+		AuthServiceURL:  getEnvAllowEmpty("AUTH_SERVICE_URL", "http://identity:8081"),
 		GitFlameBaseURL: getEnv("GITFLAME_BASE_URL", ""),
 		GitFlameToken:   getEnv("GITFLAME_TOKEN", ""),
 		ReadTimeout:     getDuration("READ_TIMEOUT", 10*time.Second),
@@ -31,6 +31,14 @@ func Load() *Config {
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// getEnvAllowEmpty uses the fallback only when the variable is unset, not when empty.
+func getEnvAllowEmpty(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
 		return v
 	}
 	return fallback

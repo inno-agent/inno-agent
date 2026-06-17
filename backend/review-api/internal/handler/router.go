@@ -30,7 +30,9 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, authServiceURL string)
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.Auth(authServiceURL))
+		if authServiceURL != "" {
+			r.Use(middleware.Auth(authServiceURL))
+		}
 		r.Post("/review", reviewH.Review)
 	})
 }

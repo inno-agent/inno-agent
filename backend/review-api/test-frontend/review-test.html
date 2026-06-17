@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PR Review Tester</title>
+  <style>
+    body { font-family: monospace; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; }
+    label { display: block; margin-top: 16px; color: #8b949e; font-size: 12px; text-transform: uppercase; }
+    input, textarea { width: 100%; box-sizing: border-box; background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 8px; border-radius: 6px; font-family: monospace; margin-top: 4px; }
+    input:focus, textarea:focus { outline: none; border-color: #58a6ff; }
+    button { margin-top: 20px; padding: 10px 24px; background: #238636; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #2ea043; }
+    button:disabled { background: #21262d; color: #8b949e; cursor: default; }
+    #result { margin-top: 28px; }
+    #result h2 { color: #58a6ff; font-size: 14px; text-transform: uppercase; }
+    #markdown { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; white-space: pre-wrap; line-height: 1.6; }
+    #error { color: #f85149; margin-top: 12px; }
+    .row { display: flex; gap: 12px; }
+    .row input { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>PR Review Tester</h1>
+
+  <label>Review Service URL</label>
+  <input id="url" value="http://localhost:8001" />
+
+  <label>Bearer Token</label>
+  <input id="token" type="password" placeholder="eyJ..." />
+
+  <label>PR ID (owner/repo/index)</label>
+  <input id="prid" placeholder="my-org/backend/42" />
+
+  <label>Diff (optional — leave empty to fetch from GitFlame)</label>
+  <textarea id="diff" rows="10" placeholder="diff --git a/main.go b/main.go&#10;..."></textarea>
+
+  <button id="btn" onclick="submit()">Generate Review</button>
+  <div id="error"></div>
+
+  <div id="result" style="display:none">
+    <h2>Review</h2>
+    <pre id="markdown"></pre>
+  </div>
+
+  <script>
+    async function submit() {
+      const btn = document.getElementById('btn');
+      const errEl = document.getElementById('error');
+      const resultEl = document.getElementById('result');
+      const markdownEl = document.getElementById('markdown');
+
+      const url = document.getElementById('url').value.trim();
+      const token = document.getElementById('token').value.trim();
+      const prid = document.getElementById('prid').value.trim();
+      const diff = document.getElementById('diff').value.trim();
+
+      errEl.textContent = '';
+      resultEl.style.display = 'none';
+
+      if (!prid) { errEl.textContent = 'pr_id is required'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+
+      try {
+        const body = { pr_id: prid };
+        if (diff) body.diff = diff;
+
+        const resp = await fetch(`${url}/api/v1/review`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(body)
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          errEl.textContent = `${resp.status}: ${data.error ?? JSON.stringify(data)}`;
+          return;
+        }
+
+        markdownEl.textContent = data.review_markdown;
+        resultEl.style.display = 'block';
+      } catch (e) {
+        errEl.textContent = `Request failed: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Review';
+      }
+    }
+  </script>
+</body>
+</html>

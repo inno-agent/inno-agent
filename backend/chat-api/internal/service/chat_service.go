@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -215,7 +216,7 @@ func (s *ChatService) generateTitle(ctx context.Context, message string) string 
 	title, err := s.llm.Chat(titleCtx, []domain.LLMMessage{
 		{
 			Role:    "user",
-			Content: fmt.Sprintf("Summarize the following text in 3-5 words in the same language as the text. Reply ONLY with the summary, no quotes, no explanations. If you cannot summarize, reply with an empty string:\n\n%s", message),
+			Content: fmt.Sprintf("Write a short chat title (3-5 words) in the same language as the message below. Reply with ONLY the title — no quotes, no labels, no explanation.\n\nMessage:\n%s", message),
 		},
 	}, "")
 	if err != nil {
@@ -227,18 +228,31 @@ func (s *ChatService) generateTitle(ctx context.Context, message string) string 
 		return truncateString(message, 30)
 	}
 
-	title = strings.TrimSpace(title)
-	if title == "" || len(title) > 60 {
+	title = cleanTitle(title)
+	if title == "" || utf8.RuneCountInString(title) > 40 {
 		return truncateString(message, 30)
 	}
 	return title
 }
 
+// cleanTitle strips the noise weak models add around a one-line title:
+// trailing explanations on later lines, wrapping quotes, and markdown.
+func cleanTitle(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\n\r"); i >= 0 {
+		s = s[:i]
+	}
+	return strings.Trim(s, " \t\"'`*.")
+}
+
+// truncateString trims s to at most maxLen runes (not bytes), so multibyte
+// text (e.g. Cyrillic) is never cut mid-rune.
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	r := []rune(s)
+	if len(r) <= maxLen {
 		return s
 	}
-	return s[:maxLen]
+	return string(r[:maxLen])
 }
 
 func (s *ChatService) DeleteChat(ctx context.Context, userID string, chatID uuid.UUID) error {

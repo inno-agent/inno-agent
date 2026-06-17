@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -28,9 +29,10 @@ func Load() Config {
 		baseURL = fmt.Sprintf("http://%s:%s/v1", ollamaHost, ollamaPort)
 	}
 
-	model := os.Getenv("MODEL_NAME")
-	if model == "" {
-		model = os.Getenv("LLM_MODEL")
+	// Default model = first entry of LLM_MODELS (used when a request omits the model).
+	model := ""
+	if models := strings.Fields(os.Getenv("LLM_MODELS")); len(models) > 0 {
+		model = models[0]
 	}
 	if model == "" {
 		model = "qwen2.5:0.5b"

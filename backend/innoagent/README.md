@@ -63,7 +63,7 @@ Edit `.env` before starting if you want to change model/hostname/ollama port/api
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODEL_NAME` | `qwen2.5:0.5b` | Ollama model to pull and use |
+| `LLM_MODELS` | `qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b` | Space-separated models; first is the default |
 | `OLLAMA_HOST` | `ollama` | Ollama hostname (inside Docker network) |
 | `OLLAMA_PORT` | `11434` | Ollama port exposed on host |
 | `API_PORT` | `8080` | Orchestrator API port exposed on host |
@@ -183,7 +183,7 @@ docker compose logs innoagent-ollama
 
 Common causes:
 - Model pull did not complete
-- `MODEL_NAME` in `.env` does not match what was pulled
+- `LLM_MODELS` in `.env` does not match what was pulled
 
 ### Port already in use
 

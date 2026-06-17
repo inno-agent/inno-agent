@@ -220,7 +220,6 @@ services:
     networks:
       - innoagent
     environment:
-      MODEL_NAME: ${MODEL_NAME:-qwen2.5:0.5b}
       LLM_BASE_URL: http://ollama:11434/v1
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081

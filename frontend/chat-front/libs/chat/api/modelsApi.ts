@@ -1,4 +1,5 @@
 import type { ModelOption } from '@libs/chat/model/availableModels'
+import { llmClient } from '@shared/api/axios'
 
 interface CatalogModel {
     id: string
@@ -17,15 +18,7 @@ export interface ModelCatalog {
 }
 
 export const listModels = async (): Promise<ModelCatalog> => {
-    const token = localStorage.getItem('aicore_token')
-    const response = await fetch('/llm/v1/models', {
-        headers: {
-            Accept: 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-    })
-    if (!response.ok) throw new Error('Failed to load models')
-    const data: CatalogResponse = await response.json()
+    const { data } = await llmClient.get<CatalogResponse>('/models')
     return {
         models: data.models.map((m) => ({
             id: m.id,

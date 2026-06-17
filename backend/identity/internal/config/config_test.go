@@ -24,7 +24,6 @@ func TestLoad_AllSet(t *testing.T) {
 		"AUTH_DATABASE_DSN":         "postgresql://postgres:postgres@localhost:5432/inno_auth", //nolint:gosec
 		"AUTH_JWT_EXPIRY":           "15m",
 		"AUTH_HTTP_PORT":            "8082",
-		"AUTH_GRPC_PORT":            "9092",
 	}
 	get := func(key string) string { return env[key] }
 	cfg, err := config.LoadFrom(get)
@@ -46,7 +45,6 @@ func TestLoad_DefaultPortsAndJWKS(t *testing.T) {
 	cfg, err := config.LoadFrom(get)
 	require.NoError(t, err)
 	assert.Equal(t, "8081", cfg.HTTPPort)
-	assert.Equal(t, "9091", cfg.GRPCPort)
 	assert.Equal(t, 30*time.Minute, cfg.JWTExpiry)
 	// JWKS defaults to issuer + "jwks/" (no double slash).
 	assert.Equal(t, "https://localhost:8080/application/o/inno-agent/jwks/", cfg.OIDCJWKSURL)

@@ -18,7 +18,6 @@ type Config struct {
 	JWTExpiry         time.Duration
 	DatabaseDSN       string
 	HTTPPort          string
-	GRPCPort          string
 }
 
 func Load() (*Config, error) {
@@ -49,7 +48,6 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),
 		HTTPPort:          fallback("AUTH_HTTP_PORT", "8081"),
-		GRPCPort:          fallback("AUTH_GRPC_PORT", "9091"),
 	}
 
 	if len(missing) > 0 {

@@ -259,3 +259,12 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Review Frontend ──────────────────────────────────────────────────────
+  review-front:
+    build:
+      context: ./frontend/review-front
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - innoagent

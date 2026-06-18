@@ -45,6 +45,7 @@ docker compose up -d --build
 > Firefox требует `certutil` (nss), иначе mkcert не пропишет CA в его стор.
 
 - Приложение: `https://localhost`
+- PR-ревьюер: `https://review.localhost`
 - Authentik (вход / админка): `https://auth.localhost`
 
 ⚠️ **SMTP-переменные (`AUTHENTIK_EMAIL__*`) в `.env` обязательны** — саморегистрация

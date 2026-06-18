@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
 
 type OrchestratorClient struct {
@@ -32,11 +33,14 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (stri
 	if err != nil {
 		return "", fmt.Errorf("llm client: marshal payload: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat", bytes.NewReader(payload))
 	if err != nil {
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if tok := middleware.TokenFromContext(ctx); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

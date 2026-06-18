@@ -41,6 +41,13 @@ entries:
               !Env [APP_SCHEME, https],
               !Env [AUTH_DOMAIN, localhost],
             ]
+        - matching_mode: strict
+          url:
+            !Format [
+              "%s://review.%s/callback",
+              !Env [APP_SCHEME, https],
+              !Env [AUTH_DOMAIN, localhost],
+            ]
       property_mappings:
         - !Find [
             authentik_providers_oauth2.scopemapping,

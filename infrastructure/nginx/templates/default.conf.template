@@ -94,3 +94,39 @@ server {
         proxy_pass http://$upstream;
     }
 }
+
+# ─── Review entrypoint (TLS, self-signed) ──────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name review.${AUTH_DOMAIN};
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    location /identity/v1 {
+        set $upstream identity:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+
+    location /api/v1 {
+        set $upstream review-api:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_pass http://$upstream;
+    }
+
+    location / {
+        set $upstream review-front:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+}

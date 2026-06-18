@@ -22,10 +22,12 @@ mkcert -install
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     echo "==> TLS cert already present, skipping"
 else
-    echo "==> generating trusted cert for localhost / auth.localhost / *.localhost"
+    echo "==> generating trusted cert for localhost / auth.localhost / review.localhost / *.localhost"
     mkdir -p "$CERT_DIR"
+    # review.localhost is listed explicitly: browsers don't apply the *.localhost
+    # wildcard to the special-use .localhost TLD.
     mkcert -cert-file "$CERT_DIR/fullchain.pem" -key-file "$CERT_DIR/privkey.pem" \
-        localhost auth.localhost "*.localhost" 127.0.0.1
+        localhost auth.localhost review.localhost "*.localhost" 127.0.0.1
 fi
 
 if [ -f "$IDENTITY_KEY" ]; then

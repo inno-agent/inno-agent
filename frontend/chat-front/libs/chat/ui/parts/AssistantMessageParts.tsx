@@ -18,7 +18,9 @@ import {
 export const AssistantMessageParts: FC = () => {
     return (
         <MessagePrimitive.GroupedParts
-            groupBy={groupPartByType({
+            groupBy={groupPartByType<
+                'group-chainOfThought' | 'group-reasoning' | 'group-tool'
+            >({
                 reasoning: ['group-chainOfThought', 'group-reasoning'],
                 'tool-call': ['group-chainOfThought', 'group-tool'],
                 'standalone-tool-call': [],
@@ -55,16 +57,6 @@ export const AssistantMessageParts: FC = () => {
                         return <Reasoning {...part} />
                     case 'tool-call':
                         return part.toolUI ?? <ToolFallback {...part} />
-                    case 'indicator':
-                        return (
-                            <span
-                                data-slot="aui_assistant-message-indicator"
-                                className="animate-pulse font-sans"
-                                aria-label="Assistant is working"
-                            >
-                                {'●'}
-                            </span>
-                        )
                     default:
                         return null
                 }

@@ -66,15 +66,7 @@ export const upsertAssistantText = (
 
 export const appendAssistantError = (
     messages: readonly ThreadMessageLike[],
-): ThreadMessageLike[] => [
-    ...messages,
-    {
-        role: 'assistant',
-        content: [
-            {
-                type: 'text',
-                text: 'Sorry, an error occurred. Please try again.',
-            },
-        ],
-    },
-]
+): ThreadMessageLike[] =>
+    updateAssistantContent(messages, () => [
+        { type: 'text', text: 'Sorry, an error occurred. Please try again.' },
+    ])

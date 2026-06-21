@@ -8,7 +8,7 @@ import Loop from '@images/icons/loop.svg?react'
 import Folder from '@images/icons/folder.svg?react'
 import Logo from '@images/icons/logo.svg?react'
 import ThreePoints from '@images/icons/three_points.svg?react'
-import { chatsUpdatedEventName, listChats } from '@libs/chat/api/chatApi'
+import { chatsUpdatedEventName, listChats, deleteChat } from '@libs/chat/api/chatApi'
 import type { ChatItem } from '@libs/chat/model/types'
 import { Popover, PopoverContent, PopoverTrigger } from '@shared/ui/popover'
 import { AccountMenu } from '@libs/settings/ui/AccountMenu'
@@ -41,6 +41,22 @@ export const Sidebar = () => {
     const handleLogout = () => {
         setAccountMenuOpen(false)
         clearSession()
+    }
+
+    const handleDeleteChat = async (deletedChatId: string) => {
+        try {
+            await deleteChat(deletedChatId)
+
+            if (deletedChatId === chatId) {
+                await navigate({
+                    to: '/',
+                    search: { chatId: undefined },
+                })
+            }
+        } catch (error) {
+            console.error('Failed to delete chat', error)
+            setErrorMessage('Не удалось удалить чат')
+        }
     }
 
     useEffect(() => {
@@ -134,6 +150,7 @@ export const Sidebar = () => {
                     chats.map((chat) => (
                         <ChatListItem
                             key={chat.id}
+                            chatId={chat.id}
                             title={chat.title || chat.last_message || 'Новый чат'}
                             isActive={chat.id === chatId}
                             onClick={() =>
@@ -142,6 +159,7 @@ export const Sidebar = () => {
                                     search: { chatId: chat.id },
                                 })
                             }
+                            onDelete={handleDeleteChat}
                         />
                     ))}
             </div>

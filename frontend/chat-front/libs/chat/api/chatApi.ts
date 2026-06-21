@@ -48,3 +48,8 @@ export const streamMessage = async (chatId: string, message: string, model?: str
     if (!response.ok) throw new Error('Failed to stream message')
     return parseSseStream(response)
 }
+
+export const deleteChat = async (chatId: string) => {
+    await apiClient.delete(`${apiEndpoints.chats}/${chatId}`)
+    notifyChatsUpdated()
+}

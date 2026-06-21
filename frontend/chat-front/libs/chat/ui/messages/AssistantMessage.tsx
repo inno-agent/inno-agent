@@ -1,13 +1,22 @@
-import { MessagePrimitive } from '@assistant-ui/react'
+import { MessagePrimitive, useAuiState } from '@assistant-ui/react'
 import type { FC } from 'react'
 import { AssistantActionBar } from '@libs/chat/ui/actions/AssistantActionBar'
 import { BranchPicker } from '@libs/chat/ui/actions/BranchPicker'
 import { AssistantMessageParts } from '@libs/chat/ui/parts/AssistantMessageParts'
 import { cn } from '@shared/lib/utils'
 import { MessageError } from './MessageError'
+import { ThinkingIndicator } from './ThinkingIndicator'
 
 export const AssistantMessage: FC = () => {
     const actionBarHeight = '-mb-7.5 min-h-7.5 pt-1.5'
+
+    const isRunning = useAuiState((state) => state.thread.isRunning)
+    const hasText = useAuiState((state) =>
+        state.message.content.some(
+            (part) => part.type === 'text' && part.text.length > 0,
+        ),
+    )
+    const showThinking = isRunning && !hasText
 
     return (
         <MessagePrimitive.Root
@@ -19,8 +28,14 @@ export const AssistantMessage: FC = () => {
                 data-slot="aui_assistant-message-content"
                 className="text-foreground px-2 leading-relaxed wrap-break-word [contain-intrinsic-size:auto_24px] [content-visibility:auto]"
             >
-                <AssistantMessageParts />
-                <MessageError />
+                {showThinking ? (
+                    <ThinkingIndicator />
+                ) : (
+                    <>
+                        <AssistantMessageParts />
+                        <MessageError />
+                    </>
+                )}
             </div>
 
             <div

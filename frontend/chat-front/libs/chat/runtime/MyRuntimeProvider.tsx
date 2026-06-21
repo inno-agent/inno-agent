@@ -43,7 +43,12 @@ export function MyRuntimeProvider({
             }
 
             pendingNavigationChatIdRef.current = null
-            setMessages((prev) => [...prev, createUserTextMessage(firstPart.text)])
+            setMessages((prev) => [
+                ...prev,
+                createUserTextMessage(firstPart.text),
+                { role: 'assistant', content: [] },
+            ])
+
             setIsRunning(true)
 
             try {

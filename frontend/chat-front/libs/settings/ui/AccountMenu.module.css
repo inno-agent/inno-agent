@@ -1,0 +1,47 @@
+.menu {
+    display: flex;
+    flex-direction: column;
+    width: 260px;
+    background: var(--color-bg-main);
+    border: 1px solid var(--color-muted);
+    border-radius: 12px;
+    padding: 8px;
+    gap: 4px;
+}
+
+.email {
+    padding: 8px;
+    font-size: 14px;
+    color: var(--muted-foreground);
+}
+
+.divider {
+    height: 1px;
+    background: var(--color-muted);
+    margin: 4px 0;
+}
+
+.item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: 14px;
+    text-align: left;
+    transition: background 0.2s ease;
+}
+
+.item:hover {
+    background: var(--color-bg-elevated);
+}
+
+.icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}

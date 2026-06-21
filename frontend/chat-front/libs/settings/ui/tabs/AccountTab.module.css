@@ -1,0 +1,27 @@
+.value {
+    font-size: 14px;
+    color: var(--muted-foreground);
+}
+
+.avatarEdit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--color-text-primary);
+    color: var(--color-bg-elevated);
+    border: none;
+    cursor: pointer;
+}
+
+.avatarEditIcon {
+    width: 14px;
+    height: 14px;
+}
+
+.confirmGroup {
+    display: flex;
+    gap: 8px;
+}

@@ -10,6 +10,11 @@ import Logo from '@images/icons/logo.svg?react'
 import ThreePoints from '@images/icons/three_points.svg?react'
 import { chatsUpdatedEventName, listChats } from '@libs/chat/api/chatApi'
 import type { ChatItem } from '@libs/chat/model/types'
+import { Popover, PopoverContent, PopoverTrigger } from '@shared/ui/popover'
+import { AccountMenu } from '@libs/settings/ui/AccountMenu'
+import { SettingsDialog } from '@libs/settings/ui/SettingsDialog'
+import { getCurrentUser } from '@libs/settings/api/settingsApi'
+import { useAuth } from '@libs/auth/useAuth'
 
 const profileName = 'Фёдор Маркин'
 
@@ -24,6 +29,19 @@ export const Sidebar = () => {
     const [chats, setChats] = useState<ChatItem[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
+    const [email, setEmail] = useState('')
+    const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const { clearSession } = useAuth()
+
+    useEffect(() => {
+        getCurrentUser().then((user) => setEmail(user.email))
+    }, [])
+
+    const handleLogout = () => {
+        setAccountMenuOpen(false)
+        clearSession()
+    }
 
     useEffect(() => {
         let isMounted = true
@@ -130,22 +148,47 @@ export const Sidebar = () => {
 
             <div className={styles.divider} />
 
-            <div
-                className={styles.profile}
-                role="button"
-                tabIndex={0}
-                onClick={() => {}}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.currentTarget.click()}
-            >
-                <Avatar name={profileName} />
-                <span className={styles.profileName}>{profileName}</span>
-                <button
-                    className={styles.profileMenu}
-                    onClick={(e) => e.stopPropagation()}
+            <Popover open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
+                <PopoverTrigger asChild>
+                    <div
+                        className={styles.profile}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.currentTarget.click()}
+                    >
+                        <Avatar name={profileName} />
+                        <span className={styles.profileName}>{profileName}</span>
+                        <button
+                            className={styles.profileMenu}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <ThreePoints />
+                        </button>
+                    </div>
+                </PopoverTrigger>
+                <PopoverContent
+                    side="top"
+                    align="start"
+                    alignOffset={20}
+                    className="p-0 border-none bg-transparent shadow-none"
                 >
-                    <ThreePoints />
-                </button>
-            </div>
+                    <AccountMenu
+                        email={email}
+                        onOpenSettings={() => {
+                            setAccountMenuOpen(false)
+                            setSettingsOpen(true)
+                        }}
+                        onLogout={handleLogout}
+                    />
+                </PopoverContent>
+            </Popover>
+
+            <SettingsDialog
+                open={settingsOpen}
+                onOpenChange={setSettingsOpen}
+                email={email}
+                onLogout={handleLogout}
+            />
 
         </aside>
     )

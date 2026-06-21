@@ -1,0 +1,49 @@
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--color-muted);
+}
+
+.fieldLabel {
+    font-size: 14px;
+    color: var(--color-text-primary);
+}
+
+.fieldHint {
+    font-size: 13px;
+    color: var(--muted-foreground);
+}
+
+.link {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+}
+
+.input,
+.textarea {
+    background: var(--color-bg-main);
+    border: 1px solid var(--color-muted);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--color-text-primary);
+    font-family: inherit;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+    color: var(--muted-foreground);
+}
+
+.textarea {
+    resize: vertical;
+    min-height: 72px;
+}
+
+.input:focus,
+.textarea:focus {
+    outline: none;
+    border-color: var(--ring);
+}

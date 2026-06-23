@@ -26,8 +26,7 @@ label {
     color: #9a9a9a;
     font-size: 14px;
 }
-input,
-select {
+input {
     width: 100%;
     background: #333333;
     border: 1px solid #4a4a4a;
@@ -38,9 +37,34 @@ select {
     font-size: 14px;
 }
 input::placeholder { color: #7a7a7a; }
-input:focus,
-select:focus { outline: none; border-color: #6e6e6e; }
+input:focus { outline: none; border-color: #6e6e6e; }
 .field { margin-bottom: 16px; }
+
+/* Compact, unobtrusive model picker — secondary to the PR input. */
+.model-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 16px;
+}
+.model-picker label {
+    margin: 0;
+    font-size: 12px;
+    color: #7a7a7a;
+}
+.model-select {
+    background: transparent;
+    border: none;
+    color: #9a9a9a;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.model-select:hover { color: #e6e6e6; }
+.model-select:focus { outline: none; color: #e6e6e6; }
+.model-select option { background: #333333; color: #e6e6e6; }
 button {
     margin-top: 24px;
     padding: 10px 28px;

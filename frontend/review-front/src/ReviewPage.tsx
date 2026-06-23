@@ -62,9 +62,14 @@ export default function ReviewPage() {
             </div>
 
             {models.length > 0 && (
-                <div className="field">
+                <div className="model-picker">
                     <label htmlFor="model">Model</label>
-                    <select id="model" value={model} onChange={(e) => setModel(e.target.value)}>
+                    <select
+                        id="model"
+                        className="model-select"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                    >
                         {models.map((m) => (
                             <option key={m.id} value={m.id}>
                                 {m.label}

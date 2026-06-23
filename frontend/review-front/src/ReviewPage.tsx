@@ -5,7 +5,6 @@ import { requestReview } from '@/api/review'
 
 export default function ReviewPage() {
     const [prId, setPrId] = useState('')
-    const [diff, setDiff] = useState('')
     const [review, setReview] = useState<string | null>(null)
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
@@ -19,7 +18,7 @@ export default function ReviewPage() {
         setReview(null)
         setLoading(true)
         try {
-            const md = await requestReview({ prId: prId.trim(), diff: diff.trim() || undefined })
+            const md = await requestReview({ prId: prId.trim() })
             setReview(md)
         } catch (e) {
             const resp = (e as { response?: { data?: { error?: string }; status?: number } }).response
@@ -30,24 +29,15 @@ export default function ReviewPage() {
     }
 
     return (
-        <>
+        <div className="page">
             <h1>PR Reviewer</h1>
 
-            <label htmlFor="prid">PR ID (owner/repo/index)</label>
+            <label htmlFor="prid">PR ID (Owner/Repo/Index)</label>
             <input
                 id="prid"
                 value={prId}
                 onChange={(e) => setPrId(e.target.value)}
                 placeholder="my-org/backend/42"
-            />
-
-            <label htmlFor="diff">Diff (optional — leave empty to fetch from GitFlame)</label>
-            <textarea
-                id="diff"
-                rows={10}
-                value={diff}
-                onChange={(e) => setDiff(e.target.value)}
-                placeholder="diff --git a/main.go b/main.go..."
             />
 
             <button onClick={submit} disabled={loading}>
@@ -61,6 +51,6 @@ export default function ReviewPage() {
                     <Markdown remarkPlugins={[remarkGfm]}>{review}</Markdown>
                 </div>
             )}
-        </>
+        </div>
     )
 }

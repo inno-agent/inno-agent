@@ -1,59 +1,71 @@
 :root {
     color-scheme: dark;
+    background: #262626;
 }
 * { box-sizing: border-box; }
 body {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    max-width: 900px;
-    margin: 40px auto;
-    padding: 0 20px;
-    background: #0d1117;
-    color: #c9d1d9;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background: #262626;
+    color: #e6e6e6;
 }
-h1 { color: #58a6ff; }
+.page {
+    max-width: 750px;
+    margin: 0 auto;
+    padding: 80px 20px 60px;
+}
+h1 {
+    color: #f2f2f2;
+    font-size: 28px;
+    font-weight: 600;
+    margin: 0 0 32px;
+}
 label {
     display: block;
-    margin-top: 16px;
-    color: #8b949e;
-    font-size: 12px;
-    text-transform: uppercase;
-}
-input, textarea {
-    width: 100%;
-    background: #161b22;
-    border: 1px solid #30363d;
-    color: #c9d1d9;
-    padding: 8px;
-    border-radius: 6px;
-    font-family: inherit;
-    margin-top: 4px;
-}
-input:focus, textarea:focus { outline: none; border-color: #58a6ff; }
-button {
-    margin-top: 20px;
-    padding: 10px 24px;
-    background: #238636;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
+    margin-bottom: 8px;
+    color: #9a9a9a;
     font-size: 14px;
 }
-button:hover { background: #2ea043; }
-button:disabled { background: #21262d; color: #8b949e; cursor: default; }
-.error { color: #f85149; margin-top: 12px; }
+input {
+    width: 100%;
+    background: #333333;
+    border: 1px solid #4a4a4a;
+    color: #e6e6e6;
+    padding: 12px 18px;
+    border-radius: 24px;
+    font-family: inherit;
+    font-size: 14px;
+}
+input::placeholder { color: #7a7a7a; }
+input:focus { outline: none; border-color: #6e6e6e; }
+button {
+    margin-top: 24px;
+    padding: 10px 28px;
+    background: #ececec;
+    color: #1a1a1a;
+    border: none;
+    border-radius: 24px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+}
+button:hover { background: #ffffff; }
+button:disabled { background: #4a4a4a; color: #9a9a9a; cursor: default; }
+.error { color: #f85149; margin-top: 16px; font-size: 14px; }
 .result {
-    margin-top: 28px;
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 20px;
+    margin-top: 32px;
+    background: #303030;
+    border: 1px solid #4a4a4a;
+    border-radius: 16px;
+    padding: 24px;
     line-height: 1.6;
+    font-size: 14px;
 }
 .result pre {
-    background: #0d1117;
+    background: #232323;
     padding: 12px;
-    border-radius: 6px;
+    border-radius: 10px;
     overflow-x: auto;
 }
+.result :first-child { margin-top: 0; }
 .center { display: flex; align-items: center; justify-content: center; height: 100vh; }

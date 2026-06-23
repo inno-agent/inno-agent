@@ -21,13 +21,15 @@ func (m *mockDiffProvider) GetPRDiff(_ context.Context, _ string) (string, error
 }
 
 type mockLLMProvider struct {
-	answer string
-	err    error
-	last   []domain.LLMMessage
+	answer    string
+	err       error
+	last      []domain.LLMMessage
+	lastModel string
 }
 
-func (m *mockLLMProvider) Chat(_ context.Context, messages []domain.LLMMessage) (string, error) {
+func (m *mockLLMProvider) Chat(_ context.Context, messages []domain.LLMMessage, modelName string) (string, error) {
 	m.last = messages
+	m.lastModel = modelName
 	return m.answer, m.err
 }
 
@@ -36,7 +38,7 @@ func TestReviewService_WithProvidedDiff_SkipsDiffProvider(t *testing.T) {
 	llm := &mockLLMProvider{answer: "# Summary\nAll good."}
 	svc := NewReviewService(diffProvider, llm, zap.NewNop())
 
-	review, err := svc.ReviewPR(context.Background(), "my-org/repo/1", "diff --git a/main.go")
+	review, err := svc.ReviewPR(context.Background(), "my-org/repo/1", "diff --git a/main.go", "qwen2.5-coder:1.5b")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,6 +51,9 @@ func TestReviewService_WithProvidedDiff_SkipsDiffProvider(t *testing.T) {
 	if !strings.Contains(llm.last[1].Content, "diff --git a/main.go") {
 		t.Fatalf("expected diff in user message, got %q", llm.last[1].Content)
 	}
+	if llm.lastModel != "qwen2.5-coder:1.5b" {
+		t.Fatalf("expected model forwarded to llm, got %q", llm.lastModel)
+	}
 }
 
 func TestReviewService_WithoutDiff_UsesDiffProvider(t *testing.T) {
@@ -56,7 +61,7 @@ func TestReviewService_WithoutDiff_UsesDiffProvider(t *testing.T) {
 	llm := &mockLLMProvider{answer: "# Summary\nReview complete."}
 	svc := NewReviewService(diffProvider, llm, zap.NewNop())
 
-	review, err := svc.ReviewPR(context.Background(), "my-org/repo/2", "")
+	review, err := svc.ReviewPR(context.Background(), "my-org/repo/2", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,7 +74,7 @@ func TestReviewService_WithoutDiff_ReturnsUnavailable(t *testing.T) {
 	diffProvider := &mockDiffProvider{err: domain.ErrDiffUnavailable}
 	svc := NewReviewService(diffProvider, &mockLLMProvider{}, zap.NewNop())
 
-	_, err := svc.ReviewPR(context.Background(), "my-org/repo/3", "")
+	_, err := svc.ReviewPR(context.Background(), "my-org/repo/3", "", "")
 	if !errors.Is(err, domain.ErrDiffUnavailable) {
 		t.Fatalf("expected ErrDiffUnavailable, got %v", err)
 	}

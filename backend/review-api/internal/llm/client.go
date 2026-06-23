@@ -28,8 +28,12 @@ func NewOrchestratorClient(baseURL string) *OrchestratorClient {
 
 type Message = domain.LLMMessage
 
-func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message) (string, error) {
-	payload, err := json.Marshal(map[string]interface{}{"messages": messages})
+func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message, modelName string) (string, error) {
+	payloadMap := map[string]interface{}{"messages": messages}
+	if modelName != "" {
+		payloadMap["model_name"] = modelName
+	}
+	payload, err := json.Marshal(payloadMap)
 	if err != nil {
 		return "", fmt.Errorf("llm client: marshal payload: %w", err)
 	}

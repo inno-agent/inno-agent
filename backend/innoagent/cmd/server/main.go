@@ -53,7 +53,21 @@ func main() {
 		llm.WithModel(cfg.Model),
 	)
 
-	orch := orchestrator.New(provider)
+	routerProvider := llm.NewQwenProvider(
+		cfg.BaseURL,
+		llm.WithModel(cfg.RouterModel),
+		llm.WithTemperature(0),
+	)
+
+	routes := make([]orchestrator.RouteInfo, len(cfg.Models))
+	for i, id := range cfg.Models {
+		routes[i] = orchestrator.RouteInfo{
+			Name:        id,
+			Description: catModelDescription(cat, id),
+		}
+	}
+
+	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	mux := http.NewServeMux()
@@ -189,4 +203,13 @@ func main() {
 	}
 
 	log.Println("server stopped")
+}
+
+func catModelDescription(cat *catalog.Catalog, id string) string {
+	for _, m := range cat.Models {
+		if m.ID == id {
+			return m.Description
+		}
+	}
+	return id
 }

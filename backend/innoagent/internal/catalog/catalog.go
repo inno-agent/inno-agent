@@ -9,6 +9,8 @@ import (
 //go:embed models.json
 var metadataJSON []byte
 
+const autoModelID = "auto"
+
 type Model struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -23,8 +25,9 @@ type Catalog struct {
 // Load builds the catalog for the given model IDs (order preserved), enriching
 // each from the embedded metadata registry. LLM_MODELS is the single source of
 // truth for which models exist; models.json only supplies display metadata.
-// The first ID is the default. An ID without a registry entry falls back to its
-// own ID as the display name.
+// "auto" is always prepended as the first (default) option — it triggers the
+// router to select the best model automatically. The router model itself is
+// never exposed in the catalog.
 func Load(ids []string) (*Catalog, error) {
 	var reg struct {
 		Models []Model `json:"models"`
@@ -37,8 +40,16 @@ func Load(ids []string) (*Catalog, error) {
 		meta[m.ID] = m
 	}
 
+	autoEntry, hasAuto := meta[autoModelID]
+
 	c := &Catalog{}
+	if hasAuto {
+		c.Models = append(c.Models, autoEntry)
+	}
 	for _, id := range ids {
+		if id == autoModelID {
+			continue
+		}
 		if m, ok := meta[id]; ok {
 			c.Models = append(c.Models, m)
 		} else {

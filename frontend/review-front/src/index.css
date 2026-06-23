@@ -26,7 +26,8 @@ label {
     color: #9a9a9a;
     font-size: 14px;
 }
-input {
+input,
+select {
     width: 100%;
     background: #333333;
     border: 1px solid #4a4a4a;
@@ -37,7 +38,9 @@ input {
     font-size: 14px;
 }
 input::placeholder { color: #7a7a7a; }
-input:focus { outline: none; border-color: #6e6e6e; }
+input:focus,
+select:focus { outline: none; border-color: #6e6e6e; }
+.field { margin-bottom: 16px; }
 button {
     margin-top: 24px;
     padding: 10px 28px;

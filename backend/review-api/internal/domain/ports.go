@@ -8,8 +8,9 @@ type LLMMessage struct {
 }
 
 // LLMProvider sends a prompt and returns a response from the language model.
+// modelName selects the model; empty means the orchestrator's default.
 type LLMProvider interface {
-	Chat(ctx context.Context, messages []LLMMessage) (string, error)
+	Chat(ctx context.Context, messages []LLMMessage, modelName string) (string, error)
 }
 
 // DiffProvider fetches pull request diffs from an external source.
@@ -19,5 +20,5 @@ type DiffProvider interface {
 
 // ReviewService generates AI-powered pull request reviews.
 type ReviewService interface {
-	ReviewPR(ctx context.Context, prID string, diff string) (string, error)
+	ReviewPR(ctx context.Context, prID string, diff string, modelName string) (string, error)
 }

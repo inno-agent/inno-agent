@@ -11,8 +11,9 @@ import (
 )
 
 type reviewRequest struct {
-	PRID string `json:"pr_id"`
-	Diff string `json:"diff,omitempty"`
+	PRID  string `json:"pr_id"`
+	Diff  string `json:"diff,omitempty"`
+	Model string `json:"model,omitempty"`
 }
 
 type reviewResponse struct {
@@ -46,7 +47,7 @@ func (h *ReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	review, err := h.service.ReviewPR(ctx, req.PRID, req.Diff)
+	review, err := h.service.ReviewPR(ctx, req.PRID, req.Diff, req.Model)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrValidation):

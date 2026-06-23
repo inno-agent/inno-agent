@@ -16,11 +16,11 @@ import (
 
 type mockReviewService struct {
 	domain.ReviewService
-	reviewFn func(ctx context.Context, prID string, diff string) (string, error)
+	reviewFn func(ctx context.Context, prID string, diff string, modelName string) (string, error)
 }
 
-func (m *mockReviewService) ReviewPR(ctx context.Context, prID string, diff string) (string, error) {
-	return m.reviewFn(ctx, prID, diff)
+func (m *mockReviewService) ReviewPR(ctx context.Context, prID string, diff string, modelName string) (string, error) {
+	return m.reviewFn(ctx, prID, diff, modelName)
 }
 
 func newReviewRouter(h *ReviewHandler) *chi.Mux {
@@ -59,7 +59,7 @@ func TestReview_MissingPRID(t *testing.T) {
 
 func TestReview_Success(t *testing.T) {
 	svc := &mockReviewService{
-		reviewFn: func(_ context.Context, prID string, diff string) (string, error) {
+		reviewFn: func(_ context.Context, prID string, _ string, _ string) (string, error) {
 			if prID != "my-org/backend/42" {
 				t.Fatalf("expected pr_id my-org/backend/42, got %q", prID)
 			}
@@ -80,7 +80,7 @@ func TestReview_Success(t *testing.T) {
 
 func TestReview_DiffUnavailable(t *testing.T) {
 	svc := &mockReviewService{
-		reviewFn: func(_ context.Context, _ string, _ string) (string, error) {
+		reviewFn: func(_ context.Context, _ string, _ string, _ string) (string, error) {
 			return "", domain.ErrDiffUnavailable
 		},
 	}
@@ -95,7 +95,7 @@ func TestReview_DiffUnavailable(t *testing.T) {
 
 func TestReview_ServiceError(t *testing.T) {
 	svc := &mockReviewService{
-		reviewFn: func(_ context.Context, _ string, _ string) (string, error) {
+		reviewFn: func(_ context.Context, _ string, _ string, _ string) (string, error) {
 			return "", errors.New("upstream failure")
 		},
 	}

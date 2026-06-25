@@ -164,8 +164,8 @@ entries:
     attrs:
       stage:
         !Find [
-          authentik_stages_user_write.userwritestage,
-          [name, inno-agent-enrollment-user-write],
+          authentik_stages_email.emailstage,
+          [name, inno-agent-enrollment-email-verification],
         ]
   - model: authentik_flows.flowstagebinding
     state: present
@@ -175,8 +175,8 @@ entries:
     attrs:
       stage:
         !Find [
-          authentik_stages_email.emailstage,
-          [name, inno-agent-enrollment-email-verification],
+          authentik_stages_user_write.userwritestage,
+          [name, inno-agent-enrollment-user-write],
         ]
   # Reuse the default login stage so the user is signed in right after activation.
   - model: authentik_flows.flowstagebinding

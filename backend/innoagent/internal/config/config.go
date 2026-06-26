@@ -10,6 +10,7 @@ type Config struct {
 	BaseURL     string
 	Models      []string
 	Model       string
+	RouterModel string
 	ServerPort  string
 	IdentityURL string
 }
@@ -45,6 +46,11 @@ func Load() Config {
 		serverPort = "8080"
 	}
 
+	routerModel := os.Getenv("ROUTER_MODEL")
+	if routerModel == "" {
+		routerModel = "fauxpaslife/arch-router:1.5b"
+	}
+
 	identityURL := os.Getenv("IDENTITY_URL")
 	if identityURL == "" {
 		identityURL = "http://identity:8081"
@@ -54,6 +60,7 @@ func Load() Config {
 		BaseURL:     baseURL,
 		Models:      models,
 		Model:       models[0],
+		RouterModel: routerModel,
 		ServerPort:  serverPort,
 		IdentityURL: identityURL,
 	}

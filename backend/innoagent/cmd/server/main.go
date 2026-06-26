@@ -53,7 +53,21 @@ func main() {
 		llm.WithModel(cfg.Model),
 	)
 
-	orch := orchestrator.New(provider)
+	routerProvider := llm.NewQwenProvider(
+		cfg.BaseURL,
+		llm.WithModel(cfg.RouterModel),
+		llm.WithTemperature(0),
+	)
+
+	routes := make([]orchestrator.RouteInfo, len(cfg.Models))
+	for i, id := range cfg.Models {
+		routes[i] = orchestrator.RouteInfo{
+			Name:        id,
+			Description: cat.Description(id),
+		}
+	}
+
+	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	mux := http.NewServeMux()

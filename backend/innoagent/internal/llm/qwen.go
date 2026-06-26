@@ -19,8 +19,9 @@ const (
 )
 
 type QwenProvider struct {
-	baseURL string
-	model   string
+	baseURL     string
+	model       string
+	temperature float64
 
 	httpClient *http.Client
 }
@@ -30,6 +31,12 @@ type QwenOption func(*QwenProvider)
 func WithModel(model string) QwenOption {
 	return func(p *QwenProvider) {
 		p.model = model
+	}
+}
+
+func WithTemperature(t float64) QwenOption {
+	return func(p *QwenProvider) {
+		p.temperature = t
 	}
 }
 
@@ -44,7 +51,8 @@ func NewQwenProvider(
 	opts ...QwenOption,
 ) *QwenProvider {
 	p := &QwenProvider{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		temperature: 0.7,
 
 		httpClient: &http.Client{
 			Timeout: defaultHTTPTimeout,
@@ -80,7 +88,7 @@ func (p *QwenProvider) Chat(
 	reqBody := ChatRequest{
 		Model:       model,
 		Messages:    chatMessages,
-		Temperature: 0.7,
+		Temperature: p.temperature,
 		MaxTokens:   1024,
 		Stream:      false,
 	}
@@ -179,7 +187,7 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	reqBody := ChatRequest{
 		Model:       model,
 		Messages:    chatMessages,
-		Temperature: 0.7,
+		Temperature: p.temperature,
 		MaxTokens:   2048,
 		Stream:      true,
 	}

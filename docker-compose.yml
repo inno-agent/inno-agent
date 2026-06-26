@@ -131,6 +131,9 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
+      # Service secret guarding the internal /identity/v1/bot-token mint endpoint
+      # (consumer presents it; nginx blocks the path from the public ingress).
+      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
     secrets:
       - identity_rsa_key
     networks:
@@ -300,12 +303,19 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      # Slice 2: mint a per-assigner token from identity instead of a static one.
+      IDENTITY_URL: http://identity:8081
+      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
+      ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:
       - innoagent
     depends_on:
       redpanda:
         condition: service_healthy
       orchestrator:
+        condition: service_started
+      identity:
         condition: service_started
 
   # ─── Review Frontend ──────────────────────────────────────────────────────

@@ -12,11 +12,15 @@ var ErrPermanent = errors.New("permanent error")
 // ErrTransient wraps errors that are safe to retry (e.g. 5xx, network faults).
 var ErrTransient = errors.New("transient error")
 
+// ErrNotOnboarded is returned when the assigner has not linked their account.
+var ErrNotOnboarded = errors.New("assigner not onboarded")
+
 type PRRef struct {
-	Owner   string
-	Repo    string
-	Index   int64
-	HeadSHA string
+	Owner    string
+	Repo     string
+	Index    int64
+	HeadSHA  string
+	Assigner string // GitFlame login of the user who assigned the bot as reviewer
 }
 
 type LLMMessage struct {

@@ -14,6 +14,11 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
 )
 
+const (
+	testBotUsername   = "innoagent"
+	testOnboardingURL = "https://review.example.com/onboard"
+)
+
 type fakeReviewer struct {
 	result string
 	err    error
@@ -34,26 +39,36 @@ func (f *fakePoster) PostPRComment(_ context.Context, _ domain.PRRef, body strin
 	if f.err != nil {
 		return f.err
 	}
+
 	f.posted = append(f.posted, body)
+
 	return nil
 }
 
-func makeEnvelope(action string) []byte {
+// newProc creates a processor with default test bot config.
+func newProc(reviewer domain.Reviewer, poster domain.CommentPoster) *processor.Processor {
+	return processor.New(reviewer, poster, zap.NewNop(), testBotUsername, testOnboardingURL)
+}
+
+// makeEnvelope builds a review-request event envelope for the bot reviewer.
+func makeEnvelope(deliveryID string) []byte {
 	pr := event.PullRequestEvent{
-		Action: action,
 		Number: 42,
 	}
 	pr.PullRequest.Head.SHA = "deadbeef"
 	pr.Repository.Name = "myrepo"
 	pr.Repository.Owner.Login = "myorg"
+	pr.RequestedReviewer.Login = testBotUsername
+	pr.Sender.Login = "alice"
 
 	payload, _ := json.Marshal(pr)
 	env := event.Envelope{
-		DeliveryID: "123",
-		EventType:  "pull_request",
+		DeliveryID: deliveryID,
+		EventType:  "pull_request_review_request",
 		Payload:    payload,
 	}
 	data, _ := json.Marshal(env)
+
 	return data
 }
 
@@ -62,51 +77,68 @@ func TestProcess_WrongEventType_Skip(t *testing.T) {
 	data, _ := json.Marshal(env)
 
 	reviewer := &fakeReviewer{}
-	p := processor.New(reviewer, &fakePoster{}, zap.NewNop())
+	p := newProc(reviewer, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
 	}
+
 	if reviewer.calls != 0 {
 		t.Fatal("reviewer should not be called for non-PR event")
 	}
 }
 
-func TestProcess_WrongAction_Skip(t *testing.T) {
-	data := makeEnvelope("closed")
+func TestProcess_WrongRequestedReviewer_Skip(t *testing.T) {
+	pr := event.PullRequestEvent{Number: 1}
+	pr.PullRequest.Head.SHA = "abc"
+	pr.Repository.Name = "repo"
+	pr.Repository.Owner.Login = "org"
+	pr.RequestedReviewer.Login = "some-other-bot"
+	pr.Sender.Login = "carol"
+
+	payload, _ := json.Marshal(pr)
+	env := event.Envelope{
+		DeliveryID: "del-1",
+		EventType:  "pull_request_review_request",
+		Payload:    payload,
+	}
+	data, _ := json.Marshal(env)
+
 	reviewer := &fakeReviewer{}
-	p := processor.New(reviewer, &fakePoster{}, zap.NewNop())
+	p := newProc(reviewer, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
-		t.Fatalf("expected Skip, got %v", result)
+		t.Fatalf("expected Skip for wrong reviewer, got %v", result)
 	}
+
 	if reviewer.calls != 0 {
-		t.Fatal("reviewer should not be called for non-opened/synchronized action")
+		t.Fatal("reviewer should not be called when bot is not the requested reviewer")
 	}
 }
 
-func TestProcess_Opened_Done(t *testing.T) {
-	data := makeEnvelope("opened")
+func TestProcess_ReviewRequest_Done(t *testing.T) {
+	data := makeEnvelope("del-100")
 	reviewer := &fakeReviewer{result: "# Review"}
 	poster := &fakePoster{}
-	p := processor.New(reviewer, poster, zap.NewNop())
+	p := newProc(reviewer, poster)
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Done {
 		t.Fatalf("expected Done, got %v", result)
 	}
+
 	if len(poster.posted) != 1 || poster.posted[0] != "# Review" {
 		t.Fatalf("unexpected posted comments: %v", poster.posted)
 	}
 }
 
-func TestProcess_Dedup_SecondIdenticalSkipped(t *testing.T) {
-	data := makeEnvelope("opened")
+func TestProcess_Dedup_ByDeliveryID(t *testing.T) {
+	data := makeEnvelope("del-200")
 	reviewer := &fakeReviewer{result: "# Review"}
 	poster := &fakePoster{}
-	p := processor.New(reviewer, poster, zap.NewNop())
+	p := newProc(reviewer, poster)
 
 	r1 := p.Process(context.Background(), data)
 	r2 := p.Process(context.Background(), data)
@@ -114,18 +146,39 @@ func TestProcess_Dedup_SecondIdenticalSkipped(t *testing.T) {
 	if r1 != processor.Done {
 		t.Fatalf("first: expected Done, got %v", r1)
 	}
+
 	if r2 != processor.Skip {
-		t.Fatalf("second: expected Skip, got %v", r2)
+		t.Fatalf("second: expected Skip (dedup by delivery_id), got %v", r2)
 	}
+
 	if reviewer.calls != 1 {
 		t.Fatalf("reviewer should be called exactly once, got %d", reviewer.calls)
 	}
 }
 
+func TestProcess_Dedup_FallbackToSHA_WhenNoDeliveryID(t *testing.T) {
+	// Empty delivery_id -> falls back to owner/repo/index@sha key.
+	data := makeEnvelope("")
+	reviewer := &fakeReviewer{result: "# Review"}
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
+
+	r1 := p.Process(context.Background(), data)
+	r2 := p.Process(context.Background(), data)
+
+	if r1 != processor.Done {
+		t.Fatalf("first: expected Done, got %v", r1)
+	}
+
+	if r2 != processor.Skip {
+		t.Fatalf("second: expected Skip (dedup fallback), got %v", r2)
+	}
+}
+
 func TestProcess_ReviewError_Transient(t *testing.T) {
-	data := makeEnvelope("synchronized")
+	data := makeEnvelope("del-300")
 	reviewer := &fakeReviewer{err: errors.New("llm unavailable")}
-	p := processor.New(reviewer, &fakePoster{}, zap.NewNop())
+	p := newProc(reviewer, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Transient {
@@ -134,10 +187,10 @@ func TestProcess_ReviewError_Transient(t *testing.T) {
 }
 
 func TestProcess_PostCommentError_Transient(t *testing.T) {
-	data := makeEnvelope("opened")
+	data := makeEnvelope("del-400")
 	reviewer := &fakeReviewer{result: "# Review"}
 	poster := &fakePoster{err: errors.New("network error")}
-	p := processor.New(reviewer, poster, zap.NewNop())
+	p := newProc(reviewer, poster)
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Transient {
@@ -146,7 +199,7 @@ func TestProcess_PostCommentError_Transient(t *testing.T) {
 }
 
 func TestProcess_UndecodablePayload_Skip(t *testing.T) {
-	p := processor.New(&fakeReviewer{}, &fakePoster{}, zap.NewNop())
+	p := newProc(&fakeReviewer{}, &fakePoster{})
 	result := p.Process(context.Background(), []byte("not json"))
 
 	if result != processor.Skip {
@@ -155,10 +208,9 @@ func TestProcess_UndecodablePayload_Skip(t *testing.T) {
 }
 
 func TestProcess_ReviewPermanentError_Skip(t *testing.T) {
-	data := makeEnvelope("opened")
-	// Permanent error (e.g. 401 from LLM) should NOT be retried; offset committed.
+	data := makeEnvelope("del-500")
 	reviewer := &fakeReviewer{err: fmt.Errorf("status 401: %w", domain.ErrPermanent)}
-	p := processor.New(reviewer, &fakePoster{}, zap.NewNop())
+	p := newProc(reviewer, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
@@ -167,9 +219,9 @@ func TestProcess_ReviewPermanentError_Skip(t *testing.T) {
 }
 
 func TestProcess_PostCommentPermanentError_Skip(t *testing.T) {
-	data := makeEnvelope("opened")
+	data := makeEnvelope("del-600")
 	poster := &fakePoster{err: fmt.Errorf("status 403: %w", domain.ErrPermanent)}
-	p := processor.New(&fakeReviewer{result: "# Review"}, poster, zap.NewNop())
+	p := newProc(&fakeReviewer{result: "# Review"}, poster)
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
@@ -177,48 +229,54 @@ func TestProcess_PostCommentPermanentError_Skip(t *testing.T) {
 	}
 }
 
+func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
+	data := makeEnvelope("del-700")
+	reviewer := &fakeReviewer{err: domain.ErrNotOnboarded}
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
+	result := p.Process(context.Background(), data)
+
+	if result != processor.Skip {
+		t.Fatalf("expected Skip for not-onboarded, got %v", result)
+	}
+
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 comment posted (not-onboarded notice), got %d", len(poster.posted))
+	}
+
+	if len(poster.posted[0]) == 0 {
+		t.Fatal("posted comment should not be empty")
+	}
+}
+
+func TestProcess_NotOnboarded_PostCommentTransientFail_Transient(t *testing.T) {
+	data := makeEnvelope("del-701")
+	reviewer := &fakeReviewer{err: domain.ErrNotOnboarded}
+	poster := &fakePoster{err: fmt.Errorf("network: %w", domain.ErrTransient)}
+	p := newProc(reviewer, poster)
+	result := p.Process(context.Background(), data)
+
+	// If posting the not-onboarded comment fails transiently, return Transient.
+	if result != processor.Transient {
+		t.Fatalf("expected Transient when posting not-onboarded comment fails transiently, got %v", result)
+	}
+}
+
 func TestProcess_DedupBoundedSet_EvictsOldest(t *testing.T) {
-	// Use a processor; we need to drive it past the internal cap.
-	// To keep the test fast we test the boundedSet logic indirectly:
-	// after filling the cap with distinct PRs and then replaying the first one,
-	// it should be treated as new (evicted) and reviewed again.
-	//
-	// seenCap = 10_000 is too large to fill in a test, so we test the exported
-	// struct behaviour via the processor interface using a small enough dataset
-	// to verify that dedup entries ARE stored (same SHA returns Skip) and that
-	// the overall set functions correctly.
 	reviewer := &fakeReviewer{result: "ok"}
 	poster := &fakePoster{}
-	p := processor.New(reviewer, poster, zap.NewNop())
+	p := newProc(reviewer, poster)
 
 	// Process the same message twice: second call must be a dedup Skip.
-	d := makeEnvelope("opened")
+	d := makeEnvelope("del-800")
 	r1 := p.Process(context.Background(), d)
 	r2 := p.Process(context.Background(), d)
 
 	if r1 != processor.Done {
 		t.Fatalf("first: want Done, got %v", r1)
 	}
+
 	if r2 != processor.Skip {
 		t.Fatalf("dedup: want Skip, got %v", r2)
 	}
-}
-
-func makeEnvelopeN(action string, num int64, sha string) []byte {
-	pr := event.PullRequestEvent{
-		Action: action,
-		Number: num,
-	}
-	pr.PullRequest.Head.SHA = sha
-	pr.Repository.Name = "myrepo"
-	pr.Repository.Owner.Login = "myorg"
-
-	payload, _ := json.Marshal(pr)
-	env := event.Envelope{
-		DeliveryID: fmt.Sprintf("id-%d", num),
-		EventType:  "pull_request",
-		Payload:    payload,
-	}
-	data, _ := json.Marshal(env)
-	return data
 }

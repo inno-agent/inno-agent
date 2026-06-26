@@ -9,10 +9,12 @@ type Envelope struct {
 }
 
 type PullRequestEvent struct {
-	Action      string      `json:"action"`
-	Number      int64       `json:"number"`
-	PullRequest prDetails   `json:"pull_request"`
-	Repository  repoDetails `json:"repository"`
+	Action            string            `json:"action"`
+	Number            int64             `json:"number"`
+	PullRequest       prDetails         `json:"pull_request"`
+	Repository        repoDetails       `json:"repository"`
+	RequestedReviewer requestedReviewer `json:"requested_reviewer"`
+	Sender            sender            `json:"sender"`
 }
 
 // Index returns the PR number, preferring the nested pull_request.number
@@ -22,6 +24,7 @@ func (e PullRequestEvent) Index() int64 {
 	if e.PullRequest.Number != 0 {
 		return e.PullRequest.Number
 	}
+
 	return e.Number
 }
 
@@ -42,5 +45,13 @@ type repoDetails struct {
 }
 
 type repoOwner struct {
+	Login string `json:"login"`
+}
+
+type requestedReviewer struct {
+	Login string `json:"login"`
+}
+
+type sender struct {
 	Login string `json:"login"`
 }

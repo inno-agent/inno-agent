@@ -11,6 +11,12 @@ type Config struct {
 	ReviewModel       string
 	GitFlameBaseURL   string
 	GitFlameToken     string
+
+	// Slice 2: delegated-auth via identity service.
+	BotGitFlameUsername string
+	IdentityURL         string
+	BotTokenSecret      string
+	OnboardingURL       string
 }
 
 func Load() *Config {
@@ -23,6 +29,11 @@ func Load() *Config {
 		ReviewModel:       getEnv("REVIEW_MODEL", "qwen2.5-coder:1.5b"),
 		GitFlameBaseURL:   getEnv("GITFLAME_BASE_URL", ""),
 		GitFlameToken:     getEnv("GITFLAME_TOKEN", ""),
+
+		BotGitFlameUsername: getEnv("BOT_GITFLAME_USERNAME", ""),
+		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),
+		BotTokenSecret:      getEnv("BOT_TOKEN_SECRET", ""),
+		OnboardingURL:       getEnv("ONBOARDING_URL", ""),
 	}
 }
 
@@ -30,5 +41,6 @@ func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return fallback
 }

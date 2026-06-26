@@ -21,6 +21,10 @@ const (
 	Transient               // retriable failure; do NOT commit
 )
 
+// eventTypeReviewRequest is the GitFlame X-GitFlame-Event value for the
+// "reviewer assigned" event that triggers the bot.
+const eventTypeReviewRequest = "pull_request_review_request"
+
 // seenCap is the maximum number of entries in the dedup set. When the cap is
 // reached the oldest entry is evicted (FIFO) so the set stays bounded.
 const seenCap = 10_000
@@ -48,30 +52,42 @@ func (s *boundedSet) add(key string, cap int) {
 	if _, ok := s.m[key]; ok {
 		return
 	}
+
 	if len(s.keys) >= cap {
 		oldest := s.keys[0]
 		s.keys = s.keys[1:]
 		delete(s.m, oldest)
 	}
+
 	s.m[key] = struct{}{}
 	s.keys = append(s.keys, key)
 }
 
 type Processor struct {
-	reviewer domain.Reviewer
-	poster   domain.CommentPoster
-	logger   *zap.Logger
+	reviewer      domain.Reviewer
+	poster        domain.CommentPoster
+	logger        *zap.Logger
+	botUsername   string
+	onboardingURL string
 
 	mu   sync.Mutex
 	seen *boundedSet
 }
 
-func New(reviewer domain.Reviewer, poster domain.CommentPoster, logger *zap.Logger) *Processor {
+func New(
+	reviewer domain.Reviewer,
+	poster domain.CommentPoster,
+	logger *zap.Logger,
+	botUsername string,
+	onboardingURL string,
+) *Processor {
 	return &Processor{
-		reviewer: reviewer,
-		poster:   poster,
-		logger:   logger.With(zap.String("layer", "processor")),
-		seen:     newBoundedSet(seenCap),
+		reviewer:      reviewer,
+		poster:        poster,
+		logger:        logger.With(zap.String("layer", "processor")),
+		botUsername:   botUsername,
+		onboardingURL: onboardingURL,
+		seen:          newBoundedSet(seenCap),
 	}
 }
 
@@ -82,48 +98,90 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		return Skip
 	}
 
-	if env.EventType != "pull_request" {
+	if env.EventType != eventTypeReviewRequest {
 		return Skip
 	}
 
 	var pr event.PullRequestEvent
 	if err := json.Unmarshal(env.Payload, &pr); err != nil {
-		p.logger.Warn("undecodable pull_request payload; skipping", zap.Error(err))
+		p.logger.Warn("undecodable pull_request_review_request payload; skipping", zap.Error(err))
 		return Skip
 	}
 
-	if pr.Action != "opened" && pr.Action != "synchronized" {
+	// Only react when the bot itself is the requested reviewer.
+	if p.botUsername != "" && pr.RequestedReviewer.Login != p.botUsername {
+		p.logger.Debug(
+			"requested_reviewer is not the bot; skipping",
+			zap.String("requested_reviewer", pr.RequestedReviewer.Login),
+			zap.String("bot_username", p.botUsername),
+		)
+
 		return Skip
 	}
+
+	assigner := pr.Sender.Login
 
 	ref := domain.PRRef{
-		Owner:   pr.Repository.Owner.Login,
-		Repo:    pr.Repository.Name,
-		Index:   pr.Index(), // Fix 4: prefer nested pull_request.number
-		HeadSHA: pr.PullRequest.Head.SHA,
+		Owner:    pr.Repository.Owner.Login,
+		Repo:     pr.Repository.Name,
+		Index:    pr.Index(),
+		HeadSHA:  pr.PullRequest.Head.SHA,
+		Assigner: assigner,
 	}
 
-	dedupKey := fmt.Sprintf("%s/%s/%d@%s", ref.Owner, ref.Repo, ref.Index, ref.HeadSHA)
+	// Dedup by delivery_id (one Kafka re-delivery handled once).
+	// Fall back to owner/repo/index@sha when delivery_id is absent (e.g. local tests).
+	dedupKey := env.DeliveryID
+	if dedupKey == "" {
+		dedupKey = fmt.Sprintf("%s/%s/%d@%s", ref.Owner, ref.Repo, ref.Index, ref.HeadSHA)
+	}
+
 	p.mu.Lock()
 	already := p.seen.has(dedupKey)
 	p.mu.Unlock()
+
 	if already {
 		p.logger.Info("dedup hit; skipping", zap.String("key", dedupKey))
 		return Skip
 	}
 
 	prLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
-	p.logger.Info("reviewing PR", zap.String("pr", prLabel))
+	p.logger.Info("reviewing PR", zap.String("pr", prLabel), zap.String("assigner", assigner))
 
 	review, err := p.reviewer.Review(ctx, ref)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotOnboarded) {
+			msg := fmt.Sprintf(
+				"⚠️ @%s, connect your account at %s to use the review bot.",
+				assigner, p.onboardingURL,
+			)
+			if postErr := p.poster.PostPRComment(ctx, ref, msg); postErr != nil {
+				if errors.Is(postErr, domain.ErrTransient) {
+					p.logger.Error("post not-onboarded comment transiently failed; will retry", zap.String("pr", prLabel), zap.Error(postErr))
+					return Transient
+				}
+
+				p.logger.Error("post not-onboarded comment permanently failed; skipping", zap.String("pr", prLabel), zap.Error(postErr))
+			}
+
+			p.logger.Info("assigner not onboarded; skipped after comment", zap.String("pr", prLabel), zap.String("assigner", assigner))
+
+			p.mu.Lock()
+			p.seen.add(dedupKey, seenCap)
+			p.mu.Unlock()
+
+			return Skip
+		}
+
 		if errors.Is(err, domain.ErrPermanent) {
 			// Permanent failure (e.g. 401/403 from LLM or GitFlame): commit the
 			// offset so the partition advances rather than blocking indefinitely.
 			p.logger.Error("review permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
 		}
+
 		p.logger.Error("review failed; will retry", zap.Error(err))
+
 		return Transient
 	}
 
@@ -133,7 +191,9 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 			p.logger.Error("post comment permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
 		}
+
 		p.logger.Error("post comment failed; will retry", zap.Error(err))
+
 		return Transient
 	}
 
@@ -142,5 +202,6 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	p.mu.Unlock()
 
 	p.logger.Info("review posted", zap.String("pr", prLabel))
+
 	return Done
 }

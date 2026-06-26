@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/inno-agent/identity/internal/botprincipal"
 	"github.com/inno-agent/identity/internal/config"
 	"github.com/inno-agent/identity/internal/db"
 	"github.com/inno-agent/identity/internal/issuer"
@@ -62,13 +63,16 @@ func main() {
 	repo := user.NewRepository(pool)
 	svc := user.NewService(repo)
 
+	botRepo := botprincipal.NewRepository(pool)
+	botSvc := botprincipal.NewService(botRepo)
+
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	})
+	}, botSvc, cfg.BotTokenSecret)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

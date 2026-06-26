@@ -71,6 +71,26 @@ func (i *Issuer) Issue(userID string) (string, error) {
 	return signed, nil
 }
 
+// IssueActor signs a fresh aicore token for userID with an additional
+// "act_as" claim recording the acting principal (e.g. "innoagent").
+// The resulting token is otherwise identical to one produced by Issue.
+func (i *Issuer) IssueActor(userID, actor string) (string, error) {
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"sub":    userID,
+		"iss":    issuerName,
+		"iat":    jwt.NewNumericDate(now),
+		"exp":    jwt.NewNumericDate(now.Add(i.expiry)),
+		"act_as": actor,
+	})
+	signed, err := token.SignedString(i.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("sign actor token: %w", err)
+	}
+
+	return signed, nil
+}
+
 func (i *Issuer) PublicKeyJWKS() map[string]interface{} {
 	pub := &i.privateKey.PublicKey
 	return map[string]interface{}{

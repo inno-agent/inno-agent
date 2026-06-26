@@ -63,7 +63,7 @@ func main() {
 	for i, id := range cfg.Models {
 		routes[i] = orchestrator.RouteInfo{
 			Name:        id,
-			Description: catModelDescription(cat, id),
+			Description: cat.Description(id),
 		}
 	}
 
@@ -203,13 +203,4 @@ func main() {
 	}
 
 	log.Println("server stopped")
-}
-
-func catModelDescription(cat *catalog.Catalog, id string) string {
-	for _, m := range cat.Models {
-		if m.ID == id {
-			return m.Description
-		}
-	}
-	return id
 }

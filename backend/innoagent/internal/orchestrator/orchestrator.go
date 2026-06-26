@@ -7,10 +7,9 @@ import (
 	"log"
 	"strings"
 
+	"innoagent/internal/catalog"
 	"innoagent/internal/llm"
 )
-
-const autoModelID = "auto"
 
 // RouteInfo describes a model route the router can choose from.
 type RouteInfo struct {
@@ -35,6 +34,10 @@ func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo,
 }
 
 func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) string {
+	if len(messages) == 0 {
+		return o.models[0]
+	}
+
 	routesJSON, err := json.Marshal(o.routes)
 	if err != nil {
 		log.Printf("auto: failed to marshal routes: %v, falling back to %s", err, o.models[0])
@@ -78,11 +81,15 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 		Route string `json:"route"`
 	}
 	trimmed := strings.TrimSpace(response)
-	// arch-router may return single-quoted JSON like {'route': 'model'}.
-	normalized := strings.ReplaceAll(trimmed, "'", "\"")
-	if err := json.Unmarshal([]byte(normalized), &routeResp); err != nil {
-		log.Printf("auto: router returned non-JSON %q, falling back to %s", response, o.models[0])
-		return o.models[0]
+	if err := json.Unmarshal([]byte(trimmed), &routeResp); err != nil {
+		// arch-router may emit single-quoted JSON like {'route': 'model'}.
+		// Only normalize on failure so valid JSON containing apostrophes is
+		// never corrupted.
+		normalized := strings.ReplaceAll(trimmed, "'", "\"")
+		if err := json.Unmarshal([]byte(normalized), &routeResp); err != nil {
+			log.Printf("auto: router returned non-JSON %q, falling back to %s", response, o.models[0])
+			return o.models[0]
+		}
 	}
 
 	chosen := routeResp.Route
@@ -101,28 +108,22 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 // "auto" triggers routing; "" and any unresolvable case fall back to the
 // first concrete model from LLM_MODELS — never back to "auto", avoiding
 // infinite routing loops.
-func (o *AIOrchestrator) resolveModel(ctx context.Context, messages []llm.Message, modelName string) (string, error) {
-	if modelName == autoModelID {
-		return o.route(ctx, messages), nil
+func (o *AIOrchestrator) resolveModel(ctx context.Context, messages []llm.Message, modelName string) string {
+	if modelName == catalog.AutoID {
+		return o.route(ctx, messages)
 	}
 	if modelName == "" {
-		return o.models[0], nil
+		return o.models[0]
 	}
-	return modelName, nil
+	return modelName
 }
 
 func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message, modelName string) (string, error) {
-	resolved, err := o.resolveModel(ctx, messages, modelName)
-	if err != nil {
-		return "", err
-	}
+	resolved := o.resolveModel(ctx, messages, modelName)
 	return o.provider.Chat(ctx, messages, resolved)
 }
 
 func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message, modelName string) (<-chan string, error) {
-	resolved, err := o.resolveModel(ctx, messages, modelName)
-	if err != nil {
-		return nil, err
-	}
+	resolved := o.resolveModel(ctx, messages, modelName)
 	return o.provider.Stream(ctx, messages, resolved)
 }

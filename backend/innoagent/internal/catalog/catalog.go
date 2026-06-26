@@ -9,7 +9,10 @@ import (
 //go:embed models.json
 var metadataJSON []byte
 
-const autoModelID = "auto"
+// AutoID is the canonical ID of the synthetic "auto" routing option. It is the
+// single source of truth shared with the orchestrator, which treats a request
+// for this model as a trigger to run the router.
+const AutoID = "auto"
 
 type Model struct {
 	ID          string `json:"id"`
@@ -20,6 +23,8 @@ type Model struct {
 type Catalog struct {
 	Models  []Model `json:"models"`
 	Default string  `json:"default"`
+
+	byID map[string]Model
 }
 
 // Load builds the catalog for the given model IDs (order preserved), enriching
@@ -40,14 +45,22 @@ func Load(ids []string) (*Catalog, error) {
 		meta[m.ID] = m
 	}
 
-	autoEntry, hasAuto := meta[autoModelID]
+	// "auto" is always present. models.json may override its display metadata;
+	// otherwise we synthesize a default so the option never depends on the
+	// registry entry existing.
+	autoEntry, ok := meta[AutoID]
+	if !ok {
+		autoEntry = Model{
+			ID:          AutoID,
+			Name:        "Auto",
+			Description: "Automatically selects the best model for your query",
+		}
+	}
 
 	c := &Catalog{}
-	if hasAuto {
-		c.Models = append(c.Models, autoEntry)
-	}
+	c.Models = append(c.Models, autoEntry)
 	for _, id := range ids {
-		if id == autoModelID {
+		if id == AutoID {
 			continue
 		}
 		if m, ok := meta[id]; ok {
@@ -59,5 +72,18 @@ func Load(ids []string) (*Catalog, error) {
 	if len(c.Models) > 0 {
 		c.Default = c.Models[0].ID
 	}
+	c.byID = make(map[string]Model, len(c.Models))
+	for _, m := range c.Models {
+		c.byID[m.ID] = m
+	}
 	return c, nil
+}
+
+// Description returns the display description for the given model ID, or the ID
+// itself when the model is unknown.
+func (c *Catalog) Description(id string) string {
+	if m, ok := c.byID[id]; ok {
+		return m.Description
+	}
+	return id
 }

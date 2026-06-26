@@ -78,7 +78,6 @@ func TestResolveModel_AutoRoutesSuccessfully(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "tell me about history"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -108,7 +107,6 @@ func TestResolveModel_AutoSendsArchRouterFormat(t *testing.T) {
 		{Role: "system", Content: "you are helpful"},
 		{Role: "user", Content: "tell me a joke"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -160,7 +158,6 @@ func TestResolveModel_AutoFallbackOnInvalidJSON(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -192,7 +189,6 @@ func TestResolveModel_AutoHandlesSingleQuotedJSON(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "tell me a joke"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -221,7 +217,6 @@ func TestResolveModel_AutoFallbackOnUnknownRoute(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -245,7 +240,6 @@ func TestResolveModel_AutoFallbackOnRouterError(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask should not fail on router error, got: %v", err)
 	}
@@ -267,7 +261,6 @@ func TestResolveModel_EmptyModelNameUsesDefault(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -292,7 +285,6 @@ func TestResolveModel_ConcreteModelBypassesRouter(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "llama3.2:1b")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -323,7 +315,6 @@ func TestResolveModel_NeverLoopsBackToAuto(t *testing.T) {
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
 	}, "auto")
-
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
@@ -333,5 +324,32 @@ func TestResolveModel_NeverLoopsBackToAuto(t *testing.T) {
 	}
 	if answer != "fallback answer" {
 		t.Fatalf("want fallback answer, got %q", answer)
+	}
+}
+
+func TestResolveModel_AutoEmptyMessagesFallsBack(t *testing.T) {
+	// route() must not panic on an empty message slice — it falls back to
+	// models[0] without ever calling the router.
+	routerProvider := &mockProvider{}
+	mainProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5:0.5b": "fallback answer",
+		},
+	}
+
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+
+	answer, err := orch.Ask(context.Background(), []llm.Message{}, "auto")
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if answer != "fallback answer" {
+		t.Fatalf("want fallback answer, got %q", answer)
+	}
+	if mainProvider.lastChatModel != "qwen2.5:0.5b" {
+		t.Fatalf("empty messages should fall back to models[0], got %q", mainProvider.lastChatModel)
+	}
+	if len(routerProvider.lastMessages) != 0 {
+		t.Fatalf("router must not be called on empty messages, got %d messages", len(routerProvider.lastMessages))
 	}
 }

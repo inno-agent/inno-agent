@@ -41,3 +41,11 @@ export const llmClient = withAuth(
         headers: { Accept: 'application/json' },
     }),
 )
+
+// Identity service API (consent, jwks, etc.), same-origin via ingress.
+export const identityClient = withAuth(
+    axios.create({
+        baseURL: '/identity/v1',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    }),
+)

@@ -18,6 +18,9 @@ type Config struct {
 	JWTExpiry         time.Duration
 	DatabaseDSN       string
 	HTTPPort          string
+	// BotTokenSecret is the shared secret that authorises the internal
+	// /identity/v1/bot-token mint endpoint.  Empty string disables the endpoint.
+	BotTokenSecret string
 }
 
 func Load() (*Config, error) {
@@ -48,6 +51,7 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		JWTPrivateKeyPath: require("AUTH_JWT_PRIVATE_KEY_PATH"),
 		DatabaseDSN:       require("AUTH_DATABASE_DSN"),
 		HTTPPort:          fallback("AUTH_HTTP_PORT", "8081"),
+		BotTokenSecret:    fallback("BOT_TOKEN_SECRET", ""),
 	}
 
 	if len(missing) > 0 {

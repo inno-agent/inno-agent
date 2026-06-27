@@ -131,6 +131,9 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
+      # Service secret guarding the internal /identity/v1/bot-token mint endpoint
+      # (consumer presents it; nginx blocks the path from the public ingress).
+      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
     secrets:
       - identity_rsa_key
     networks:
@@ -261,6 +264,75 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Redpanda (Kafka-compatible broker) ───────────────────────────────────
+  redpanda:
+    image: redpandadata/redpanda:v26.1.11
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=0.0.0.0:9092
+      - --advertise-kafka-addr=redpanda:9092
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - innoagent
+
+  # ─── Review Consumer (webhook-driven PR reviewer) ─────────────────────────
+  review-consumer:
+    build:
+      context: ./backend/review-consumer
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: gitflame.events
+      KAFKA_GROUP: review-consumer
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      # Slice 2: mint a per-assigner token from identity instead of a static one.
+      IDENTITY_URL: http://identity:8081
+      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
+      ONBOARDING_URL: ${ONBOARDING_URL:-}
+    networks:
+      - innoagent
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+      identity:
+        condition: service_started
+
+  # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
+  review-webhook:
+    build:
+      context: ./backend/review-webhook
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "8002"
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: gitflame.events
+      WEBHOOK_AUTHORIZATION: ${WEBHOOK_AUTHORIZATION:-}
+    networks:
+      - innoagent
+    depends_on:
+      redpanda:
+        condition: service_healthy
 
   # ─── Review Frontend ──────────────────────────────────────────────────────
   review-front:

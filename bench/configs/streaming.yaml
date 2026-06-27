@@ -1,0 +1,5 @@
+target: "http://localhost:8080"
+scenario: "streaming"
+timeout: 180s
+users: 5
+message: "Hello, respond with a short greeting."

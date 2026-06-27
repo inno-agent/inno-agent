@@ -1,0 +1,9 @@
+target: "http://localhost:8080"
+scenario: "longprompt"
+timeout: 180s
+message: "Please analyze the following text:"
+long_prompt_tokens:
+  - 500
+  - 2000
+  - 4000
+  - 8000

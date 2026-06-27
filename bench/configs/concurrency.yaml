@@ -1,0 +1,16 @@
+target: "http://localhost:8080"
+scenario: "concurrency"
+timeout: 180s
+duration: 30s
+message: "Hello, respond with a short greeting."
+conc_levels:
+  - 1
+  - 2
+  - 5
+  - 10
+  - 20
+  - 30
+  - 40
+  - 50
+  - 75
+  - 100

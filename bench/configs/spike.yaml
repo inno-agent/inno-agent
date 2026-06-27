@@ -1,0 +1,8 @@
+target: "http://localhost:8080"
+scenario: "spike"
+timeout: 180s
+message: "Hello, respond with a short greeting."
+spike_rps:
+  - 1
+  - 50
+  - 100

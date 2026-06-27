@@ -1,0 +1,24 @@
+prompts:
+  short:
+    tokens: 10
+    content: "Hello, respond with a greeting."
+
+  medium:
+    tokens: 100
+    content: "Explain the concept of microservices architecture in simple terms. What are the key benefits and challenges?"
+
+  long_500:
+    tokens: 500
+    content: "Write a detailed analysis of the current state of artificial intelligence in software development. Cover the following topics: 1) Code generation tools and their effectiveness, 2) Testing automation with AI, 3) Code review assistance, 4) Documentation generation, 5) Performance optimization suggestions. For each topic, provide specific examples and discuss both advantages and limitations."
+
+  long_2000:
+    tokens: 2000
+    content: "Write a comprehensive technical document about building scalable microservices. Include: 1) Service decomposition strategies, 2) Communication patterns (sync vs async), 3) Data management approaches, 4) Observability and monitoring, 5) Deployment strategies, 6) Security considerations, 7) Performance optimization. For each section, provide detailed explanations with code examples and architectural diagrams described in text."
+
+  long_4000:
+    tokens: 4000
+    content: "Write an extensive technical guide on distributed systems. Cover: 1) CAP theorem and its practical implications, 2) Consistency models (strong, eventual, causal), 3) Replication strategies, 4) Partitioning and sharding, 5) Consensus algorithms (Raft, Paxos), 6) Distributed transactions (2PC, Saga pattern), 7) Service mesh architecture, 8) Circuit breaker pattern, 9) Rate limiting strategies, 10) Caching patterns. Provide detailed explanations, trade-off analysis, and implementation guidance for each topic."
+
+  long_8000:
+    tokens: 8000
+    content: "Write a comprehensive architecture document for a high-availability, high-throughput system. Include: 1) System overview and requirements, 2) Component architecture, 3) Data flow diagrams, 4) Database design and optimization, 5) Caching strategy, 6) Message queue integration, 7) Load balancing approaches, 8) Failover mechanisms, 9) Monitoring and alerting, 10) Disaster recovery plan, 11) Security architecture, 12) Performance benchmarks and targets, 13) Capacity planning, 14) Deployment pipeline, 15) Incident response procedures. For each section, provide detailed technical explanations with specific technology choices and justifications."

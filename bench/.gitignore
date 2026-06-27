@@ -1,0 +1,4 @@
+results/
+metrics/
+*.exe
+bench

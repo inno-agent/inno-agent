@@ -1,0 +1,35 @@
+target: "http://localhost:8080"
+scenario: "smoke"
+users: 1
+rps: 1
+duration: 30s
+ramp_up: 5s
+timeout: 180s
+stream: true
+output: "results"
+message: "Hello, respond with a short greeting."
+chat_id: "new"
+model_name: ""
+
+conc_levels:
+  - 1
+  - 2
+  - 5
+  - 10
+  - 20
+  - 30
+  - 40
+  - 50
+  - 75
+  - 100
+
+spike_rps:
+  - 1
+  - 50
+  - 100
+
+long_prompt_tokens:
+  - 500
+  - 2000
+  - 4000
+  - 8000

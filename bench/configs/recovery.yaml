@@ -1,0 +1,4 @@
+target: "http://localhost:8080"
+scenario: "recovery"
+timeout: 180s
+message: "Hello, respond with a short greeting."

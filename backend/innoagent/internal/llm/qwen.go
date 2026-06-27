@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"innoagent/internal/correlation"
 )
 
 const (
@@ -125,6 +127,7 @@ func (p *QwenProvider) Chat(
 		"Accept",
 		"application/json",
 	)
+	correlation.SetHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -203,6 +206,7 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	correlation.SetHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {

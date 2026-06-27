@@ -37,7 +37,7 @@ func main() {
 	reviewHandler := handler.NewReviewHandler(reviewService, logger)
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, reviewHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

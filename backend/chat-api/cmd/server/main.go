@@ -56,7 +56,7 @@ func main() {
 	streamHandler := handler.NewStreamHandler(chatService, logger)
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

@@ -216,7 +216,7 @@ services:
       OLLAMA_HOST: "0.0.0.0"
     healthcheck:
       test: ["CMD", "ollama", "list"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
       start_period: 30s

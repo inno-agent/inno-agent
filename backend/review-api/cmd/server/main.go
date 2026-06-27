@@ -13,9 +13,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/config"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/handler"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/installation"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/llm"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/secretbox"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/service"
 )
 
@@ -36,8 +39,36 @@ func main() {
 	reviewService := service.NewReviewService(gitFlameClient, llmClient, logger)
 	reviewHandler := handler.NewReviewHandler(reviewService, logger)
 
+	// Onboarding (installations) is enabled only when a review DB and an
+	// encryption key are configured.
+	var installHandler *handler.InstallationHandler
+	if cfg.ReviewDatabaseDSN != "" && cfg.ReviewRefreshEncKey != "" {
+		if err := db.EnsureDatabase(ctx, cfg.ReviewDatabaseDSN); err != nil {
+			logger.Fatal("ensure review db", zap.Error(err))
+		}
+		if err := db.Migrate(cfg.ReviewDatabaseDSN); err != nil {
+			logger.Fatal("migrate review db", zap.Error(err))
+		}
+		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
+		if err != nil {
+			logger.Fatal("review db pool", zap.Error(err))
+		}
+		defer pool.Close()
+
+		sb, err := secretbox.NewFromBase64Key(cfg.ReviewRefreshEncKey)
+		if err != nil {
+			logger.Fatal("secretbox", zap.Error(err))
+		}
+
+		installRepo := installation.NewRepository(pool)
+		installHandler = handler.NewInstallationHandler(installRepo, sb, logger)
+		logger.Info("onboarding enabled (installations)")
+	} else {
+		logger.Warn("REVIEW_DATABASE_DSN or REVIEW_REFRESH_ENC_KEY unset; /installations disabled")
+	}
+
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

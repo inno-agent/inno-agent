@@ -2,15 +2,14 @@ package transport
 
 import (
 	"context"
-	"crypto/subtle"
+	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/inno-agent/identity/internal/botprincipal"
 	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
+	"github.com/inno-agent/identity/internal/refresh"
 	"github.com/inno-agent/identity/internal/user"
 )
 
@@ -19,11 +18,14 @@ type ExchangeServicer interface {
 	UpsertIdentity(ctx context.Context, provider, sub, email string) (user.User, error)
 }
 
-// BotPrincipalServicer is the subset of botprincipal.Service used by the HTTP
-// handler.
-type BotPrincipalServicer interface {
-	UpsertConsent(ctx context.Context, userID, gitflameUsername string) error
-	FindUserIDByGitFlameUsername(ctx context.Context, gitflameUsername string) (userID string, found bool, err error)
+// RefreshStore is the minimal interface the refresh endpoints need.
+// *refresh.Repository satisfies it.
+type RefreshStore interface {
+	Store(ctx context.Context, userID string, hash []byte, expiresAt time.Time) error
+	Lookup(ctx context.Context, hash []byte) (refresh.Row, error)
+	Rotate(ctx context.Context, oldHash, newHash []byte, newExpiresAt time.Time, userID string) (string, error)
+	Revoke(ctx context.Context, hash []byte) error
+	RevokeChainFromID(ctx context.Context, startID string) error
 }
 
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
@@ -40,8 +42,8 @@ func RegisterHTTPRoutes(
 	iss *issuer.Issuer,
 	expiry time.Duration,
 	oidc OIDCEndpoints,
-	botSvc BotPrincipalServicer,
-	botTokenSecret string,
+	refreshRepo RefreshStore,
+	refreshExpiry time.Duration,
 ) {
 	r.GET("/identity/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -72,12 +74,19 @@ func RegisterHTTPRoutes(
 		})
 	})
 
-	r.POST("/identity/v1/exchange", exchangeHandler(p, svc, iss, expiry))
-	r.POST("/identity/v1/bot/consent", consentHandler(iss, botSvc))
-	r.POST("/identity/v1/bot-token", botTokenHandler(iss, botSvc, botTokenSecret, expiry))
+	r.POST("/identity/v1/exchange", exchangeHandler(p, svc, iss, expiry, refreshRepo, refreshExpiry))
+	r.POST("/identity/v1/refresh", refreshHandler(iss, expiry, refreshRepo, refreshExpiry))
+	r.POST("/identity/v1/revoke", revokeHandler(refreshRepo))
 }
 
-func exchangeHandler(p provider.AuthProvider, svc ExchangeServicer, iss *issuer.Issuer, expiry time.Duration) gin.HandlerFunc {
+func exchangeHandler(
+	p provider.AuthProvider,
+	svc ExchangeServicer,
+	iss *issuer.Issuer,
+	expiry time.Duration,
+	refreshRepo RefreshStore,
+	refreshExpiry time.Duration,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Token string `json:"token" binding:"required"`
@@ -105,114 +114,98 @@ func exchangeHandler(p provider.AuthProvider, svc ExchangeServicer, iss *issuer.
 			return
 		}
 
+		// Mint and store a refresh token.
+		pt, hash, err := refresh.Mint()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		if err := refreshRepo.Store(c.Request.Context(), u.ID, hash, time.Now().Add(refreshExpiry)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"access_token": token,
-			"expires_in":   int(expiry.Seconds()),
+			"access_token":       token,
+			"expires_in":         int(expiry.Seconds()),
+			"refresh_token":      pt,
+			"refresh_expires_in": int(refreshExpiry.Seconds()),
 		})
 	}
 }
 
-// consentHandler — PUBLIC (browser calls it, bearer-authed as the logged-in
-// user). Verifies the aicore token, then upserts the botprincipal row.
-//
-//	POST /identity/v1/bot/consent
-//	Authorization: Bearer <aicore-token>
-//	{"gitflame_username": "alice"}
-func consentHandler(iss *issuer.Issuer, botSvc BotPrincipalServicer) gin.HandlerFunc {
+func refreshHandler(
+	iss *issuer.Issuer,
+	expiry time.Duration,
+	refreshRepo RefreshStore,
+	refreshExpiry time.Duration,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Auth: verify aicore bearer token.
-		authHeader := c.GetHeader("Authorization")
-		tokenStr, ok := strings.CutPrefix(authHeader, "Bearer ")
-		if !ok || tokenStr == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing_token"})
-			return
-		}
-
-		claims, err := iss.Verify(tokenStr)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
-			return
-		}
-
 		var req struct {
-			GitFlameUsername string `json:"gitflame_username"`
+			RefreshToken string `json:"refresh_token" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
 			return
 		}
 
-		req.GitFlameUsername = strings.TrimSpace(req.GitFlameUsername)
-		if req.GitFlameUsername == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "gitflame_username is required"})
+		hash := refresh.Hash(req.RefreshToken)
+		row, err := refreshRepo.Lookup(c.Request.Context(), hash)
+		if err != nil {
+			if errors.Is(err, refresh.ErrRevoked) && row.ReplacedBy != nil {
+				// Reuse of a rotated token: revoke the whole descendant chain.
+				_ = refreshRepo.RevokeChainFromID(c.Request.Context(), *row.ReplacedBy)
+			}
+
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_refresh_token"})
 			return
 		}
 
-		if err := botSvc.UpsertConsent(c.Request.Context(), claims.UserID, req.GitFlameUsername); err != nil {
-			if err == botprincipal.ErrUsernameTaken {
-				c.JSON(http.StatusConflict, gin.H{"error": "username_taken"})
-				return
-			}
+		// Issue new access token.
+		accessToken, err := iss.Issue(row.UserID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
 
+		// Mint new refresh token and rotate.
+		newPT, newHash, err := refresh.Mint()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		if _, err := refreshRepo.Rotate(c.Request.Context(), hash, newHash, time.Now().Add(refreshExpiry), row.UserID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"access_token":       accessToken,
+			"expires_in":         int(expiry.Seconds()),
+			"refresh_token":      newPT,
+			"refresh_expires_in": int(refreshExpiry.Seconds()),
+		})
+	}
+}
+
+func revokeHandler(refreshRepo RefreshStore) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			RefreshToken string `json:"refresh_token" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+
+		hash := refresh.Hash(req.RefreshToken)
+		if err := refreshRepo.Revoke(c.Request.Context(), hash); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return
 		}
 
 		c.Status(http.StatusNoContent)
-	}
-}
-
-// botTokenHandler — INTERNAL ONLY (never exposed through the ingress; nginx
-// blocks it at the edge). Mints a short-TTL aicore token for the user who
-// linked the given gitflame_username.
-//
-//	POST /identity/v1/bot-token
-//	X-Service-Secret: <secret>
-//	{"gitflame_username": "alice"}
-func botTokenHandler(iss *issuer.Issuer, botSvc BotPrincipalServicer, secret string, expiry time.Duration) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Auth: constant-time compare of service secret.
-		// If secret is empty OR header is missing/wrong → 401.
-		provided := c.GetHeader("X-Service-Secret")
-		if secret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-
-		var req struct {
-			GitFlameUsername string `json:"gitflame_username"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
-			return
-		}
-
-		req.GitFlameUsername = strings.TrimSpace(req.GitFlameUsername)
-		if req.GitFlameUsername == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "gitflame_username is required"})
-			return
-		}
-
-		userID, found, err := botSvc.FindUserIDByGitFlameUsername(c.Request.Context(), req.GitFlameUsername)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
-			return
-		}
-
-		if !found {
-			c.JSON(http.StatusNotFound, gin.H{"error": "not_onboarded"})
-			return
-		}
-
-		token, err := iss.IssueActor(userID, "innoagent")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"access_token": token,
-			"expires_in":   int(expiry.Seconds()),
-		})
 	}
 }

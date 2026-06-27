@@ -81,6 +81,7 @@ services:
       AUTHENTIK_PG_PASSWORD: ${AUTHENTIK_PG_PASSWORD}
       IDENTITY_PG_PASSWORD: ${IDENTITY_PG_PASSWORD}
       CHAT_PG_PASSWORD: ${CHAT_PG_PASSWORD}
+      REVIEW_PG_PASSWORD: ${REVIEW_PG_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}"]
       interval: 10s
@@ -131,9 +132,8 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      # Service secret guarding the internal /identity/v1/bot-token mint endpoint
-      # (consumer presents it; nginx blocks the path from the public ingress).
-      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      # Refresh-token TTL for the generic /refresh flow (default 720h).
+      AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
     secrets:
       - identity_rsa_key
     networks:
@@ -195,9 +195,13 @@ services:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
     networks:
       - innoagent
     depends_on:
+      postgres:
+        condition: service_healthy
       identity:
         condition: service_started
       orchestrator:
@@ -303,15 +307,19 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Slice 2: mint a per-assigner token from identity instead of a static one.
+      # Per-assigner delegated auth: read the assigner's encrypted refresh token
+      # from inno_review and exchange it via identity's generic /refresh.
       IDENTITY_URL: http://identity:8081
-      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:
       - innoagent
     depends_on:
       redpanda:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       orchestrator:
         condition: service_started

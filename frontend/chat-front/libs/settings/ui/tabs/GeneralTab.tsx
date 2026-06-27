@@ -1,35 +1,53 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { SettingsRow, SettingsSectionTitle, SettingsSelect } from '@libs/settings/ui/rows/SettingsRow'
+import { useSettings } from '@libs/settings/model/useSettings'
+import i18n from '@libs/settings/model/i18n'
+import type {Theme} from "@libs/settings/model/settingsContext"
 
-const appearanceOptions = ['Системный', 'Тёмный', 'Светлый']
-const contrastOptions = ['Системный', 'Стандартный', 'Высокий']
-const accentColorOptions = ['По умолчанию', 'Синий', 'Фиолетовый', 'Зелёный']
-const languageOptions = ['Автоматическое определение', 'Русский', 'English']
 
 export const GeneralTab = () => {
-    const [appearance, setAppearance] = useState(appearanceOptions[0])
-    const [contrast, setContrast] = useState(contrastOptions[0])
+    const { theme, setTheme } = useSettings()
+    const { t } = useTranslation()
+    const themeOptions: Record<string, Theme> = {
+        [t('general.appearanceOptions.system')]: 'system',
+        [t('general.appearanceOptions.dark')]: 'dark',
+        [t('general.appearanceOptions.light')]: 'light',
+    }
+    const langOptions: Record<string, string> = {
+        [t('general.languageOptions.auto')]: navigator.language.startsWith('en') ? 'en' : 'ru',
+        [t('general.languageOptions.ru')]: 'ru',
+        [t('general.languageOptions.en')]: 'en',
+    }
+    const accentColorOptions = ['default', 'orange', 'yellow', 'green', 'blue', 'purple'].map(k => t(`general.accentColorOptions.${k}`))
     const [accentColor, setAccentColor] = useState(accentColorOptions[0])
-    const [language, setLanguage] = useState(languageOptions[0])
+    const [language, setLanguage] = useState(
+        i18n.language === 'en' ? t('general.languageOptions.en') : t('general.languageOptions.ru')
+    )
+    const themeLabel = Object.entries(themeOptions).find(([, v]) => v === theme)?.[0] ?? t('general.appearanceOptions.system')
+    const handleThemeChange = (label: string) => {
+        setTheme(themeOptions[label] as Theme)
+    }
+    const handleLanguageChange = (label: string) => {
+        setLanguage(label)
+        i18n.changeLanguage(langOptions[label])
+        localStorage.setItem('lang', langOptions[label])
+    }
 
     return (
         <>
-            <SettingsSectionTitle>Общее</SettingsSectionTitle>
+            <SettingsSectionTitle>{t('general.sectionTitle')}</SettingsSectionTitle>
 
-            <SettingsRow label="Внешний вид">
-                <SettingsSelect value={appearance} options={appearanceOptions} onChange={setAppearance} />
+            <SettingsRow label={t('general.appearance')}>
+                <SettingsSelect value={themeLabel} options={Object.keys(themeOptions)} onChange={handleThemeChange} />
             </SettingsRow>
 
-            <SettingsRow label="Контраст">
-                <SettingsSelect value={contrast} options={contrastOptions} onChange={setContrast} />
-            </SettingsRow>
-
-            <SettingsRow label="Акцентный цвет">
+            <SettingsRow label={t('general.accentColor')}>
                 <SettingsSelect value={accentColor} options={accentColorOptions} onChange={setAccentColor} />
             </SettingsRow>
 
-            <SettingsRow label="Язык">
-                <SettingsSelect value={language} options={languageOptions} onChange={setLanguage} />
+            <SettingsRow label={t('general.language')}>
+                <SettingsSelect value={language} options={Object.keys(langOptions)} onChange={handleLanguageChange} />
             </SettingsRow>
         </>
     )

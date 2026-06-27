@@ -33,16 +33,18 @@ func WriteMarkdown(dir string, results []*ScenarioResult) (string, error) {
 
 		if len(r.Levels) > 0 {
 			sb.WriteString("### Levels\n\n")
-			sb.WriteString("| Level | Avg (ms) | P50 (ms) | P95 (ms) | P99 (ms) | RPS | Errors | Success Rate |\n")
-			sb.WriteString("|-------|----------|----------|----------|----------|-----|--------|-------------|\n")
+			sb.WriteString("| Level | Avg (ms) | P50 (ms) | P90 (ms) | P95 (ms) | P99 (ms) | RPS | Tokens/s | Errors | Rate |\n")
+			sb.WriteString("|-------|----------|----------|----------|----------|----------|-----|----------|--------|------|\n")
 			for _, l := range r.Levels {
-				sb.WriteString(fmt.Sprintf("| %d | %.1f | %.1f | %.1f | %.1f | %.1f | %d | %.1f%% |\n",
+				sb.WriteString(fmt.Sprintf("| %d | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | %d | %.1f%% |\n",
 					l.Level,
 					l.Summary.AvgLatency.Seconds()*1000,
 					l.Summary.P50,
+					l.Summary.P90,
 					l.Summary.P95,
 					l.Summary.P99,
 					l.Summary.RPS,
+					l.Summary.TokensPerSec,
 					l.Summary.FailedRequests,
 					l.Summary.SuccessRate,
 				))
@@ -66,17 +68,30 @@ func writeSummaryTable(sb *strings.Builder, s *metrics.Summary) {
 	sb.WriteString("|--------|-------|\n")
 	sb.WriteString(fmt.Sprintf("| Avg Latency | %.1f ms |\n", s.AvgLatency.Seconds()*1000))
 	sb.WriteString(fmt.Sprintf("| P50 | %.1f ms |\n", s.P50))
+	sb.WriteString(fmt.Sprintf("| P90 | %.1f ms |\n", s.P90))
 	sb.WriteString(fmt.Sprintf("| P95 | %.1f ms |\n", s.P95))
 	sb.WriteString(fmt.Sprintf("| P99 | %.1f ms |\n", s.P99))
 	sb.WriteString(fmt.Sprintf("| Min Latency | %.1f ms |\n", s.MinLatency))
 	sb.WriteString(fmt.Sprintf("| Max Latency | %.1f ms |\n", s.MaxLatency))
+	sb.WriteString(fmt.Sprintf("| StdDev | %.1f ms |\n", s.StdDev))
 	sb.WriteString(fmt.Sprintf("| RPS | %.1f |\n", s.RPS))
+	sb.WriteString(fmt.Sprintf("| Tokens/sec | %.1f |\n", s.TokensPerSec))
 	sb.WriteString(fmt.Sprintf("| P50 TTFT | %.1f ms |\n", s.P50TTFT))
 	sb.WriteString(fmt.Sprintf("| P95 TTFT | %.1f ms |\n", s.P95TTFT))
 	sb.WriteString(fmt.Sprintf("| P99 TTFT | %.1f ms |\n", s.P99TTFT))
+	if s.AvgGenTimeMs > 0 {
+		sb.WriteString(fmt.Sprintf("| Avg Gen Time | %.1f ms |\n", s.AvgGenTimeMs))
+		sb.WriteString(fmt.Sprintf("| P95 Gen Time | %.1f ms |\n", s.P95GenTime))
+	}
+	if s.AvgPromptTimeMs > 0 {
+		sb.WriteString(fmt.Sprintf("| Avg Prompt Time | %.1f ms |\n", s.AvgPromptTimeMs))
+		sb.WriteString(fmt.Sprintf("| P95 Prompt Time | %.1f ms |\n", s.P95PromptTime))
+	}
 	sb.WriteString(fmt.Sprintf("| Success Rate | %.1f%% |\n", s.SuccessRate))
 	sb.WriteString(fmt.Sprintf("| Total Bytes | %d |\n", s.TotalBytes))
 	sb.WriteString(fmt.Sprintf("| Total Chunks | %d |\n", s.TotalChunks))
+	sb.WriteString(fmt.Sprintf("| Prompt Tokens | %d |\n", s.TotalPromptTokens))
+	sb.WriteString(fmt.Sprintf("| Generated Tokens | %d |\n", s.TotalGeneratedTokens))
 	sb.WriteString(fmt.Sprintf("| Server Errors | %d |\n", s.ServerErrors))
 	sb.WriteString(fmt.Sprintf("| Timeouts | %d |\n", s.Timeouts))
 	sb.WriteString("\n")

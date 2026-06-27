@@ -24,25 +24,56 @@ type Config struct {
 	ConcLevels []int         `yaml:"conc_levels"`
 	SpikeRPS   []int         `yaml:"spike_rps"`
 	LongPrompt []int         `yaml:"long_prompt_tokens"`
+
+	GPUEnabled       bool          `yaml:"gpu"`
+	ChartsEnabled    *bool         `yaml:"charts"`
+	DockerSampleRate time.Duration `yaml:"docker_sample_rate"`
+	MaxP95MS         float64       `yaml:"max_p95_ms"`
+	MaxErrorRate     float64       `yaml:"max_error_rate"`
+	LevelDuration    time.Duration `yaml:"level_duration"`
+
+	OllamaSweep OllamaSweepConfig `yaml:"ollama_sweep"`
+}
+
+type OllamaSweepConfig struct {
+	NumParallel  []int    `yaml:"num_parallel"`
+	MaxQueue     []int    `yaml:"max_queue"`
+	KeepAlive    []string `yaml:"keep_alive"`
+	TestDuration string   `yaml:"test_duration"`
+	Users        int      `yaml:"users"`
 }
 
 func DefaultConfig() *Config {
+	charts := true
 	return &Config{
-		Target:   "http://localhost:8080",
-		Scenario: "smoke",
-		Users:    1,
-		RPS:      1,
-		Duration: 30 * time.Second,
-		RampUp:   5 * time.Second,
-		Timeout:  180 * time.Second,
-		Stream:   true,
-		Output:   "results",
-		Message:  "Hello, respond with a short greeting.",
-		ChatID:   "new",
-		ModelName: "",
-		ConcLevels: []int{1, 2, 5, 10, 20, 30, 40, 50, 75, 100},
-		SpikeRPS:   []int{1, 50, 100},
-		LongPrompt: []int{500, 2000, 4000, 8000},
+		Target:           "http://localhost:8080",
+		Scenario:         "smoke",
+		Users:            1,
+		RPS:              1,
+		Duration:         30 * time.Second,
+		RampUp:           5 * time.Second,
+		Timeout:          180 * time.Second,
+		Stream:           true,
+		Output:           "results",
+		Message:          "Hello, respond with a short greeting.",
+		ChatID:           "new",
+		ModelName:        "",
+		ConcLevels:       []int{1, 2, 5, 10, 20, 30, 40, 50, 75, 100},
+		SpikeRPS:         []int{1, 50, 100},
+		LongPrompt:       []int{500, 2000, 4000, 8000},
+		GPUEnabled:       false,
+		ChartsEnabled:    &charts,
+		DockerSampleRate: 2 * time.Second,
+		MaxP95MS:         10000,
+		MaxErrorRate:     1.0,
+		LevelDuration:    30 * time.Second,
+		OllamaSweep: OllamaSweepConfig{
+			NumParallel: []int{1, 2, 4, 8, 16},
+			MaxQueue:    []int{32, 64, 128, 256, 512},
+			KeepAlive:   []string{"5m", "10m", "30m"},
+			TestDuration: "30s",
+			Users:       10,
+		},
 	}
 }
 
@@ -86,8 +117,14 @@ func (c *Config) MergeFlags(flags *Flags) {
 	if flags.Message != "" {
 		c.Message = flags.Message
 	}
-	if flags.ConfigFile != "" {
+	if flags.ChatID != "" {
 		c.ChatID = flags.ChatID
+	}
+	if flags.GPU {
+		c.GPUEnabled = true
+	}
+	if flags.NoCharts {
+		c.ChartsEnabled = &[]bool{false}[0]
 	}
 }
 
@@ -104,5 +141,7 @@ type Flags struct {
 	ChatID     string
 	ConfigFile string
 	Stream     *bool
+	GPU        bool
+	NoCharts   bool
 	Help       bool
 }

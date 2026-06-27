@@ -3,27 +3,119 @@ package monitor
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
-type DockerStats struct {
-	Timestamp  time.Time             `json:"timestamp"`
-	Containers []ContainerStats      `json:"containers"`
+type DockerSample struct {
+	Timestamp  time.Time          `json:"timestamp"`
+	Containers []ContainerSample  `json:"containers"`
 }
 
-type ContainerStats struct {
-	Name        string  `json:"name"`
-	CPU         string  `json:"cpu"`
-	MemUsage    string  `json:"mem_usage"`
-	MemPercent  string  `json:"mem_percent"`
-	NetIO       string  `json:"net_io"`
-	BlockIO     string  `json:"block_io"`
-	PIDs        string  `json:"pids"`
+type ContainerSample struct {
+	Name       string  `json:"name"`
+	CPUPercent float64 `json:"cpu_percent"`
+	MemUsageMB float64 `json:"mem_usage_mb"`
+	MemPercent float64 `json:"mem_percent"`
+	NetIO      string  `json:"net_io"`
+	BlockIO    string  `json:"block_io"`
+	PIDs       int     `json:"pids"`
 }
 
-func CollectDockerStats(ctx context.Context) (*DockerStats, error) {
+type DockerCollector struct {
+	mu       sync.Mutex
+	samples  []DockerSample
+	interval time.Duration
+	cancel   context.CancelFunc
+}
+
+func NewDockerCollector(interval time.Duration) *DockerCollector {
+	return &DockerCollector{
+		samples:  make([]DockerSample, 0, 256),
+		interval: interval,
+	}
+}
+
+func (dc *DockerCollector) Start(ctx context.Context) {
+	ctx, dc.cancel = context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(dc.interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				sample, err := collectOnce(ctx)
+				if err != nil {
+					continue
+				}
+				dc.mu.Lock()
+				dc.samples = append(dc.samples, *sample)
+				dc.mu.Unlock()
+			}
+		}
+	}()
+}
+
+func (dc *DockerCollector) Stop() {
+	if dc.cancel != nil {
+		dc.cancel()
+	}
+}
+
+func (dc *DockerCollector) Samples() []DockerSample {
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+	out := make([]DockerSample, len(dc.samples))
+	copy(out, dc.samples)
+	return out
+}
+
+func (dc *DockerCollector) WriteCSV(path string) error {
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+
+	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
+		return err
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	w.Write([]string{"timestamp", "container", "cpu_percent", "mem_usage_mb", "mem_percent", "net_io", "block_io", "pids"})
+
+	for _, s := range dc.samples {
+		for _, c := range s.Containers {
+			w.Write([]string{
+				s.Timestamp.Format(time.RFC3339),
+				c.Name,
+				fmt.Sprintf("%.2f", c.CPUPercent),
+				fmt.Sprintf("%.2f", c.MemUsageMB),
+				fmt.Sprintf("%.2f", c.MemPercent),
+				c.NetIO,
+				c.BlockIO,
+				strconv.Itoa(c.PIDs),
+			})
+		}
+	}
+	return nil
+}
+
+func collectOnce(ctx context.Context) (*DockerSample, error) {
 	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{json .}}")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -33,7 +125,7 @@ func CollectDockerStats(ctx context.Context) (*DockerStats, error) {
 		return nil, err
 	}
 
-	stats := &DockerStats{
+	sample := &DockerSample{
 		Timestamp: time.Now(),
 	}
 
@@ -57,16 +149,56 @@ func CollectDockerStats(ctx context.Context) (*DockerStats, error) {
 			continue
 		}
 
-		stats.Containers = append(stats.Containers, ContainerStats{
+		sample.Containers = append(sample.Containers, ContainerSample{
 			Name:       raw.Name,
-			CPU:        raw.CPU,
-			MemUsage:   raw.MemUsage,
-			MemPercent: raw.MemPerc,
+			CPUPercent: parsePercent(raw.CPU),
+			MemUsageMB: parseMemUsage(raw.MemUsage),
+			MemPercent: parsePercent(raw.MemPerc),
 			NetIO:      raw.NetIO,
 			BlockIO:    raw.BlockIO,
-			PIDs:       raw.PIDs,
+			PIDs:       parseInt(raw.PIDs),
 		})
 	}
 
-	return stats, nil
+	return sample, nil
+}
+
+func parsePercent(s string) float64 {
+	s = strings.TrimSuffix(s, "%")
+	s = strings.TrimSpace(s)
+	v, _ := strconv.ParseFloat(s, 64)
+	return v
+}
+
+func parseMemUsage(s string) float64 {
+	s = strings.TrimSpace(s)
+	parts := strings.Split(s, "/")
+	if len(parts) == 0 {
+		return 0
+	}
+	mem := strings.TrimSpace(parts[0])
+	mem = strings.TrimSuffix(mem, "GiB")
+	mem = strings.TrimSuffix(mem, "MiB")
+	mem = strings.TrimSuffix(mem, "KiB")
+	mem = strings.TrimSpace(mem)
+	v, _ := strconv.ParseFloat(mem, 64)
+	return v
+}
+
+func parseInt(s string) int {
+	s = strings.TrimSpace(s)
+	v, _ := strconv.Atoi(s)
+	return v
+}
+
+func dirOf(path string) string {
+	idx := strings.LastIndex(path, "/")
+	if idx < 0 {
+		return "."
+	}
+	return path[:idx]
+}
+
+func CollectDockerStats(ctx context.Context) (*DockerSample, error) {
+	return collectOnce(ctx)
 }

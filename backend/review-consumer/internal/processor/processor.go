@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -21,9 +22,10 @@ const (
 	Transient               // retriable failure; do NOT commit
 )
 
-// eventTypeReviewRequest is the GitFlame X-GitFlame-Event value for the
-// "reviewer assigned" event that triggers the bot.
-const eventTypeReviewRequest = "pull_request_review_request"
+// actionReviewerAdded is the GitFlame payload action that fires when a reviewer
+// is added to a PR — the trigger for the bot. (The X-GitFlame-Event header is
+// "pull_request"; the body action is the reliable discriminator.)
+const actionReviewerAdded = "reviewer_added"
 
 // seenCap is the maximum number of entries in the dedup set. When the cap is
 // reached the oldest entry is evicted (FIFO) so the set stays bounded.
@@ -98,18 +100,20 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		return Skip
 	}
 
-	if env.EventType != eventTypeReviewRequest {
-		return Skip
-	}
-
 	var pr event.PullRequestEvent
 	if err := json.Unmarshal(env.Payload, &pr); err != nil {
-		p.logger.Warn("undecodable pull_request_review_request payload; skipping", zap.Error(err))
+		p.logger.Warn("undecodable pull_request payload; skipping", zap.Error(err))
 		return Skip
 	}
 
-	// Only react when the bot itself is the requested reviewer.
-	if p.botUsername != "" && pr.RequestedReviewer.Login != p.botUsername {
+	// Trigger only when a reviewer is added to a PR.
+	if pr.Action != actionReviewerAdded {
+		return Skip
+	}
+
+	// Only react when the bot itself is the requested reviewer. Compare
+	// case-insensitively — GitFlame stores logins lowercased.
+	if p.botUsername != "" && !strings.EqualFold(pr.RequestedReviewer.Login, p.botUsername) {
 		p.logger.Debug(
 			"requested_reviewer is not the bot; skipping",
 			zap.String("requested_reviewer", pr.RequestedReviewer.Login),

@@ -53,6 +53,7 @@ func newProc(reviewer domain.Reviewer, poster domain.CommentPoster) *processor.P
 // makeEnvelope builds a review-request event envelope for the bot reviewer.
 func makeEnvelope(deliveryID string) []byte {
 	pr := event.PullRequestEvent{
+		Action: "reviewer_added",
 		Number: 42,
 	}
 	pr.PullRequest.Head.SHA = "deadbeef"
@@ -90,7 +91,7 @@ func TestProcess_WrongEventType_Skip(t *testing.T) {
 }
 
 func TestProcess_WrongRequestedReviewer_Skip(t *testing.T) {
-	pr := event.PullRequestEvent{Number: 1}
+	pr := event.PullRequestEvent{Action: "reviewer_added", Number: 1}
 	pr.PullRequest.Head.SHA = "abc"
 	pr.Repository.Name = "repo"
 	pr.Repository.Owner.Login = "org"

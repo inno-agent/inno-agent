@@ -318,6 +318,22 @@ services:
       identity:
         condition: service_started
 
+  # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
+  review-webhook:
+    build:
+      context: ./backend/review-webhook
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: "8002"
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: gitflame.events
+      WEBHOOK_AUTHORIZATION: ${WEBHOOK_AUTHORIZATION:-}
+    networks:
+      - innoagent
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
   # ─── Review Frontend ──────────────────────────────────────────────────────
   review-front:
     build:

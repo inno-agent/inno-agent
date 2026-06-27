@@ -149,6 +149,16 @@ server {
         proxy_pass http://$upstream;
     }
 
+    # Public webhook receiver — unauthenticated at the proxy;
+    # the service itself validates the auth header.
+    location = /hooks/gitflame {
+        set $upstream review-webhook:8002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://$upstream;
+    }
+
     location / {
         set $upstream review-front:80;
         proxy_set_header Host $host;

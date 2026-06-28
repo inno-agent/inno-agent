@@ -307,11 +307,11 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Per-assigner delegated auth: read the assigner's encrypted refresh token
-      # from inno_review and exchange it via identity's generic /refresh.
+      # Service credentials auth: bot authenticates as itself via identity.
       IDENTITY_URL: http://identity:8081
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:

@@ -35,10 +35,11 @@ type ServiceClientVerifier interface {
 	Verify(ctx context.Context, clientID, secret string) error
 }
 
-// SubjectVerifier checks that a subject user_id exists.
-// *user.Repository satisfies it.
-type SubjectVerifier interface {
-	UserExists(ctx context.Context, userID string) (bool, error)
+// DelegationStore persists and checks delegation grants.
+// *delegation.Repository satisfies it.
+type DelegationStore interface {
+	Grant(ctx context.Context, userID, clientID string) error
+	HasValidGrant(ctx context.Context, userID, clientID string) (bool, error)
 }
 
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
@@ -59,7 +60,7 @@ func RegisterHTTPRoutes(
 	refreshExpiry time.Duration,
 	svcVerifier ServiceClientVerifier,
 	serviceTokenExpiry time.Duration,
-	subjectVerifier SubjectVerifier,
+	delegations DelegationStore,
 	delegateExpiry time.Duration,
 ) {
 	r.GET("/identity/v1/config", func(c *gin.Context) {
@@ -95,7 +96,8 @@ func RegisterHTTPRoutes(
 	r.POST("/identity/v1/refresh", refreshHandler(iss, expiry, refreshRepo, refreshExpiry))
 	r.POST("/identity/v1/revoke", revokeHandler(refreshRepo))
 	r.POST("/identity/v1/service-token", serviceTokenHandler(iss, svcVerifier, serviceTokenExpiry))
-	r.POST("/identity/v1/token", tokenExchangeHandler(iss, subjectVerifier, delegateExpiry))
+	r.POST("/identity/v1/delegation-grant", delegationGrantHandler(iss, delegations))
+	r.POST("/identity/v1/token", tokenExchangeHandler(iss, delegations, delegateExpiry))
 }
 
 func exchangeHandler(
@@ -266,9 +268,51 @@ func serviceTokenHandler(
 	}
 }
 
+// delegationGrantHandler creates a standing grant: "client X may act on behalf of this user".
+// Auth: user Bearer token (forwarded by review-api on behalf of the installing user).
+// Body: {"client_id": "<service that will act on user's behalf>"}
+func delegationGrantHandler(iss *issuer.Issuer, delegations DelegationStore) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing_token"})
+			return
+		}
+		rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+
+		claims, err := iss.Verify(rawToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			return
+		}
+		if strings.HasPrefix(claims.UserID, "svc:") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "user_token_required"})
+			return
+		}
+
+		var req struct {
+			ClientID string `json:"client_id" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+
+		if err := delegations.Grant(c.Request.Context(), claims.UserID, req.ClientID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// tokenExchangeHandler implements RFC 8693 token exchange.
+// actor_token: service JWT (sub = svc:<client_id>)
+// subject_token: user UUID — authorised by a delegation grant in the DB.
 func tokenExchangeHandler(
 	iss *issuer.Issuer,
-	sub SubjectVerifier,
+	delegations DelegationStore,
 	delegateExpiry time.Duration,
 ) gin.HandlerFunc {
 	const grantType = "urn:ietf:params:oauth:grant-type:token-exchange"
@@ -287,7 +331,7 @@ func tokenExchangeHandler(
 			return
 		}
 
-		// Validate actor token — must be a valid service JWT (sub starts with "svc:")
+		// Validate actor — must be a valid service JWT.
 		claims, err := iss.Verify(req.ActorToken)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_actor"})
@@ -298,18 +342,18 @@ func tokenExchangeHandler(
 			return
 		}
 
-		// Validate subject — user must exist
-		exists, err := sub.UserExists(c.Request.Context(), req.SubjectToken)
+		// Authorise via delegation grant: (client_id, user_id) must exist and be active.
+		actorClientID := strings.TrimPrefix(claims.UserID, "svc:")
+		valid, err := delegations.HasValidGrant(c.Request.Context(), req.SubjectToken, actorClientID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return
 		}
-		if !exists {
-			c.JSON(http.StatusNotFound, gin.H{"error": "subject_not_found"})
+		if !valid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "grant_required"})
 			return
 		}
 
-		// Issue delegated token: sub=user_id, act.sub=svc:clientID
 		tok, err := iss.IssueDelegate(req.SubjectToken, claims.UserID, delegateExpiry)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})

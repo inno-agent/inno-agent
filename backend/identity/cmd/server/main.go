@@ -13,6 +13,7 @@ import (
 
 	"github.com/inno-agent/identity/internal/config"
 	"github.com/inno-agent/identity/internal/db"
+	"github.com/inno-agent/identity/internal/delegation"
 	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
 	"github.com/inno-agent/identity/internal/refresh"
@@ -58,6 +59,7 @@ func main() {
 
 	refreshRepo := refresh.NewRepository(pool)
 	svcClientRepo := serviceclient.NewRepository(pool)
+	delegationRepo := delegation.NewRepository(pool)
 
 	if cfg.SeedClientID != "" {
 		if err := svcClientRepo.EnsureClient(ctx, cfg.SeedClientID, cfg.SeedClientSecret, cfg.SeedClientName); err != nil {
@@ -71,7 +73,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	}, refreshRepo, cfg.RefreshExpiry, svcClientRepo, cfg.ServiceTokenExpiry, repo, cfg.DelegateTokenExpiry)
+	}, refreshRepo, cfg.RefreshExpiry, svcClientRepo, cfg.ServiceTokenExpiry, delegationRepo, cfg.DelegateTokenExpiry)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

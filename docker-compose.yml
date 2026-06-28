@@ -231,6 +231,7 @@ services:
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_CONSUMER_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
     networks:
       - innoagent
     depends_on:

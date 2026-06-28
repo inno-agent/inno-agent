@@ -16,6 +16,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/handler"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/identityclient"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/installation"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/service"
@@ -48,7 +49,8 @@ func main() {
 		defer pool.Close()
 
 		installRepo := installation.NewRepository(pool)
-		installHandler = handler.NewInstallationHandler(installRepo, logger)
+		identityClient := identityclient.New(cfg.AuthServiceURL)
+		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, logger)
 		logger.Info("onboarding enabled (installations)")
 	} else {
 		logger.Warn("REVIEW_DATABASE_DSN unset; /installations disabled")

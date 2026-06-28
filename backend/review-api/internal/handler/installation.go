@@ -18,6 +18,11 @@ type InstallationStore interface {
 	Upsert(ctx context.Context, gitflameUsername, userID string) error
 }
 
+// DelegationGranter creates delegation grants in identity on behalf of a user.
+type DelegationGranter interface {
+	GrantDelegation(ctx context.Context, userToken, clientID string) error
+}
+
 type installationRequest struct {
 	GitFlameUsername string `json:"gitflame_username"`
 }
@@ -25,13 +30,20 @@ type installationRequest struct {
 // InstallationHandler handles onboarding requests linking a GitFlame username
 // to the caller's user_id.
 type InstallationHandler struct {
-	store  InstallationStore
-	logger *zap.Logger
+	store          InstallationStore
+	grantor        DelegationGranter
+	reviewClientID string
+	logger         *zap.Logger
 }
 
 // NewInstallationHandler creates an InstallationHandler.
-func NewInstallationHandler(store InstallationStore, logger *zap.Logger) *InstallationHandler {
-	return &InstallationHandler{store: store, logger: logger}
+func NewInstallationHandler(store InstallationStore, grantor DelegationGranter, reviewClientID string, logger *zap.Logger) *InstallationHandler {
+	return &InstallationHandler{
+		store:          store,
+		grantor:        grantor,
+		reviewClientID: reviewClientID,
+		logger:         logger,
+	}
 }
 
 // Create handles POST /api/v1/installations.
@@ -53,6 +65,15 @@ func (h *InstallationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	req.GitFlameUsername = strings.TrimSpace(req.GitFlameUsername)
 	if req.GitFlameUsername == "" {
 		writeError(w, http.StatusBadRequest, "gitflame_username is required")
+		return
+	}
+
+	// Establish delegation grant before recording the installation.
+	// review-consumer needs this grant to exchange tokens on the user's behalf.
+	userToken := middleware.TokenFromContext(ctx)
+	if err := h.grantor.GrantDelegation(ctx, userToken, h.reviewClientID); err != nil {
+		h.logger.Error("create delegation grant", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
 

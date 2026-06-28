@@ -43,8 +43,8 @@ func (f *fakeLLM) Chat(_ context.Context, msgs []domain.LLMMessage, _ string) (s
 
 type fakeTokenSource struct{ token string }
 
-func (f *fakeTokenSource) Token(_ context.Context, _ domain.PRRef) (string, error) {
-	return f.token, nil
+func (f *fakeTokenSource) Token(_ context.Context, _ domain.PRRef) (string, string, error) {
+	return f.token, "", nil
 }
 
 func TestReview_IncludesAgentsMD(t *testing.T) {

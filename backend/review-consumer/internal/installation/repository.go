@@ -7,7 +7,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/tokensource"
 )
+
+var _ tokensource.UserStore = (*Repository)(nil)
 
 // Repository looks up installation rows by GitFlame username.
 type Repository struct {

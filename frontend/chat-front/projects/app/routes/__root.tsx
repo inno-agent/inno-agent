@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { SettingsProvider } from '@libs/settings/SettingsProvider'
 import { AuthProvider } from '@libs/auth/AuthProvider'
 import { useAuth } from '@libs/auth/useAuth'
 import { Sidebar } from '../../../libs/sidebar'
@@ -22,7 +23,7 @@ function AppShell() {
     }
 
     return (
-        <div className={`${styles.layout} dark`}>
+        <div className={`${styles.layout}`}>
             <Sidebar />
             <main className={styles.main}>
                 <Outlet />
@@ -33,8 +34,10 @@ function AppShell() {
 
 export const Route = createRootRoute({
     component: () => (
-        <AuthProvider>
-            <AppShell />
-        </AuthProvider>
+        <SettingsProvider>
+            <AuthProvider>
+                <AppShell />
+            </AuthProvider>
+        </SettingsProvider>
     ),
 })

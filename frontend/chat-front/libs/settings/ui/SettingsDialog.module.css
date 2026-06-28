@@ -93,3 +93,22 @@
     padding: 20px;
     overflow-y: auto;
 }
+
+.panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+.panel::-webkit-scrollbar-track {
+    background: var(--popover);
+    border-radius: 3px;
+}
+
+.panel::-webkit-scrollbar-thumb {
+    background: var(--color-text-primary);
+    border-radius: 3px;
+}
+
+.panel::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-primary);
+    opacity: 0.8;
+}

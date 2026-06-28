@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { X, Settings, User, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent } from '@shared/ui/dialog'
 import type { SettingsTab } from '@libs/settings/model/types'
@@ -14,14 +15,21 @@ interface SettingsDialogProps {
     onLogout: () => void
 }
 
-const tabs: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
-    { id: 'general', label: 'Общее', icon: Settings },
-    { id: 'account', label: 'Аккаунт', icon: User },
-    { id: 'personalization', label: 'Персонализация', icon: Sparkles },
-]
+const tabIcons: Record<SettingsTab, typeof Settings> = {
+    general: Settings,
+    account: User,
+    personalization: Sparkles,
+}
 
 export const SettingsDialog = ({ open, onOpenChange, email, onLogout }: SettingsDialogProps) => {
     const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+    const { t } = useTranslation()
+
+    const tabs: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
+        { id: 'general', label: t('tabs.general'), icon: tabIcons.general },
+        { id: 'account', label: t('tabs.account'), icon: tabIcons.account },
+        { id: 'personalization', label: t('tabs.personalization'), icon: tabIcons.personalization },
+    ]
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -31,7 +39,7 @@ export const SettingsDialog = ({ open, onOpenChange, email, onLogout }: Settings
                 className={styles.content}
             >
                 <div className={styles.header}>
-                    <span className={styles.title}>Настройки</span>
+                    <span className={styles.title}>{t('settings')}</span>
                     <button className={styles.close} onClick={() => onOpenChange(false)}>
                         <X />
                     </button>

@@ -16,6 +16,6 @@ func NewStatic(token string) *Static {
 	return &Static{token: token}
 }
 
-func (s *Static) Token(_ context.Context, _ domain.PRRef) (string, string, error) {
-	return s.token, "", nil
+func (s *Static) Token(_ context.Context, _ domain.PRRef) (string, error) {
+	return s.token, nil
 }

@@ -42,5 +42,5 @@ type Reviewer interface {
 }
 
 type TokenSource interface {
-	Token(ctx context.Context, ref PRRef) (token string, userID string, err error)
+	Token(ctx context.Context, ref PRRef) (token string, err error)
 }

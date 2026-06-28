@@ -29,6 +29,14 @@ func (f *fakeStore) Upsert(_ context.Context, gitflameUsername, userID string) e
 	return nil
 }
 
+type fakeDelegationGranter struct {
+	err error
+}
+
+func (f *fakeDelegationGranter) GrantDelegation(_ context.Context, _, _ string) error {
+	return f.err
+}
+
 func withUserID(userID string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +64,7 @@ func postInstall(r *chi.Mux, body string) *httptest.ResponseRecorder {
 }
 
 func TestInstallation_NoUserID_401(t *testing.T) {
-	h := NewInstallationHandler(&fakeStore{}, zap.NewNop())
+	h := NewInstallationHandler(&fakeStore{}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
 	r := setupRouter(h, "")
 	rec := postInstall(r, `{"gitflame_username":"alice"}`)
 	if rec.Code != http.StatusUnauthorized {
@@ -66,7 +74,7 @@ func TestInstallation_NoUserID_401(t *testing.T) {
 
 func TestInstallation_Success_204(t *testing.T) {
 	store := &fakeStore{}
-	h := NewInstallationHandler(store, zap.NewNop())
+	h := NewInstallationHandler(store, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
 	r := setupRouter(h, "user-uuid-1")
 
 	rec := postInstall(r, `{"gitflame_username":"alice"}`)
@@ -82,7 +90,7 @@ func TestInstallation_Success_204(t *testing.T) {
 }
 
 func TestInstallation_OwnedByAnother_409(t *testing.T) {
-	h := NewInstallationHandler(&fakeStore{err: installation.ErrOwnedByAnother}, zap.NewNop())
+	h := NewInstallationHandler(&fakeStore{err: installation.ErrOwnedByAnother}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
 	r := setupRouter(h, "user-uuid-2")
 	rec := postInstall(r, `{"gitflame_username":"alice"}`)
 	if rec.Code != http.StatusConflict {
@@ -91,7 +99,7 @@ func TestInstallation_OwnedByAnother_409(t *testing.T) {
 }
 
 func TestInstallation_MissingUsername_400(t *testing.T) {
-	h := NewInstallationHandler(&fakeStore{}, zap.NewNop())
+	h := NewInstallationHandler(&fakeStore{}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
 	r := setupRouter(h, "user-uuid-3")
 	rec := postInstall(r, `{"gitflame_username":""}`)
 	if rec.Code != http.StatusBadRequest {

@@ -67,12 +67,11 @@ func (s *Service) Review(ctx context.Context, ref domain.PRRef) (string, error) 
 		{Role: "user", Content: userMsg},
 	}
 
-	tok, userID, err := s.tokenSource.Token(ctx, ref)
+	tok, err := s.tokenSource.Token(ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("review: get token: %w", err)
 	}
 	ctx = llm.ContextWithToken(ctx, tok)
-	ctx = llm.ContextWithUserID(ctx, userID)
 
 	result, err := s.llmProvider.Chat(ctx, messages, s.model)
 	if err != nil {

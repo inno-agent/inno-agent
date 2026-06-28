@@ -28,19 +28,6 @@ func tokenFromContext(ctx context.Context) string {
 	return ""
 }
 
-const userIDKey contextKey = 1
-
-func ContextWithUserID(ctx context.Context, userID string) context.Context {
-	return context.WithValue(ctx, userIDKey, userID)
-}
-
-func userIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(userIDKey).(string); ok {
-		return v
-	}
-	return ""
-}
-
 type OrchestratorClient struct {
 	baseURL    string
 	httpClient *http.Client
@@ -72,9 +59,6 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []domain.LLMMess
 	req.Header.Set("Content-Type", "application/json")
 	if tok := tokenFromContext(ctx); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
-	}
-	if uid := userIDFromContext(ctx); uid != "" {
-		req.Header.Set("X-User-ID", uid)
 	}
 
 	resp, err := c.httpClient.Do(req)

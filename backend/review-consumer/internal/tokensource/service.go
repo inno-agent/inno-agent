@@ -72,11 +72,12 @@ func (s *Service) Token(ctx context.Context, ref domain.PRRef) (string, error) {
 
 func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.cachedToken != "" && time.Until(s.cachedExpiry) > 5*time.Minute {
-		return s.cachedToken, nil
+		tok := s.cachedToken
+		s.mu.Unlock()
+		return tok, nil
 	}
+	s.mu.Unlock()
 
 	body, err := json.Marshal(map[string]string{
 		"client_id":     s.clientID,
@@ -108,8 +109,10 @@ func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			return "", fmt.Errorf("tokensource: decode service-token: %w: %w", domain.ErrTransient, err)
 		}
+		s.mu.Lock()
 		s.cachedToken = result.AccessToken
 		s.cachedExpiry = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+		s.mu.Unlock()
 		return result.AccessToken, nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return "", fmt.Errorf("tokensource: service credentials rejected (status %d): %w",
@@ -126,11 +129,12 @@ func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 
 func (s *Service) exchangeToken(ctx context.Context, userID, actorToken string) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if cd, ok := s.delegateCache[userID]; ok && time.Until(cd.expiry) > 5*time.Minute {
-		return cd.token, nil
+		tok := cd.token
+		s.mu.Unlock()
+		return tok, nil
 	}
+	s.mu.Unlock()
 
 	body, err := json.Marshal(map[string]string{
 		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -164,7 +168,9 @@ func (s *Service) exchangeToken(ctx context.Context, userID, actorToken string) 
 			return "", fmt.Errorf("tokensource: decode exchange: %w: %w", domain.ErrTransient, err)
 		}
 		expiry := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+		s.mu.Lock()
 		s.delegateCache[userID] = cachedDelegate{token: result.AccessToken, expiry: expiry}
+		s.mu.Unlock()
 		return result.AccessToken, nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return "", fmt.Errorf("tokensource: exchange rejected (status %d): %w",

@@ -85,3 +85,16 @@ func TestIssuer_IssueService_SubHasSvcPrefix(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "svc:review-consumer", claims.UserID)
 }
+
+func TestIssuer_IssueDelegate_SubIsUserID(t *testing.T) {
+	keyPEM := makePrivateKeyPEM(t)
+	iss, err := issuer.New(keyPEM, 30*time.Minute)
+	require.NoError(t, err)
+
+	tok, err := iss.IssueDelegate("user-uuid-1", "svc:review-consumer", 15*time.Minute)
+	require.NoError(t, err)
+
+	claims, err := iss.Verify(tok)
+	require.NoError(t, err)
+	assert.Equal(t, "user-uuid-1", claims.UserID)
+}

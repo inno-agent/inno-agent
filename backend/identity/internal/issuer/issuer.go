@@ -75,6 +75,24 @@ func (i *Issuer) IssueService(clientID string) (string, error) {
 	return i.Issue("svc:" + clientID)
 }
 
+// IssueDelegate issues a short-lived token on behalf of a user, delegated by
+// an actor service. sub=userID, act.sub=actorSub, expiry controlled by caller.
+func (i *Issuer) IssueDelegate(userID, actorSub string, expiry time.Duration) (string, error) {
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"sub": userID,
+		"iss": issuerName,
+		"iat": jwt.NewNumericDate(now),
+		"exp": jwt.NewNumericDate(now.Add(expiry)),
+		"act": map[string]string{"sub": actorSub},
+	})
+	signed, err := token.SignedString(i.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("sign delegate token: %w", err)
+	}
+	return signed, nil
+}
+
 func (i *Issuer) PublicKeyJWKS() map[string]interface{} {
 	pub := &i.privateKey.PublicKey
 	return map[string]interface{}{

@@ -20,6 +20,8 @@ type Config struct {
 	HTTPPort          string
 	// RefreshExpiry is the TTL for refresh tokens.
 	RefreshExpiry time.Duration
+	// ServiceTokenExpiry is the TTL for service tokens.
+	ServiceTokenExpiry time.Duration
 }
 
 func Load() (*Config, error) {
@@ -67,6 +69,12 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("invalid AUTH_REFRESH_EXPIRY: %w", err)
 	}
 	cfg.RefreshExpiry = refreshExpiry
+
+	serviceTokenExpiry, err := time.ParseDuration(fallback("SERVICE_TOKEN_EXPIRY", "1h"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid SERVICE_TOKEN_EXPIRY: %w", err)
+	}
+	cfg.ServiceTokenExpiry = serviceTokenExpiry
 
 	return cfg, nil
 }

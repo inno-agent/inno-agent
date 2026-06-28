@@ -16,6 +16,7 @@ import (
 	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
 	"github.com/inno-agent/identity/internal/refresh"
+	"github.com/inno-agent/identity/internal/serviceclient"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
 )
@@ -64,6 +65,7 @@ func main() {
 	svc := user.NewService(repo)
 
 	refreshRepo := refresh.NewRepository(pool)
+	svcClientRepo := serviceclient.NewRepository(pool)
 
 	// HTTP server
 	r := gin.New()
@@ -71,7 +73,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	}, refreshRepo, cfg.RefreshExpiry)
+	}, refreshRepo, cfg.RefreshExpiry, svcClientRepo, cfg.ServiceTokenExpiry)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

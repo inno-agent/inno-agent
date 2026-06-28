@@ -28,6 +28,12 @@ type RefreshStore interface {
 	RevokeChainFromID(ctx context.Context, startID string) error
 }
 
+// ServiceClientVerifier checks service client credentials.
+// *serviceclient.Repository satisfies it.
+type ServiceClientVerifier interface {
+	Verify(ctx context.Context, clientID, secret string) error
+}
+
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
 type OIDCEndpoints struct {
 	// Authority is the public issuer URL; the browser discovers authorize/token/jwks from it.
@@ -44,6 +50,8 @@ func RegisterHTTPRoutes(
 	oidc OIDCEndpoints,
 	refreshRepo RefreshStore,
 	refreshExpiry time.Duration,
+	svcVerifier ServiceClientVerifier,
+	serviceTokenExpiry time.Duration,
 ) {
 	r.GET("/identity/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -77,6 +85,7 @@ func RegisterHTTPRoutes(
 	r.POST("/identity/v1/exchange", exchangeHandler(p, svc, iss, expiry, refreshRepo, refreshExpiry))
 	r.POST("/identity/v1/refresh", refreshHandler(iss, expiry, refreshRepo, refreshExpiry))
 	r.POST("/identity/v1/revoke", revokeHandler(refreshRepo))
+	r.POST("/identity/v1/service-token", serviceTokenHandler(iss, svcVerifier, serviceTokenExpiry))
 }
 
 func exchangeHandler(
@@ -211,5 +220,38 @@ func revokeHandler(refreshRepo RefreshStore) gin.HandlerFunc {
 		}
 
 		c.Status(http.StatusNoContent)
+	}
+}
+
+func serviceTokenHandler(
+	iss *issuer.Issuer,
+	svcVerifier ServiceClientVerifier,
+	expiry time.Duration,
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			ClientID     string `json:"client_id" binding:"required"`
+			ClientSecret string `json:"client_secret" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+
+		if err := svcVerifier.Verify(c.Request.Context(), req.ClientID, req.ClientSecret); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_client"})
+			return
+		}
+
+		tok, err := iss.IssueService(req.ClientID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"access_token": tok,
+			"expires_in":   int(expiry.Seconds()),
+		})
 	}
 }

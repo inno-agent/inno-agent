@@ -186,7 +186,7 @@ func buildRouter(
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, testOIDCEndpoints(), store, 720*time.Hour)
+	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, testOIDCEndpoints(), store, 720*time.Hour, nil, time.Hour)
 	return r
 }
 
@@ -197,7 +197,58 @@ func testOIDCEndpoints() transport.OIDCEndpoints {
 	}
 }
 
+// --- stub service client verifier ---
+
+type stubSvcVerifier struct {
+	err error
+}
+
+func (s *stubSvcVerifier) Verify(_ context.Context, _, _ string) error { return s.err }
+
+// --- makeRouter helper with new signature ---
+
+func makeRouter(t *testing.T, svcVerifier transport.ServiceClientVerifier) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	iss := makeTestIssuer(t)
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		svcVerifier, time.Hour,
+	)
+	return r
+}
+
 // --- tests ---
+
+func TestHTTP_ServiceToken_ValidCredentials_200(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{})
+	w := httptest.NewRecorder()
+	body := `{"client_id":"review-consumer","client_secret":"s3cr3t"}`
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/service-token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEmpty(t, resp["access_token"])
+	expiresIn, ok := resp["expires_in"].(float64)
+	require.True(t, ok)
+	assert.Greater(t, expiresIn, float64(0))
+}
+
+func TestHTTP_ServiceToken_InvalidCredentials_401(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{err: errors.New("bad")})
+	w := httptest.NewRecorder()
+	body := `{"client_id":"review-consumer","client_secret":"wrong"}`
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/service-token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
 
 func TestHTTP_Exchange_Success(t *testing.T) {
 	iss := makeTestIssuer(t)

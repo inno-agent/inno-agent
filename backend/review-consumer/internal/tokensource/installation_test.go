@@ -192,6 +192,27 @@ func TestInstallation_GrantDead_ErrNotOnboarded(t *testing.T) {
 	}
 }
 
+func TestInstallation_GrantExpired_ErrGrantExpired(t *testing.T) {
+	sb := makeCrypter(t)
+	store := newFakeStore()
+	store.seed(t, sb, "frank", "frank-refresh")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"token_expired"}`))
+	}))
+	defer srv.Close()
+
+	idc := identityclient.New(srv.URL, srv.Client())
+	ts := tokensource.NewInstallation(store, idc, sb)
+
+	_, err := ts.Token(context.Background(), ref("frank"))
+	if !errors.Is(err, domain.ErrGrantExpired) {
+		t.Fatalf("expected ErrGrantExpired for token_expired 401, got %v", err)
+	}
+}
+
 func TestInstallation_IdentityDown_ErrTransient(t *testing.T) {
 	sb := makeCrypter(t)
 	store := newFakeStore()

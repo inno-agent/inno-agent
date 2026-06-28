@@ -20,6 +20,11 @@ import (
 // (401) — the grant is dead and the user must re-onboard.
 var ErrGrantDead = errors.New("refresh grant dead")
 
+// ErrGrantExpired is returned when the identity service rejects the refresh
+// token specifically because it expired (401 + error:"token_expired"). The
+// installation still exists; the user must reconnect.
+var ErrGrantExpired = errors.New("refresh grant expired")
+
 // Client calls the identity service /identity/v1/refresh endpoint.
 type Client struct {
 	identityURL string
@@ -82,6 +87,14 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (access strin
 		return rr.AccessToken, rr.RefreshToken, exp, nil
 
 	case resp.StatusCode == http.StatusUnauthorized:
+		var errBody struct {
+			Error string `json:"error"`
+		}
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		_ = json.Unmarshal(snippet, &errBody)
+		if errBody.Error == "token_expired" {
+			return "", "", time.Time{}, ErrGrantExpired
+		}
 		return "", "", time.Time{}, ErrGrantDead
 
 	case resp.StatusCode >= 500:

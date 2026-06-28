@@ -250,6 +250,37 @@ func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
 	}
 }
 
+func TestProcess_GrantExpired_PostsCommentAndSkips(t *testing.T) {
+	data := makeEnvelope("del-710")
+	reviewer := &fakeReviewer{err: domain.ErrGrantExpired}
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
+	result := p.Process(context.Background(), data)
+
+	if result != processor.Skip {
+		t.Fatalf("expected Skip for grant-expired, got %v", result)
+	}
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 comment posted (grant-expired notice), got %d", len(poster.posted))
+	}
+	notOnboardedMsg := fmt.Sprintf("⚠️ @alice, connect your account at %s to use the review bot.", testOnboardingURL)
+	if poster.posted[0] == notOnboardedMsg {
+		t.Fatal("grant-expired message must differ from not-onboarded message")
+	}
+}
+
+func TestProcess_GrantExpired_PostCommentTransientFail_Transient(t *testing.T) {
+	data := makeEnvelope("del-711")
+	reviewer := &fakeReviewer{err: domain.ErrGrantExpired}
+	poster := &fakePoster{err: fmt.Errorf("network: %w", domain.ErrTransient)}
+	p := newProc(reviewer, poster)
+	result := p.Process(context.Background(), data)
+
+	if result != processor.Transient {
+		t.Fatalf("expected Transient when posting grant-expired comment fails transiently, got %v", result)
+	}
+}
+
 func TestProcess_NotOnboarded_PostCommentTransientFail_Transient(t *testing.T) {
 	data := makeEnvelope("del-701")
 	reviewer := &fakeReviewer{err: domain.ErrNotOnboarded}

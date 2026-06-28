@@ -103,8 +103,10 @@ func (i *Installation) Token(ctx context.Context, ref domain.PRRef) (string, err
 	// Exchange it via identity's generic /refresh (rotating).
 	access, newRefresh, accessExp, err := i.refresh.Refresh(ctx, string(plainRefresh))
 	if err != nil {
+		if errors.Is(err, identityclient.ErrGrantExpired) {
+			return "", domain.ErrGrantExpired
+		}
 		if errors.Is(err, identityclient.ErrGrantDead) {
-			// The grant is dead — treat as not onboarded (consumer prompts reconnect).
 			return "", domain.ErrNotOnboarded
 		}
 		return "", fmt.Errorf("token: refresh: %w", err)

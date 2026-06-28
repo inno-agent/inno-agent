@@ -307,6 +307,9 @@ func TestHTTP_Refresh_ExpiredToken_401(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "token_expired", resp["error"], "expired token must return token_expired error code")
 }
 
 func TestHTTP_Refresh_UnknownToken_401(t *testing.T) {

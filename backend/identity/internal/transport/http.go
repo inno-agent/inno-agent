@@ -158,7 +158,11 @@ func refreshHandler(
 				_ = refreshRepo.RevokeChainFromID(c.Request.Context(), *row.ReplacedBy)
 			}
 
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_refresh_token"})
+			if errors.Is(err, refresh.ErrExpired) {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "token_expired"})
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_refresh_token"})
+			}
 			return
 		}
 

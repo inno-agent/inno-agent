@@ -22,18 +22,32 @@ func (f *fakeUserStore) GetUserID(_ context.Context, gitflameUsername string) (s
 	return uid, ok, nil
 }
 
-func makeIdentitySrv(t *testing.T, token string, status int) *httptest.Server {
+// makeIdentityServer creates a test identity server that handles both
+// /identity/v1/service-token and /identity/v1/token endpoints.
+func makeIdentityServer(t *testing.T, svcStatus, exchangeStatus int) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/identity/v1/service-token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		if status == http.StatusOK {
+		w.WriteHeader(svcStatus)
+		if svcStatus == http.StatusOK {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"access_token": token,
+				"access_token": "svc-jwt",
 				"expires_in":   3600,
 			})
 		}
-	}))
+	})
+	mux.HandleFunc("/identity/v1/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(exchangeStatus)
+		if exchangeStatus == http.StatusOK {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "delegated-jwt",
+				"expires_in":   900,
+			})
+		}
+	})
+	return httptest.NewServer(mux)
 }
 
 func ref(assigner string) domain.PRRef {
@@ -42,29 +56,26 @@ func ref(assigner string) domain.PRRef {
 
 func TestService_Token_Success(t *testing.T) {
 	store := &fakeUserStore{m: map[string]string{"alice": "user-uuid-1"}}
-	srv := makeIdentitySrv(t, "service-jwt-token", http.StatusOK)
+	srv := makeIdentityServer(t, http.StatusOK, http.StatusOK)
 	defer srv.Close()
 
 	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
-	tok, userID, err := ts.Token(context.Background(), ref("alice"))
+	tok, err := ts.Token(context.Background(), ref("alice"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if tok != "service-jwt-token" {
-		t.Fatalf("expected service-jwt-token, got %q", tok)
-	}
-	if userID != "user-uuid-1" {
-		t.Fatalf("expected user-uuid-1, got %q", userID)
+	if tok != "delegated-jwt" {
+		t.Fatalf("expected delegated-jwt, got %q", tok)
 	}
 }
 
 func TestService_Token_NotOnboarded(t *testing.T) {
 	store := &fakeUserStore{m: map[string]string{}}
-	srv := makeIdentitySrv(t, "", http.StatusOK)
+	srv := makeIdentityServer(t, http.StatusOK, http.StatusOK)
 	defer srv.Close()
 
 	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
-	_, _, err := ts.Token(context.Background(), ref("unknown"))
+	_, err := ts.Token(context.Background(), ref("unknown"))
 
 	if !errors.Is(err, domain.ErrNotOnboarded) {
 		t.Fatalf("expected ErrNotOnboarded, got %v", err)
@@ -79,7 +90,7 @@ func TestService_Token_IdentityDown_Transient(t *testing.T) {
 	defer srv.Close()
 
 	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
-	_, _, err := ts.Token(context.Background(), ref("bob"))
+	_, err := ts.Token(context.Background(), ref("bob"))
 
 	if !errors.Is(err, domain.ErrTransient) {
 		t.Fatalf("expected ErrTransient, got %v", err)
@@ -94,7 +105,7 @@ func TestService_Token_InvalidCredentials_Permanent(t *testing.T) {
 	defer srv.Close()
 
 	ts := tokensource.NewService(store, srv.URL, "review-consumer", "wrong-secret")
-	_, _, err := ts.Token(context.Background(), ref("carol"))
+	_, err := ts.Token(context.Background(), ref("carol"))
 
 	if !errors.Is(err, domain.ErrPermanent) {
 		t.Fatalf("expected ErrPermanent for 401, got %v", err)
@@ -102,26 +113,63 @@ func TestService_Token_InvalidCredentials_Permanent(t *testing.T) {
 }
 
 func TestService_Token_CachesServiceJWT(t *testing.T) {
-	store := &fakeUserStore{m: map[string]string{"dave": "user-uuid-4"}}
-	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+	store := &fakeUserStore{m: map[string]string{
+		"dave": "user-uuid-4",
+		"eve":  "user-uuid-5",
+	}}
+	svcCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/identity/v1/service-token", func(w http.ResponseWriter, r *http.Request) {
+		svcCalls++
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": fmt.Sprintf("tok-%d", calls),
+			"access_token": fmt.Sprintf("svc-tok-%d", svcCalls),
 			"expires_in":   3600,
 		})
-	}))
+	})
+	mux.HandleFunc("/identity/v1/token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "delegated", "expires_in": 900})
+	})
+	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
 	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
-	tok1, _, _ := ts.Token(context.Background(), ref("dave"))
-	tok2, _, _ := ts.Token(context.Background(), ref("dave"))
+	_, _ = ts.Token(context.Background(), ref("dave"))
+	_, _ = ts.Token(context.Background(), ref("eve"))
 
-	if calls != 1 {
-		t.Fatalf("expected 1 identity call (cache hit), got %d", calls)
+	if svcCalls != 1 {
+		t.Fatalf("service-token should be called once (cached), got %d", svcCalls)
+	}
+}
+
+func TestService_Token_CachesDelegatePerUser(t *testing.T) {
+	store := &fakeUserStore{m: map[string]string{"frank": "user-uuid-6"}}
+	exchangeCalls := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/identity/v1/service-token", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "svc-tok", "expires_in": 3600})
+	})
+	mux.HandleFunc("/identity/v1/token", func(w http.ResponseWriter, r *http.Request) {
+		exchangeCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": fmt.Sprintf("delegated-%d", exchangeCalls),
+			"expires_in":   900,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	tok1, _ := ts.Token(context.Background(), ref("frank"))
+	tok2, _ := ts.Token(context.Background(), ref("frank"))
+
+	if exchangeCalls != 1 {
+		t.Fatalf("exchange should be called once (cached per user), got %d", exchangeCalls)
 	}
 	if tok1 != tok2 {
-		t.Fatalf("expected same token from cache, got %q and %q", tok1, tok2)
+		t.Fatalf("expected same cached token, got %q and %q", tok1, tok2)
 	}
 }

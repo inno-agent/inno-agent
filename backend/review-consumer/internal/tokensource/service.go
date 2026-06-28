@@ -19,7 +19,14 @@ type UserStore interface {
 	GetUserID(ctx context.Context, gitflameUsername string) (userID string, found bool, err error)
 }
 
-// Service implements domain.TokenSource using client credentials.
+type cachedDelegate struct {
+	token  string
+	expiry time.Time
+}
+
+// Service implements domain.TokenSource using RFC 8693 token exchange.
+// It authenticates as itself (client credentials), then exchanges for a
+// per-user delegated token via identity's /identity/v1/token endpoint.
 type Service struct {
 	store        UserStore
 	identityURL  string
@@ -27,37 +34,40 @@ type Service struct {
 	clientSecret string
 	httpClient   *http.Client
 
-	mu           sync.Mutex
-	cachedToken  string
-	cachedExpiry time.Time
+	mu            sync.Mutex
+	cachedToken   string
+	cachedExpiry  time.Time
+	delegateCache map[string]cachedDelegate // userID → delegated token
 }
 
 // NewService creates a Service token source.
 func NewService(store UserStore, identityURL, clientID, clientSecret string) *Service {
 	return &Service{
-		store:        store,
-		identityURL:  strings.TrimRight(identityURL, "/"),
-		clientID:     clientID,
-		clientSecret: clientSecret,
-		httpClient:   &http.Client{Timeout: 10 * time.Second},
+		store:         store,
+		identityURL:   strings.TrimRight(identityURL, "/"),
+		clientID:      clientID,
+		clientSecret:  clientSecret,
+		httpClient:    &http.Client{Timeout: 10 * time.Second},
+		delegateCache: make(map[string]cachedDelegate),
 	}
 }
 
-// Token returns the service JWT and the assigner's user_id.
-func (s *Service) Token(ctx context.Context, ref domain.PRRef) (token string, userID string, err error) {
+// Token returns a delegated JWT for the PR assigner.
+// sub=user_id, act.sub=svc:clientID — innoagent validates normally.
+func (s *Service) Token(ctx context.Context, ref domain.PRRef) (string, error) {
 	uid, found, err := s.store.GetUserID(ctx, ref.Assigner)
 	if err != nil {
-		return "", "", fmt.Errorf("tokensource: lookup user: %w: %w", domain.ErrTransient, err)
+		return "", fmt.Errorf("tokensource: lookup user: %w: %w", domain.ErrTransient, err)
 	}
 	if !found {
-		return "", "", domain.ErrNotOnboarded
+		return "", domain.ErrNotOnboarded
 	}
 
-	tok, err := s.getServiceToken(ctx)
+	svcTok, err := s.getServiceToken(ctx)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	return tok, uid, nil
+	return s.exchangeToken(ctx, uid, svcTok)
 }
 
 func (s *Service) getServiceToken(ctx context.Context) (string, error) {
@@ -79,13 +89,13 @@ func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		s.identityURL+"/identity/v1/service-token", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("tokensource: build request: %w", err)
+		return "", fmt.Errorf("tokensource: build service-token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("tokensource: service-token request: %w: %w", domain.ErrTransient, err)
+		return "", fmt.Errorf("tokensource: service-token: %w: %w", domain.ErrTransient, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -96,23 +106,75 @@ func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 			ExpiresIn   int    `json:"expires_in"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return "", fmt.Errorf("tokensource: decode: %w: %w", domain.ErrTransient, err)
+			return "", fmt.Errorf("tokensource: decode service-token: %w: %w", domain.ErrTransient, err)
 		}
 		s.cachedToken = result.AccessToken
 		s.cachedExpiry = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
 		return result.AccessToken, nil
-
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return "", fmt.Errorf("tokensource: service credentials rejected (status %d): %w",
 			resp.StatusCode, domain.ErrPermanent)
-
 	case resp.StatusCode >= 500:
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		return "", fmt.Errorf("tokensource: identity server error %d: %s: %w",
+		return "", fmt.Errorf("tokensource: identity error %d: %s: %w",
 			resp.StatusCode, strings.TrimSpace(string(snippet)), domain.ErrTransient)
-
 	default:
-		return "", fmt.Errorf("tokensource: unexpected status %d: %w",
+		return "", fmt.Errorf("tokensource: unexpected service-token status %d: %w",
+			resp.StatusCode, domain.ErrPermanent)
+	}
+}
+
+func (s *Service) exchangeToken(ctx context.Context, userID, actorToken string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if cd, ok := s.delegateCache[userID]; ok && time.Until(cd.expiry) > 5*time.Minute {
+		return cd.token, nil
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
+		"actor_token":   actorToken,
+		"subject_token": userID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("tokensource: marshal exchange: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		s.identityURL+"/identity/v1/token", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("tokensource: build exchange request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("tokensource: token exchange: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		var result struct {
+			AccessToken string `json:"access_token"`
+			ExpiresIn   int    `json:"expires_in"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", fmt.Errorf("tokensource: decode exchange: %w: %w", domain.ErrTransient, err)
+		}
+		expiry := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second)
+		s.delegateCache[userID] = cachedDelegate{token: result.AccessToken, expiry: expiry}
+		return result.AccessToken, nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return "", fmt.Errorf("tokensource: exchange rejected (status %d): %w",
+			resp.StatusCode, domain.ErrPermanent)
+	case resp.StatusCode >= 500:
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return "", fmt.Errorf("tokensource: exchange server error %d: %s: %w",
+			resp.StatusCode, strings.TrimSpace(string(snippet)), domain.ErrTransient)
+	default:
+		return "", fmt.Errorf("tokensource: unexpected exchange status %d: %w",
 			resp.StatusCode, domain.ErrPermanent)
 	}
 }

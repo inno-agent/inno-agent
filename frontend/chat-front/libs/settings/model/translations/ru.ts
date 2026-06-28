@@ -7,12 +7,28 @@ export default {
         personalization: 'Персонализация',
     },
 
+    accountMenu: {
+        settings: 'Настройки',
+        help: 'Помощь',
+        logout: 'Выйти',
+    },
+
     general: {
         sectionTitle: 'Общее',
         appearance: 'Внешний вид',
         contrast: 'Контраст',
-        accentColor: 'Акцентный цвет',
         language: 'Язык',
+        baseStyle: 'Базовый стиль и тон',
+        defaultOption: 'По умолчанию',
+        baseStyleOptions: {
+            default:       { label: 'По умолчанию',   description: 'Предпочитаемый стиль и тон' },
+            professional:  { label: 'Профессиональный', description: 'Тактичный и точный' },
+            friendly:      { label: 'Дружелюбный',     description: 'Тёплый и разговорчивый' },
+            frank:         { label: 'Откровенный',     description: 'Прямой и мотивирующий' },
+            quirky:        { label: 'Причудливый',     description: 'Веселый и творческий' },
+            efficient:     { label: 'Эффективный',     description: 'Немногословный и четкий' },
+            cynical:       { label: 'Циничный',        description: 'Критикующий и саркастичный' },
+        },
         appearanceOptions: {
             system: 'Системный',
             dark: 'Тёмный',
@@ -23,19 +39,22 @@ export default {
             standard: 'Стандартный',
             high: 'Высокий',
         },
-        accentColorOptions: {
-            default: 'По умолчанию',
-            blue: 'Синий',
-            purple: 'Фиолетовый',
-            green: 'Зелёный',
-            yellow: 'Жёлтый',
-            orange: 'Оранжевый',
-        },
         languageOptions: {
             auto: 'Автоматическое определение',
             ru: 'Русский',
             en: 'English',
         },
+    },
+
+    sidebar: {
+        newChat: 'Новый чат',
+        searchChat: 'Искать чат',
+        projects: 'Проекты',
+        recent: 'Недавние',
+        loading: 'Загрузка...',
+        noChats: 'Чатов пока нет',
+        loadError: 'Не удалось загрузить чаты',
+        deleteError: 'Не удалось удалить чат',
     },
 
     personalization: {

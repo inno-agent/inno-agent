@@ -50,7 +50,7 @@ export const AccountTab = ({ email, onLogout }: AccountTabProps) => {
                         <Button
                             variant="destructive"
                             size="sm"
-                            className="hover:bg-red-700"
+                            className="hover:bg-red-600 hover:brightness-110"
                             onClick={handleDelete}
                             disabled={isDeleting}
                         >
@@ -61,7 +61,7 @@ export const AccountTab = ({ email, onLogout }: AccountTabProps) => {
                     <Button
                         variant="destructive"
                         size="sm"
-                        className="hover:bg-red-700"
+                        className="hover:bg-red-600 hover:brightness-110"
                         onClick={() => setConfirmingDelete(true)}
                     >
                         Удалить аккаунт

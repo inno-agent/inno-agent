@@ -19,8 +19,10 @@ export const GeneralTab = () => {
         [t('general.languageOptions.ru')]: 'ru',
         [t('general.languageOptions.en')]: 'en',
     }
-    const accentColorOptions = ['default', 'orange', 'yellow', 'green', 'blue', 'purple'].map(k => t(`general.accentColorOptions.${k}`))
-    const [accentColor, setAccentColor] = useState(accentColorOptions[0])
+    const baseStyleOptions = (['default', 'professional', 'friendly', 'frank', 'quirky', 'efficient', 'cynical'] as const).map(
+        (k) => t(`general.baseStyleOptions.${k}`, { returnObjects: true }) as { label: string; description: string }
+    )
+    const [baseStyle, setBaseStyle] = useState(baseStyleOptions[0].label)
     const [language, setLanguage] = useState(
         i18n.language === 'en' ? t('general.languageOptions.en') : t('general.languageOptions.ru')
     )
@@ -42,12 +44,12 @@ export const GeneralTab = () => {
                 <SettingsSelect value={themeLabel} options={Object.keys(themeOptions)} onChange={handleThemeChange} />
             </SettingsRow>
 
-            <SettingsRow label={t('general.accentColor')}>
-                <SettingsSelect value={accentColor} options={accentColorOptions} onChange={setAccentColor} />
+<SettingsRow label={t('general.language')}>
+                <SettingsSelect value={language} options={Object.keys(langOptions)} onChange={handleLanguageChange} />
             </SettingsRow>
 
-            <SettingsRow label={t('general.language')}>
-                <SettingsSelect value={language} options={Object.keys(langOptions)} onChange={handleLanguageChange} />
+            <SettingsRow label={t('general.baseStyle')}>
+                <SettingsSelect value={baseStyle} options={baseStyleOptions} onChange={setBaseStyle} />
             </SettingsRow>
         </>
     )

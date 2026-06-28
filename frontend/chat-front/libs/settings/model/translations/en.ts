@@ -7,12 +7,28 @@ export default {
         personalization: 'Personalization',
     },
 
+    accountMenu: {
+        settings: 'Settings',
+        help: 'Help',
+        logout: 'Log out',
+    },
+
     general: {
         sectionTitle: 'General',
         appearance: 'Appearance',
         contrast: 'Contrast',
-        accentColor: 'Accent color',
         language: 'Language',
+        baseStyle: 'Base style and tone',
+        defaultOption: 'Default',
+        baseStyleOptions: {
+            default:       { label: 'Default',        description: 'Preferred style and tone' },
+            professional:  { label: 'Professional',   description: 'Tactful and precise' },
+            friendly:      { label: 'Friendly',       description: 'Warm and conversational' },
+            frank:         { label: 'Frank',          description: 'Direct and motivating' },
+            quirky:        { label: 'Quirky',         description: 'Playful and creative' },
+            efficient:     { label: 'Efficient',      description: 'Concise and clear' },
+            cynical:       { label: 'Cynical',        description: 'Critical and sarcastic' },
+        },
         appearanceOptions: {
             system: 'System',
             dark: 'Dark',
@@ -23,19 +39,22 @@ export default {
             standard: 'Standard',
             high: 'High',
         },
-        accentColorOptions: {
-            default: 'Default',
-            blue: 'Blue',
-            purple: 'Purple',
-            green: 'Green',
-            yellow: 'Yellow',
-            orange: 'Orange',
-        },
         languageOptions: {
             auto: 'Auto detect',
             ru: 'Русский',
             en: 'English',
         },
+    },
+
+    sidebar: {
+        newChat: 'New chat',
+        searchChat: 'Search chats',
+        projects: 'Projects',
+        recent: 'Recent',
+        loading: 'Loading...',
+        noChats: 'No chats yet',
+        loadError: 'Failed to load chats',
+        deleteError: 'Failed to delete chat',
     },
 
     personalization: {

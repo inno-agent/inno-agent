@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
 import styles from './SettingsRow.module.css'
 
 interface SettingsRowProps {
@@ -26,18 +27,36 @@ export const SettingsSectionTitle = ({ children }: { children: ReactNode }) => (
     </div>
 )
 
+type SelectOption = string | { label: string; description: string }
+
 interface SettingsSelectProps {
     value: string
-    options: string[]
+    options: SelectOption[]
     onChange: (value: string) => void
 }
 
-export const SettingsSelect = ({ value, options, onChange }: SettingsSelectProps) => (
-    <select className={styles.select} value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((option) => (
-            <option key={option} value={option}>
-                {option}
-            </option>
-        ))}
-    </select>
-)
+export const SettingsSelect = ({ value, options, onChange }: SettingsSelectProps) => {
+    const labels = options.map((o) => (typeof o === 'string' ? o : o.label))
+    const effectiveValue = labels.includes(value) ? value : labels[0]
+    return (
+        <Select value={effectiveValue} onValueChange={onChange}>
+            <SelectTrigger
+                size="sm"
+                className="border-none bg-transparent dark:bg-transparent dark:hover:bg-transparent shadow-none px-0 h-auto gap-1 focus-visible:ring-0 text-[var(--color-text-primary)]"
+            >
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                {options.map((option) => {
+                    const label = typeof option === 'string' ? option : option.label
+                    const description = typeof option === 'string' ? undefined : option.description
+                    return (
+                        <SelectItem key={label} value={label} description={description}>
+                            {label}
+                        </SelectItem>
+                    )
+                })}
+            </SelectContent>
+        </Select>
+    )
+}

@@ -1,6 +1,7 @@
 import { AuiIf, ComposerPrimitive } from '@assistant-ui/react'
 import { ArrowUpIcon, SquareIcon } from 'lucide-react'
 import type { FC } from 'react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
 import {
     ComposerAddAttachment,
     ComposerAttachments,
@@ -50,18 +51,21 @@ interface ModelSelectorProps {
 
 const ModelSelector: FC<ModelSelectorProps> = ({ models, selectedModelId, onChange }) => {
     return (
-        <select
-            value={selectedModelId}
-            onChange={(e) => onChange(e.target.value)}
-            className="text-muted-foreground hover:text-foreground focus:ring-ring text-xs bg-transparent px-2 py-1 outline-none focus:ring-1 rounded"
-            aria-label="Select AI model"
-        >
-            {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                    {model.label}
-                </option>
-            ))}
-        </select>
+        <Select value={selectedModelId} onValueChange={onChange}>
+            <SelectTrigger
+                size="sm"
+                className="border-none bg-transparent dark:bg-transparent dark:hover:bg-transparent shadow-none px-2 py-1 h-auto gap-1 focus-visible:ring-0 text-xs text-muted-foreground hover:text-foreground"
+            >
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                {models.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     )
 }
 

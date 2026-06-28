@@ -38,3 +38,23 @@ func (r *Repository) Verify(ctx context.Context, clientID, secret string) error 
 	}
 	return nil
 }
+
+// EnsureClient inserts the service client if it does not already exist.
+// Safe to call on every startup — idempotent.
+func (r *Repository) EnsureClient(ctx context.Context, clientID, secret, name string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("serviceclient: hash secret: %w", err)
+	}
+	_, err = r.pool.Exec(
+		ctx,
+		`INSERT INTO service_clients (client_id, secret_hash, name)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (client_id) DO NOTHING`,
+		clientID, hash, name,
+	)
+	if err != nil {
+		return fmt.Errorf("serviceclient: ensure: %w", err)
+	}
+	return nil
+}

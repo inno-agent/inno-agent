@@ -67,6 +67,12 @@ func main() {
 	refreshRepo := refresh.NewRepository(pool)
 	svcClientRepo := serviceclient.NewRepository(pool)
 
+	if cfg.SeedClientID != "" {
+		if err := svcClientRepo.EnsureClient(ctx, cfg.SeedClientID, cfg.SeedClientSecret, cfg.SeedClientName); err != nil {
+			log.Fatalf("seed service client: %v", err)
+		}
+	}
+
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())

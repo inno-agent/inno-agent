@@ -134,6 +134,9 @@ services:
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
       # Refresh-token TTL for the generic /refresh flow (default 720h).
       AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
+      SEED_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      SEED_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      SEED_CLIENT_NAME: PR Review Bot
     secrets:
       - identity_rsa_key
     networks:

@@ -24,6 +24,10 @@ type Config struct {
 	ServiceTokenExpiry time.Duration
 	// DelegateTokenExpiry is the TTL for delegated tokens issued via RFC 8693 token exchange.
 	DelegateTokenExpiry time.Duration
+	// SeedClientID/Secret/Name: if set, identity upserts this client at startup.
+	SeedClientID     string
+	SeedClientSecret string
+	SeedClientName   string
 }
 
 func Load() (*Config, error) {
@@ -83,6 +87,10 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("invalid DELEGATE_TOKEN_EXPIRY: %w", err)
 	}
 	cfg.DelegateTokenExpiry = delegateTokenExpiry
+
+	cfg.SeedClientID = getenv("SEED_CLIENT_ID")
+	cfg.SeedClientSecret = getenv("SEED_CLIENT_SECRET")
+	cfg.SeedClientName = fallback("SEED_CLIENT_NAME", cfg.SeedClientID)
 
 	return cfg, nil
 }

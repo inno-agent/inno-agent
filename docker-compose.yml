@@ -196,7 +196,6 @@ services:
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
     networks:
       - innoagent
     depends_on:

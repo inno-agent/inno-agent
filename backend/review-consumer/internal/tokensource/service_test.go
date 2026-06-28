@@ -59,7 +59,7 @@ func TestService_Token_Success(t *testing.T) {
 	srv := makeIdentityServer(t, http.StatusOK, http.StatusOK)
 	defer srv.Close()
 
-	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret") //nolint:gosec
 	tok, err := ts.Token(context.Background(), ref("alice"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -74,7 +74,7 @@ func TestService_Token_NotOnboarded(t *testing.T) {
 	srv := makeIdentityServer(t, http.StatusOK, http.StatusOK)
 	defer srv.Close()
 
-	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret") //nolint:gosec
 	_, err := ts.Token(context.Background(), ref("unknown"))
 
 	if !errors.Is(err, domain.ErrNotOnboarded) {
@@ -89,7 +89,7 @@ func TestService_Token_IdentityDown_Transient(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret") //nolint:gosec
 	_, err := ts.Token(context.Background(), ref("bob"))
 
 	if !errors.Is(err, domain.ErrTransient) {
@@ -134,7 +134,7 @@ func TestService_Token_CachesServiceJWT(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret") //nolint:gosec
 	_, _ = ts.Token(context.Background(), ref("dave"))
 	_, _ = ts.Token(context.Background(), ref("eve"))
 
@@ -162,7 +162,7 @@ func TestService_Token_CachesDelegatePerUser(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret")
+	ts := tokensource.NewService(store, srv.URL, "review-consumer", "secret") //nolint:gosec
 	tok1, _ := ts.Token(context.Background(), ref("frank"))
 	tok2, _ := ts.Token(context.Background(), ref("frank"))
 

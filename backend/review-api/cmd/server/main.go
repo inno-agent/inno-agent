@@ -41,12 +41,6 @@ func main() {
 	// Onboarding (installations) is enabled only when a review DB is configured.
 	var installHandler *handler.InstallationHandler
 	if cfg.ReviewDatabaseDSN != "" {
-		if err := db.EnsureDatabase(ctx, cfg.ReviewDatabaseDSN); err != nil {
-			logger.Fatal("ensure review db", zap.Error(err))
-		}
-		if err := db.Migrate(cfg.ReviewDatabaseDSN); err != nil {
-			logger.Fatal("migrate review db", zap.Error(err))
-		}
 		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
 			logger.Fatal("review db pool", zap.Error(err))

@@ -30,14 +30,6 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := db.EnsureDatabase(ctx, cfg.DatabaseDSN); err != nil {
-		log.Fatalf("ensure db: %v", err)
-	}
-
-	if err := db.Migrate(cfg.DatabaseDSN); err != nil {
-		log.Fatalf("migrate: %v", err)
-	}
-
 	pool, err := db.NewPool(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		log.Fatalf("db pool: %v", err)

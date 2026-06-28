@@ -120,6 +120,22 @@ services:
     <<: *authentik
     command: worker
 
+  # ─── Identity DB migrations ───────────────────────────────────────────────
+  identity-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/identity/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
     build:
@@ -142,8 +158,8 @@ services:
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      identity-migrate:
+        condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
 
@@ -184,6 +200,22 @@ services:
       orchestrator:
         condition: service_started
 
+  # ─── Review API DB migrations ────────────────────────────────────────────
+  review-api-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/review-api/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Review API ────────────────────────────────────────────────────────────
   review-api:
     build:
@@ -202,8 +234,8 @@ services:
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       identity:
         condition: service_started
       orchestrator:
@@ -321,8 +353,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       orchestrator:
         condition: service_started
       identity:

@@ -71,6 +71,10 @@ func (i *Issuer) Issue(userID string) (string, error) {
 	return signed, nil
 }
 
+func (i *Issuer) IssueService(clientID string) (string, error) {
+	return i.Issue("svc:" + clientID)
+}
+
 func (i *Issuer) PublicKeyJWKS() map[string]interface{} {
 	pub := &i.privateKey.PublicKey
 	return map[string]interface{}{

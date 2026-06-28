@@ -72,3 +72,16 @@ func TestIssuer_InvalidPEM(t *testing.T) {
 	_, err := issuer.New([]byte("not-a-pem"), 30*time.Minute)
 	require.Error(t, err)
 }
+
+func TestIssuer_IssueService_SubHasSvcPrefix(t *testing.T) {
+	iss, err := issuer.New(makePrivateKeyPEM(t), 30*time.Minute)
+	require.NoError(t, err)
+
+	tok, err := iss.IssueService("review-consumer")
+	require.NoError(t, err)
+	require.NotEmpty(t, tok)
+
+	claims, err := iss.Verify(tok)
+	require.NoError(t, err)
+	assert.Equal(t, "svc:review-consumer", claims.UserID)
+}

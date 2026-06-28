@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -104,7 +105,8 @@ func main() {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		if _, err := identityClient.Validate(r.Context(), token); err != nil {
+		userID, err := identityClient.Validate(r.Context(), token)
+		if err != nil {
 			if errors.Is(err, auth.ErrUnauthorized) {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			} else {
@@ -112,6 +114,14 @@ func main() {
 			}
 			return
 		}
+		if strings.HasPrefix(userID, "svc:") {
+			userID = r.Header.Get("X-User-ID")
+			if userID == "" {
+				http.Error(w, `{"error":"missing_user_context"}`, http.StatusBadRequest)
+				return
+			}
+		}
+		_ = userID
 
 		var req ChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

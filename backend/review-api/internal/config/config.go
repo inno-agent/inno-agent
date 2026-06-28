@@ -17,23 +17,19 @@ type Config struct {
 
 	// ReviewDatabaseDSN is the DSN for the shared inno_review database.
 	ReviewDatabaseDSN string
-	// ReviewRefreshEncKey is the base64 32-byte AES-256-GCM key used to encrypt
-	// refresh tokens at rest.
-	ReviewRefreshEncKey string
 }
 
 func Load() *Config {
 	return &Config{
-		ServerPort:          getEnv("SERVER_PORT", "8001"),
-		OrchestratorURL:     getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
-		AuthServiceURL:      getEnvAllowEmpty("AUTH_SERVICE_URL", "http://identity:8081"),
-		GitFlameBaseURL:     getEnv("GITFLAME_BASE_URL", ""),
-		GitFlameToken:       getEnv("GITFLAME_TOKEN", ""),
-		ReadTimeout:         getDuration("READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:        getDuration("WRITE_TIMEOUT", 0),
-		IdleTimeout:         getDuration("IDLE_TIMEOUT", 120*time.Second),
-		ReviewDatabaseDSN:   getEnv("REVIEW_DATABASE_DSN", ""),
-		ReviewRefreshEncKey: getEnv("REVIEW_REFRESH_ENC_KEY", ""),
+		ServerPort:        getEnv("SERVER_PORT", "8001"),
+		OrchestratorURL:   getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
+		AuthServiceURL:    getEnvAllowEmpty("AUTH_SERVICE_URL", "http://identity:8081"),
+		GitFlameBaseURL:   getEnv("GITFLAME_BASE_URL", ""),
+		GitFlameToken:     getEnv("GITFLAME_TOKEN", ""),
+		ReadTimeout:       getDuration("READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:      getDuration("WRITE_TIMEOUT", 0),
+		IdleTimeout:       getDuration("IDLE_TIMEOUT", 120*time.Second),
+		ReviewDatabaseDSN: getEnv("REVIEW_DATABASE_DSN", ""),
 	}
 }
 

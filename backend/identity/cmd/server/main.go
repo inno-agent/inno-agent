@@ -11,11 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/inno-agent/identity/internal/botprincipal"
 	"github.com/inno-agent/identity/internal/config"
 	"github.com/inno-agent/identity/internal/db"
 	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
+	"github.com/inno-agent/identity/internal/refresh"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
 )
@@ -63,8 +63,7 @@ func main() {
 	repo := user.NewRepository(pool)
 	svc := user.NewService(repo)
 
-	botRepo := botprincipal.NewRepository(pool)
-	botSvc := botprincipal.NewService(botRepo)
+	refreshRepo := refresh.NewRepository(pool)
 
 	// HTTP server
 	r := gin.New()
@@ -72,7 +71,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	}, botSvc, cfg.BotTokenSecret)
+	}, refreshRepo, cfg.RefreshExpiry)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

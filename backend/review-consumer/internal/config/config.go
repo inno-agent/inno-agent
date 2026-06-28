@@ -12,11 +12,17 @@ type Config struct {
 	GitFlameBaseURL   string
 	GitFlameToken     string
 
-	// Slice 2: delegated-auth via identity service.
+	// Delegated-auth via identity service.
 	BotGitFlameUsername string
 	IdentityURL         string
-	BotTokenSecret      string
 	OnboardingURL       string
+
+	// ReviewDatabaseDSN is the DSN for the shared inno_review database
+	// (read installations, write rotated refresh tokens).
+	ReviewDatabaseDSN string
+	// ReviewRefreshEncKey is the base64 32-byte AES-256-GCM key shared with
+	// review-api to decrypt/encrypt refresh tokens at rest.
+	ReviewRefreshEncKey string
 }
 
 func Load() *Config {
@@ -32,8 +38,10 @@ func Load() *Config {
 
 		BotGitFlameUsername: getEnv("BOT_GITFLAME_USERNAME", ""),
 		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),
-		BotTokenSecret:      getEnv("BOT_TOKEN_SECRET", ""),
 		OnboardingURL:       getEnv("ONBOARDING_URL", ""),
+
+		ReviewDatabaseDSN:   getEnv("REVIEW_DATABASE_DSN", ""),
+		ReviewRefreshEncKey: getEnv("REVIEW_REFRESH_ENC_KEY", ""),
 	}
 }
 

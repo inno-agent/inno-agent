@@ -15,6 +15,10 @@ var ErrTransient = errors.New("transient error")
 // ErrNotOnboarded is returned when the assigner has not linked their account.
 var ErrNotOnboarded = errors.New("assigner not onboarded")
 
+// ErrGrantExpired is returned when the assigner's refresh token has expired.
+// The installation exists but the session must be renewed.
+var ErrGrantExpired = errors.New("assigner grant expired")
+
 type PRRef struct {
 	Owner    string
 	Repo     string

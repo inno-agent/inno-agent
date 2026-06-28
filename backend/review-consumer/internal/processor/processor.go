@@ -154,25 +154,6 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 
 	review, err := p.reviewer.Review(ctx, ref)
 	if err != nil {
-		if errors.Is(err, domain.ErrGrantExpired) {
-			msg := fmt.Sprintf(
-				"⚠️ @%s, your review bot session has expired. Please reconnect at %s.",
-				assigner, p.onboardingURL,
-			)
-			if postErr := p.poster.PostPRComment(ctx, ref, msg); postErr != nil {
-				if errors.Is(postErr, domain.ErrTransient) {
-					p.logger.Error("post grant-expired comment transiently failed; will retry", zap.String("pr", prLabel), zap.Error(postErr))
-					return Transient
-				}
-				p.logger.Error("post grant-expired comment permanently failed; skipping", zap.String("pr", prLabel), zap.Error(postErr))
-			}
-			p.logger.Info("grant expired; skipped after comment", zap.String("pr", prLabel), zap.String("assigner", assigner))
-			p.mu.Lock()
-			p.seen.add(dedupKey, seenCap)
-			p.mu.Unlock()
-			return Skip
-		}
-
 		if errors.Is(err, domain.ErrNotOnboarded) {
 			msg := fmt.Sprintf(
 				"⚠️ @%s, connect your account at %s to use the review bot.",

@@ -20,9 +20,10 @@ type Config struct {
 	// ReviewDatabaseDSN is the DSN for the shared inno_review database
 	// (read installations, write rotated refresh tokens).
 	ReviewDatabaseDSN string
-	// ReviewRefreshEncKey is the base64 32-byte AES-256-GCM key shared with
-	// review-api to decrypt/encrypt refresh tokens at rest.
-	ReviewRefreshEncKey string
+	// ReviewServiceClientID is the client ID for service token requests.
+	ReviewServiceClientID string
+	// ReviewServiceClientSecret is the client secret for service token requests.
+	ReviewServiceClientSecret string
 }
 
 func Load() *Config {
@@ -40,8 +41,9 @@ func Load() *Config {
 		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),
 		OnboardingURL:       getEnv("ONBOARDING_URL", ""),
 
-		ReviewDatabaseDSN:   getEnv("REVIEW_DATABASE_DSN", ""),
-		ReviewRefreshEncKey: getEnv("REVIEW_REFRESH_ENC_KEY", ""),
+		ReviewDatabaseDSN:         getEnv("REVIEW_DATABASE_DSN", ""),
+		ReviewServiceClientID:     getEnv("REVIEW_SERVICE_CLIENT_ID", "review-consumer"),
+		ReviewServiceClientSecret: os.Getenv("REVIEW_SERVICE_CLIENT_SECRET"),
 	}
 }
 

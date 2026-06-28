@@ -1,4 +1,4 @@
-// Package installation manages the mapping of gitflame_username → user_id → encrypted refresh token.
+// Package installation manages the mapping of gitflame_username → user_id.
 package installation
 
 import (
@@ -24,27 +24,19 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 
 // Upsert inserts or updates the installation row for gitflameUsername.
 // If the row already exists with a different user_id it returns ErrOwnedByAnother.
-func (r *Repository) Upsert(ctx context.Context, gitflameUsername, userID string, ciphertext, nonce []byte) error {
-	// Use ON CONFLICT with a WHERE guard to detect ownership conflicts.
-	// If the conflict row has a different user_id the UPDATE does not match
-	// and we can detect the conflict from the rows-affected count.
+func (r *Repository) Upsert(ctx context.Context, gitflameUsername, userID string) error {
 	tag, err := r.pool.Exec(ctx, `
-		INSERT INTO installations (gitflame_username, user_id, refresh_ciphertext, refresh_nonce, updated_at)
-		VALUES ($1, $2, $3, $4, now())
+		INSERT INTO installations (gitflame_username, user_id)
+		VALUES ($1, $2)
 		ON CONFLICT (gitflame_username) DO UPDATE
-			SET refresh_ciphertext = EXCLUDED.refresh_ciphertext,
-			    refresh_nonce       = EXCLUDED.refresh_nonce,
-			    updated_at          = now()
+			SET updated_at = now()
 		WHERE installations.user_id = EXCLUDED.user_id
-	`, gitflameUsername, userID, ciphertext, nonce)
+	`, gitflameUsername, userID)
 	if err != nil {
 		return fmt.Errorf("installation: upsert: %w", err)
 	}
-
-	// If 0 rows were affected the conflict row exists with a different user_id.
 	if tag.RowsAffected() == 0 {
 		return ErrOwnedByAnother
 	}
-
 	return nil
 }

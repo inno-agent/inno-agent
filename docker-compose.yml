@@ -120,6 +120,22 @@ services:
     <<: *authentik
     command: worker
 
+  # ─── Identity DB migrations ───────────────────────────────────────────────
+  identity-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/identity/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
     build:
@@ -134,13 +150,16 @@ services:
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
       # Refresh-token TTL for the generic /refresh flow (default 720h).
       AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
+      SEED_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      SEED_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      SEED_CLIENT_NAME: PR Review Bot
     secrets:
       - identity_rsa_key
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      identity-migrate:
+        condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
 
@@ -181,6 +200,22 @@ services:
       orchestrator:
         condition: service_started
 
+  # ─── Review API DB migrations ────────────────────────────────────────────
+  review-api-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/review-api/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Review API ────────────────────────────────────────────────────────────
   review-api:
     build:
@@ -196,12 +231,12 @@ services:
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
+      REVIEW_CONSUMER_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       identity:
         condition: service_started
       orchestrator:
@@ -310,11 +345,11 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Per-assigner delegated auth: read the assigner's encrypted refresh token
-      # from inno_review and exchange it via identity's generic /refresh.
+      # Service credentials auth: bot authenticates as itself via identity.
       IDENTITY_URL: http://identity:8081
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:
@@ -322,8 +357,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       orchestrator:
         condition: service_started
       identity:

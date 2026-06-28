@@ -186,7 +186,7 @@ func buildRouter(
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, testOIDCEndpoints(), store, 720*time.Hour)
+	transport.RegisterHTTPRoutes(r, p, svc, iss, 30*time.Minute, testOIDCEndpoints(), store, 720*time.Hour, nil, time.Hour, &fakeDelegationStore{grantExists: false}, 15*time.Minute)
 	return r
 }
 
@@ -197,7 +197,72 @@ func testOIDCEndpoints() transport.OIDCEndpoints {
 	}
 }
 
+// --- stub service client verifier ---
+
+type stubSvcVerifier struct {
+	err error
+}
+
+func (s *stubSvcVerifier) Verify(_ context.Context, _, _ string) error { return s.err }
+
+// --- fake delegation store ---
+
+type fakeDelegationStore struct {
+	grantExists bool
+	grantErr    error
+}
+
+func (f *fakeDelegationStore) Grant(_ context.Context, _, _ string) error { return nil }
+
+func (f *fakeDelegationStore) HasValidGrant(_ context.Context, _, _ string) (bool, error) {
+	return f.grantExists, f.grantErr
+}
+
+// --- makeRouter helper ---
+
+func makeRouter(t *testing.T, svcVerifier transport.ServiceClientVerifier, delegations transport.DelegationStore) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	iss := makeTestIssuer(t)
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		svcVerifier, time.Hour,
+		delegations, 15*time.Minute,
+	)
+	return r
+}
+
 // --- tests ---
+
+func TestHTTP_ServiceToken_ValidCredentials_200(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{}, &fakeDelegationStore{grantExists: false})
+	w := httptest.NewRecorder()
+	body := `{"client_id":"review-consumer","client_secret":"s3cr3t"}`
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/service-token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEmpty(t, resp["access_token"])
+	expiresIn, ok := resp["expires_in"].(float64)
+	require.True(t, ok)
+	assert.Greater(t, expiresIn, float64(0))
+}
+
+func TestHTTP_ServiceToken_InvalidCredentials_401(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{err: errors.New("bad")}, &fakeDelegationStore{grantExists: false})
+	w := httptest.NewRecorder()
+	body := `{"client_id":"review-consumer","client_secret":"wrong"}`
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/service-token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
 
 func TestHTTP_Exchange_Success(t *testing.T) {
 	iss := makeTestIssuer(t)
@@ -350,4 +415,118 @@ func TestHTTP_Revoke_Works(t *testing.T) {
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req2)
 	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+}
+
+func TestHTTP_TokenExchange_Success_200(t *testing.T) {
+	iss := makeTestIssuer(t)
+	svcTok, err := iss.IssueService("review-consumer")
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		&stubSvcVerifier{}, time.Hour,
+		&fakeDelegationStore{grantExists: true}, 15*time.Minute,
+	)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:gosec
+		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
+		"actor_token":   svcTok,
+		"subject_token": "user-uuid-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/token", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotEmpty(t, resp["access_token"])
+	delegated, _ := resp["access_token"].(string)
+	claims, err := iss.Verify(delegated)
+	require.NoError(t, err)
+	assert.Equal(t, "user-uuid-1", claims.UserID)
+}
+
+func TestHTTP_TokenExchange_InvalidGrantType_400(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{}, &fakeDelegationStore{grantExists: true})
+	body := `{"grant_type":"unsupported","actor_token":"x","subject_token":"y"}`
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHTTP_TokenExchange_InvalidActorToken_401(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{}, &fakeDelegationStore{grantExists: true})
+	body, _ := json.Marshal(map[string]string{ //nolint:gosec
+		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
+		"actor_token":   "not-a-jwt",
+		"subject_token": "user-uuid-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/token", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHTTP_TokenExchange_NonServiceActor_403(t *testing.T) {
+	iss := makeTestIssuer(t)
+	userTok, err := iss.Issue("regular-user-id")
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		&stubSvcVerifier{}, time.Hour,
+		&fakeDelegationStore{grantExists: true}, 15*time.Minute,
+	)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:gosec
+		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
+		"actor_token":   userTok,
+		"subject_token": "user-uuid-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/token", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestHTTP_TokenExchange_NoGrant_403(t *testing.T) {
+	iss := makeTestIssuer(t)
+	svcTok, err := iss.IssueService("review-consumer")
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		&stubSvcVerifier{}, time.Hour,
+		&fakeDelegationStore{grantExists: false}, 15*time.Minute,
+	)
+
+	body, _ := json.Marshal(map[string]string{ //nolint:gosec
+		"grant_type":    "urn:ietf:params:oauth:grant-type:token-exchange",
+		"actor_token":   svcTok,
+		"subject_token": "user-uuid-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/token", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "grant_required", resp["error"])
 }

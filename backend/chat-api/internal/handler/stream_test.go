@@ -32,7 +32,7 @@ func newStreamRouter(h *StreamHandler) *chi.Mux {
 }
 
 func newTestStreamHandler(svc domain.ChatService) *StreamHandler {
-	return NewStreamHandler(svc, zap.NewNop())
+	return NewStreamHandler(svc, zap.NewNop(), false)
 }
 
 func postStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {

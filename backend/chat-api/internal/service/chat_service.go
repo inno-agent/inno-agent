@@ -94,12 +94,12 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 // Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
 	if chatID == uuid.Nil {
-		title := s.generateTitle(ctx, message)
-		chat, err := s.chatRepo.Create(ctx, userID, &title)
+		chat, err := s.chatRepo.Create(ctx, userID, nil)
 		if err != nil {
 			return nil, uuid.Nil, fmt.Errorf("Stream: create chat: %w", err)
 		}
 		chatID = chat.ID
+		go s.generateAndUpdateTitle(chat.ID, userID, message)
 	} else {
 		ok, err := s.chatRepo.ExistsForUser(ctx, chatID, userID)
 		if err != nil {
@@ -206,6 +206,23 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 	}()
 
 	return outCh, chatID, nil
+}
+
+// generateAndUpdateTitle generates a title asynchronously and updates the chat.
+func (s *ChatService) generateAndUpdateTitle(chatID uuid.UUID, userID string, message string) {
+	titleCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	title := s.generateTitle(titleCtx, message)
+	if title == "" {
+		return
+	}
+
+	if err := s.chatRepo.UpdateTitle(titleCtx, chatID, userID, &title); err != nil {
+		s.logger.Warn("failed to update chat title",
+			zap.String("function", "generateAndUpdateTitle"),
+			zap.Error(err))
+	}
 }
 
 func (s *ChatService) generateTitle(ctx context.Context, message string) string {

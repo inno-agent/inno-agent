@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"innoagent/internal/transport"
 )
 
 const (
@@ -53,10 +55,7 @@ func NewQwenProvider(
 	p := &QwenProvider{
 		baseURL:     strings.TrimRight(baseURL, "/"),
 		temperature: 0.7,
-
-		httpClient: &http.Client{
-			Timeout: defaultHTTPTimeout,
-		},
+		httpClient:  transport.NewClient(defaultHTTPTimeout),
 	}
 
 	for _, opt := range opts {
@@ -215,12 +214,13 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 		return nil, p.parseErrorResponse(httpResp.StatusCode, body)
 	}
 
-	ch := make(chan string, 4)
+	ch := make(chan string, 64)
 	go func() {
 		defer func() { _ = httpResp.Body.Close() }()
 		defer close(ch)
 
 		scanner := bufio.NewScanner(httpResp.Body)
+		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data: ") {

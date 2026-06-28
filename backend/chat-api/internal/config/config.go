@@ -14,6 +14,7 @@ type Config struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
+	PerfLog         bool
 }
 
 // Load reads configuration from environment variables and returns a Config with defaults applied.
@@ -26,6 +27,7 @@ func Load() *Config {
 		ReadTimeout:     getDuration("READ_TIMEOUT", 10*time.Second),
 		WriteTimeout:    getDuration("WRITE_TIMEOUT", 0),
 		IdleTimeout:     getDuration("IDLE_TIMEOUT", 120*time.Second),
+		PerfLog:         getEnv("PERF_LOG", "") == "true" || getEnv("PERF_LOG", "") == "1",
 	}
 }
 

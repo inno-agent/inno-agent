@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"innoagent/internal/transport"
 )
 
 type Client struct {
@@ -17,7 +19,7 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
+		httpClient: transport.NewClient(5 * time.Second),
 	}
 }
 

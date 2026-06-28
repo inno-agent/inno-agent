@@ -53,7 +53,7 @@ func main() {
 
 	chatHandler := handler.NewChatHandler(chatService, logger)
 	messageHandler := handler.NewMessageHandler(chatService, logger)
-	streamHandler := handler.NewStreamHandler(chatService, logger)
+	streamHandler := handler.NewStreamHandler(chatService, logger, cfg.PerfLog)
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)

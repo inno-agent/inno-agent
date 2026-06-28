@@ -49,6 +49,10 @@ const (
         UPDATE chats SET updated_at = now() WHERE id = $1
     `
 
+	queryUpdateTitle = `
+        UPDATE chats SET title = $1, updated_at = now() WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
+    `
+
 	querySoftDeleteChat = `
 		UPDATE chats SET deleted_at = now(), updated_at = now() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`
 
@@ -150,6 +154,25 @@ func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("update timestamp: chat not found")
+	}
+
+	return nil
+}
+
+// UpdateTitle sets the title of a chat.
+func (r *ChatRepo) UpdateTitle(ctx context.Context, chatID uuid.UUID, userID string, title *string) error {
+	log := r.logger.With(
+		zap.String("operation", "UpdateTitle"),
+		zap.String("chat_id", chatID.String()),
+	)
+
+	tag, err := r.pool.Exec(ctx, queryUpdateTitle, title, chatID, userID)
+	if err != nil {
+		log.Error("update chat title failed", zap.Error(err))
+		return fmt.Errorf("update chat title: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("update title: chat not found")
 	}
 
 	return nil

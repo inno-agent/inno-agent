@@ -12,6 +12,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/transport"
 )
 
 type OrchestratorClient struct {
@@ -21,10 +22,8 @@ type OrchestratorClient struct {
 
 func NewOrchestratorClient(baseURL string) *OrchestratorClient {
 	return &OrchestratorClient{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 180 * time.Second,
-		},
+		baseURL:    baseURL,
+		httpClient: transport.NewClient(180 * time.Second),
 	}
 }
 
@@ -110,7 +109,7 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		return nil, fmt.Errorf("llm client: invalid content-type %s", contentType)
 	}
 
-	ch := make(chan string, 4)
+	ch := make(chan string, 64)
 	go func() {
 		defer func() {
 			_ = resp.Body.Close()
@@ -118,6 +117,7 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		defer close(ch)
 
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data: ") {

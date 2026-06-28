@@ -35,6 +35,16 @@ type HealthResponse struct {
 	BaseURL string `json:"base_url"`
 }
 
+func perfLog(cfg config.Config, start time.Time, label string, extra ...any) {
+	if !cfg.PerfLog {
+		return
+	}
+	elapsed := time.Since(start)
+	args := []any{label, "elapsed_ms", float64(elapsed.Microseconds()) / 1000.0}
+	args = append(args, extra...)
+	log.Printf("PERF %s", fmt.Sprint(args...))
+}
+
 func main() {
 	cfg := config.Load()
 
@@ -98,6 +108,8 @@ func main() {
 			return
 		}
 
+		reqStart := time.Now()
+
 		// Authenticate before doing any work (parsing the body, etc.).
 		token := auth.Bearer(r)
 		if token == "" {
@@ -112,6 +124,7 @@ func main() {
 			}
 			return
 		}
+		perfLog(cfg, reqStart, "auth")
 
 		var req ChatRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -139,6 +152,7 @@ func main() {
 				return
 			}
 
+			streamStart := time.Now()
 			ch, err := orch.AskStream(ctx, req.Messages, req.ModelName)
 			if err != nil {
 				data, _ := json.Marshal(map[string]string{"error": err.Error()})
@@ -148,18 +162,22 @@ func main() {
 				flusher.Flush()
 				return
 			}
+			perfLog(cfg, streamStart, "ttfb")
 
+			chunkCount := 0
 			for chunk := range ch {
 				data, _ := json.Marshal(map[string]string{"answer": chunk})
 				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 					log.Printf("failed to write chunk: %v", err)
 				}
 				flusher.Flush()
+				chunkCount++
 			}
 			if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
 				log.Printf("failed to write DONE signal: %v", err)
 			}
 			flusher.Flush()
+			perfLog(cfg, reqStart, "stream_done", "chunks", chunkCount)
 			return
 		}
 
@@ -170,6 +188,7 @@ func main() {
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)
 			return
 		}
+		perfLog(cfg, reqStart, "chat_done")
 
 		_ = json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
 	})

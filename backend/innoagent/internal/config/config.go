@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+func getBoolEnv(key string) bool {
+	v := os.Getenv(key)
+	return v == "true" || v == "1" || v == "yes"
+}
+
 type Config struct {
 	BaseURL     string
 	Models      []string
@@ -13,6 +18,7 @@ type Config struct {
 	RouterModel string
 	ServerPort  string
 	IdentityURL string
+	PerfLog     bool
 }
 
 func Load() Config {
@@ -63,5 +69,6 @@ func Load() Config {
 		RouterModel: routerModel,
 		ServerPort:  serverPort,
 		IdentityURL: identityURL,
+		PerfLog:     getBoolEnv("PERF_LOG"),
 	}
 }

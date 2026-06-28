@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/inno-agent/inno-agent/backend/chat-api/internal/transport"
 )
 
 type contextKey string
@@ -21,6 +24,7 @@ type validateResponse struct {
 
 // Auth validates the Bearer token against the auth service and injects user_id into context.
 func Auth(authServiceURL string) func(http.Handler) http.Handler {
+	client := transport.NewClient(5 * time.Second)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get("Authorization")
@@ -39,7 +43,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 			}
 			req.Header.Set("Content-Type", "application/json")
 
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := client.Do(req)
 			if err != nil || resp.StatusCode != http.StatusOK {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return

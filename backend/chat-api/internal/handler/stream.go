@@ -23,17 +23,19 @@ type streamRequest struct {
 type StreamHandler struct {
 	service domain.ChatService
 	logger  *zap.Logger
+	perfLog bool
 }
 
 // NewStreamHandler creates a StreamHandler with the given service and logger.
-func NewStreamHandler(service domain.ChatService, logger *zap.Logger) *StreamHandler {
-	return &StreamHandler{service: service, logger: logger}
+func NewStreamHandler(service domain.ChatService, logger *zap.Logger, perfLog bool) *StreamHandler {
+	return &StreamHandler{service: service, logger: logger, perfLog: perfLog}
 }
 
 // Stream accepts a POST request with JSON body, sends the user message,
 // and streams LLM response chunks via SSE.
 func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	reqStart := time.Now()
 
 	chatIDParam := chi.URLParam(r, "chat_id")
 	var chatID uuid.UUID
@@ -94,10 +96,17 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return
 	}
+	if h.perfLog {
+		h.logger.Info("stream_started",
+			zap.Duration("setup_ms", time.Since(reqStart)),
+			zap.String("chat_id", resolvedChatID.String()))
+	}
 
 	writeSSEEvent(w, "status", map[string]string{"stage": "llm_processing", "chat_id": resolvedChatID.String()})
 	flusher.Flush()
+	streamStart := time.Now()
 
+	chunkCount := 0
 loop:
 	for {
 		select {
@@ -107,9 +116,17 @@ loop:
 			}
 			writeSSEEvent(w, "chunk", map[string]string{"content": chunk})
 			flusher.Flush()
+			chunkCount++
 		case <-ctx.Done():
 			return
 		}
+	}
+
+	if h.perfLog {
+		h.logger.Info("stream_done",
+			zap.Duration("stream_ms", time.Since(streamStart)),
+			zap.Duration("total_ms", time.Since(reqStart)),
+			zap.Int("chunks", chunkCount))
 	}
 
 	writeSSEEvent(w, "done", map[string]interface{}{

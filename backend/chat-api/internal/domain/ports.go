@@ -16,6 +16,7 @@ type ChatRepository interface {
 	Create(ctx context.Context, userID string, title *string) (*Chat, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]Chat, int, error)
 	UpdateTimestamp(ctx context.Context, id uuid.UUID) error
+	UpdateTitle(ctx context.Context, chatID uuid.UUID, userID string, title *string) error
 	ExistsForUser(ctx context.Context, chatID uuid.UUID, userID string) (bool, error)
 	SoftDelete(ctx context.Context, chatID uuid.UUID, userID string) error
 }

@@ -30,13 +30,6 @@ func Middleware(client *Client) func(http.Handler) http.Handler {
 				http.Error(w, `{"error":"identity unavailable"}`, http.StatusBadGateway)
 				return
 			}
-			if strings.HasPrefix(userID, "svc:") {
-				userID = r.Header.Get("X-User-ID")
-				if userID == "" {
-					http.Error(w, `{"error":"missing_user_context"}`, http.StatusBadRequest)
-					return
-				}
-			}
 			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

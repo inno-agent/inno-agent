@@ -22,6 +22,8 @@ type Config struct {
 	RefreshExpiry time.Duration
 	// ServiceTokenExpiry is the TTL for service tokens.
 	ServiceTokenExpiry time.Duration
+	// DelegateTokenExpiry is the TTL for delegated tokens issued via RFC 8693 token exchange.
+	DelegateTokenExpiry time.Duration
 }
 
 func Load() (*Config, error) {
@@ -75,6 +77,12 @@ func LoadFrom(getenv func(string) string) (*Config, error) {
 		return nil, fmt.Errorf("invalid SERVICE_TOKEN_EXPIRY: %w", err)
 	}
 	cfg.ServiceTokenExpiry = serviceTokenExpiry
+
+	delegateTokenExpiry, err := time.ParseDuration(fallback("DELEGATE_TOKEN_EXPIRY", "15m"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid DELEGATE_TOKEN_EXPIRY: %w", err)
+	}
+	cfg.DelegateTokenExpiry = delegateTokenExpiry
 
 	return cfg, nil
 }

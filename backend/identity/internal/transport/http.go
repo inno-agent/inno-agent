@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,12 @@ type ServiceClientVerifier interface {
 	Verify(ctx context.Context, clientID, secret string) error
 }
 
+// SubjectVerifier checks that a subject user_id exists.
+// *user.Repository satisfies it.
+type SubjectVerifier interface {
+	UserExists(ctx context.Context, userID string) (bool, error)
+}
+
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
 type OIDCEndpoints struct {
 	// Authority is the public issuer URL; the browser discovers authorize/token/jwks from it.
@@ -52,6 +59,8 @@ func RegisterHTTPRoutes(
 	refreshExpiry time.Duration,
 	svcVerifier ServiceClientVerifier,
 	serviceTokenExpiry time.Duration,
+	subjectVerifier SubjectVerifier,
+	delegateExpiry time.Duration,
 ) {
 	r.GET("/identity/v1/config", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -86,6 +95,7 @@ func RegisterHTTPRoutes(
 	r.POST("/identity/v1/refresh", refreshHandler(iss, expiry, refreshRepo, refreshExpiry))
 	r.POST("/identity/v1/revoke", revokeHandler(refreshRepo))
 	r.POST("/identity/v1/service-token", serviceTokenHandler(iss, svcVerifier, serviceTokenExpiry))
+	r.POST("/identity/v1/token", tokenExchangeHandler(iss, subjectVerifier, delegateExpiry))
 }
 
 func exchangeHandler(
@@ -252,6 +262,65 @@ func serviceTokenHandler(
 		c.JSON(http.StatusOK, gin.H{
 			"access_token": tok,
 			"expires_in":   int(expiry.Seconds()),
+		})
+	}
+}
+
+func tokenExchangeHandler(
+	iss *issuer.Issuer,
+	sub SubjectVerifier,
+	delegateExpiry time.Duration,
+) gin.HandlerFunc {
+	const grantType = "urn:ietf:params:oauth:grant-type:token-exchange"
+	return func(c *gin.Context) {
+		var req struct {
+			GrantType    string `json:"grant_type"    binding:"required"`
+			ActorToken   string `json:"actor_token"   binding:"required"`
+			SubjectToken string `json:"subject_token" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+		if req.GrantType != grantType {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported_grant_type"})
+			return
+		}
+
+		// Validate actor token — must be a valid service JWT (sub starts with "svc:")
+		claims, err := iss.Verify(req.ActorToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_actor"})
+			return
+		}
+		if !strings.HasPrefix(claims.UserID, "svc:") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "actor_not_service"})
+			return
+		}
+
+		// Validate subject — user must exist
+		exists, err := sub.UserExists(c.Request.Context(), req.SubjectToken)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+		if !exists {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subject_not_found"})
+			return
+		}
+
+		// Issue delegated token: sub=user_id, act.sub=svc:clientID
+		tok, err := iss.IssueDelegate(req.SubjectToken, claims.UserID, delegateExpiry)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{ //nolint:gosec
+			"access_token":      tok,
+			"issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+			"token_type":        "Bearer",
+			"expires_in":        int(delegateExpiry.Seconds()),
 		})
 	}
 }

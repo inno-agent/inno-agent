@@ -41,8 +41,8 @@ func makeIdentityServer(t *testing.T, svcStatus, exchangeStatus int) *httptest.S
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(exchangeStatus)
 		if exchangeStatus == http.StatusOK {
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"access_token": "delegated-jwt", //nolint:gosec
+			_ = json.NewEncoder(w).Encode(map[string]any{ //nolint:gosec
+				"access_token": "delegated-jwt",
 				"expires_in":   900,
 			})
 		}

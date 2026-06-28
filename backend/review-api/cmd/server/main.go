@@ -33,8 +33,8 @@ func main() {
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 
-	reviewService := service.NewReviewService(gitFlameClient, llmClient, logger)
-	reviewHandler := handler.NewReviewHandler(reviewService, logger)
+	reviewService := service.NewReviewService(gitFlameClient, llmClient)
+	reviewHandler := handler.NewReviewHandler(reviewService)
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router, reviewHandler, cfg.AuthServiceURL, logger)

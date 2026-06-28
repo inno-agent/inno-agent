@@ -16,12 +16,11 @@ import (
 // ChatHandler handles HTTP requests for chat listing.
 type ChatHandler struct {
 	service domain.ChatService
-	logger  *zap.Logger
 }
 
-// NewChatHandler creates a ChatHandler with the given service and logger.
-func NewChatHandler(service domain.ChatService, logger *zap.Logger) *ChatHandler {
-	return &ChatHandler{service: service, logger: logger}
+// NewChatHandler creates a ChatHandler with the given service.
+func NewChatHandler(service domain.ChatService) *ChatHandler {
+	return &ChatHandler{service: service}
 }
 
 // List returns a paginated list of chats for the requesting user.
@@ -45,7 +44,7 @@ func (h *ChatHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	chats, total, err := h.service.ListChats(ctx, userID, limit, offset)
 	if err != nil {
-		h.logger.Error("failed to list chats", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("failed to list chats", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to list chats")
 		return
 	}
@@ -77,7 +76,7 @@ func (h *ChatHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "access denied")
 			return
 		}
-		h.logger.Error("failed to delete chat", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("failed to delete chat", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to delete chat")
 		return
 	}

@@ -45,15 +45,15 @@ func main() {
 		logger.Fatal("database not reachable", zap.Error(err))
 	}
 
-	chatRepo := repository.NewChatRepo(pool, logger)
-	messageRepo := repository.NewMessageRepo(pool, logger)
+	chatRepo := repository.NewChatRepo(pool)
+	messageRepo := repository.NewMessageRepo(pool)
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 
-	chatService := service.NewChatService(chatRepo, messageRepo, llmClient, logger)
+	chatService := service.NewChatService(chatRepo, messageRepo, llmClient)
 
-	chatHandler := handler.NewChatHandler(chatService, logger)
-	messageHandler := handler.NewMessageHandler(chatService, logger)
-	streamHandler := handler.NewStreamHandler(chatService, logger)
+	chatHandler := handler.NewChatHandler(chatService)
+	messageHandler := handler.NewMessageHandler(chatService)
+	streamHandler := handler.NewStreamHandler(chatService)
 
 	router := chi.NewRouter()
 	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL, logger)

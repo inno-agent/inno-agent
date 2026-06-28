@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
@@ -32,7 +31,7 @@ func newStreamRouter(h *StreamHandler) *chi.Mux {
 }
 
 func newTestStreamHandler(svc domain.ChatService) *StreamHandler {
-	return NewStreamHandler(svc, zap.NewNop())
+	return NewStreamHandler(svc)
 }
 
 func postStream(r *chi.Mux, chatID, userID, message string) *httptest.ResponseRecorder {

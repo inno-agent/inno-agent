@@ -54,7 +54,7 @@ func CorrelationID(next http.Handler) http.Handler {
 }
 
 // RequestLogger writes one structured access log line per HTTP request.
-func RequestLogger(logger *zap.Logger) func(http.Handler) http.Handler {
+func RequestLogger() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -67,8 +67,7 @@ func RequestLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 				status = http.StatusOK
 			}
 
-			logger.Info("http_request",
-				zap.String("correlation_id", CorrelationIDFromContext(r.Context())),
+			LoggerFromContext(r.Context()).Info("http_request",
 				zap.String("method", r.Method),
 				zap.String("path", r.URL.Path),
 				zap.String("query", r.URL.RawQuery),

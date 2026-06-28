@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
 
 const reviewSystemPrompt = `You are a senior software engineer performing pull request review.
@@ -34,15 +35,13 @@ var _ domain.ReviewService = (*ReviewService)(nil)
 type ReviewService struct {
 	diffProvider domain.DiffProvider
 	llm          domain.LLMProvider
-	logger       *zap.Logger
 }
 
 // NewReviewService creates a ReviewService with the given dependencies.
-func NewReviewService(diffProvider domain.DiffProvider, llm domain.LLMProvider, logger *zap.Logger) *ReviewService {
+func NewReviewService(diffProvider domain.DiffProvider, llm domain.LLMProvider) *ReviewService {
 	return &ReviewService{
 		diffProvider: diffProvider,
 		llm:          llm,
-		logger:       logger.With(zap.String("layer", "service")),
 	}
 }
 
@@ -59,7 +58,7 @@ func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, 
 		var err error
 		diff, err = s.diffProvider.GetPRDiff(ctx, prID)
 		if err != nil {
-			s.logger.Error("failed to fetch PR diff", zap.String("pr_id", prID), zap.Error(err))
+			middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error("failed to fetch PR diff", zap.String("pr_id", prID), zap.Error(err))
 			return "", fmt.Errorf("ReviewPR: fetch diff: %w", err)
 		}
 	}
@@ -77,7 +76,7 @@ func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, 
 
 	review, err := s.llm.Chat(ctx, messages, modelName)
 	if err != nil {
-		s.logger.Error("failed to generate review", zap.String("pr_id", prID), zap.Error(err))
+		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error("failed to generate review", zap.String("pr_id", prID), zap.Error(err))
 		return "", fmt.Errorf("ReviewPR: llm chat: %w", err)
 	}
 

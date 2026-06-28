@@ -11,8 +11,9 @@ import (
 
 // RegisterRoutes mounts all API routes and middleware onto the given router.
 func RegisterRoutes(r chi.Router, chatH *ChatHandler, msgH *MessageHandler, streamH *StreamHandler, authServiceURL string, logger *zap.Logger) {
+	r.Use(middleware.Logger(logger))
 	r.Use(middleware.CorrelationID)
-	r.Use(middleware.RequestLogger(logger))
+	r.Use(middleware.RequestLogger())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")

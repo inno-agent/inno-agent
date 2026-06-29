@@ -1,0 +1,27 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: telegram
+  group_by: ['alertname', 'service', 'env']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: '__TELEGRAM_BOT_TOKEN__'
+        chat_id: __TELEGRAM_CHAT_ID__
+        api_url: https://api.telegram.org
+        send_resolved: true
+        parse_mode: HTML
+        message: |
+          {{ if eq .Status "firing" }}❗️ <b>FIRING</b> ❗️{{ else }}✅ <b>RESOLVED</b>{{ end }}
+          <b>{{ .CommonLabels.alertname }}</b>
+          {{ range .Alerts }}
+          <b>Summary:</b> {{ .Annotations.summary }}
+          <b>Description:</b> {{ .Annotations.description }}
+          <b>Severity:</b> {{ .Labels.severity }}
+          <b>Service:</b> {{ .Labels.service }}
+          {{ end }}

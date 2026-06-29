@@ -12,6 +12,7 @@ volumes:
   authentik-media:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
@@ -365,6 +366,21 @@ services:
       - innoagent
 
   # ─── Monitoring (Prometheus + Grafana) ─────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./infrastructure/monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager/data
+    networks:
+      - innoagent
+
   prometheus:
     image: prom/prometheus:v2.55.1
     restart: unless-stopped
@@ -379,6 +395,8 @@ services:
       - prometheus-data:/prometheus
     networks:
       - innoagent
+    depends_on:
+      - alertmanager
 
   grafana:
     image: grafana/grafana:11.4.0

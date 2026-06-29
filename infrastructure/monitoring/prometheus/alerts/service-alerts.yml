@@ -1,0 +1,74 @@
+groups:
+  - name: service-availability
+    rules:
+      - alert: ServiceDown
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.service }} is unreachable"
+          description: "Blackbox HTTP probe failed for {{ $labels.instance }} (service={{ $labels.service }}, env={{ $labels.env }})."
+
+      - alert: MetricsTargetDown
+        expr: up{job=~"backend-metrics|postgres|redpanda"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Metrics scrape failed for {{ $labels.service }}"
+          description: "Prometheus cannot scrape {{ $labels.instance }} (job={{ $labels.job }})."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "postgres-exporter reports pg_up=0 for {{ $labels.instance }}."
+
+  - name: service-errors
+    rules:
+      - alert: HighHttpErrorRate
+        expr: |
+          (
+            sum by (service, env) (rate(service_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum by (service, env) (rate(service_http_requests_total[5m]))
+          ) > 0.05
+          and
+          sum by (service, env) (rate(service_http_requests_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx rate on {{ $labels.service }}"
+          description: "More than 5% of requests returned 5xx over the last 5 minutes (env={{ $labels.env }})."
+
+      - alert: HighHttpLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (service, env, le) (rate(service_http_request_duration_seconds_bucket[5m]))
+          ) > 5
+          and
+          sum by (service, env) (rate(service_http_requests_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP latency on {{ $labels.service }}"
+          description: "p95 request latency exceeded 5s for 10 minutes (env={{ $labels.env }})."
+
+  - name: watchdog
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: "Watchdog тестовый алерт"
+          description: "Если вы видите это сообщение, весь пайплайн работает!"
+

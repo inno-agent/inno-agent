@@ -1,0 +1,244 @@
+{
+  "qwen2.5:0.5b": [
+    {
+      "target_rps": 10,
+      "actual_rps": 0.9512906635348279,
+      "completed": 15,
+      "errors": 0,
+      "duration": 15.768051316999845,
+      "avg_latency": 1.0511974307332517,
+      "p95_latency": 2.4585966550002922,
+      "max_latency": 2.4585966550002922
+    },
+    {
+      "target_rps": 20,
+      "actual_rps": 1.300621095502497,
+      "completed": 20,
+      "errors": 0,
+      "duration": 15.377268651999657,
+      "avg_latency": 0.7688591266000913,
+      "p95_latency": 1.448624855000162,
+      "max_latency": 1.448624855000162
+    },
+    {
+      "target_rps": 30,
+      "actual_rps": 1.350507152111495,
+      "completed": 21,
+      "errors": 0,
+      "duration": 15.549714022000444,
+      "avg_latency": 0.7404572529999963,
+      "p95_latency": 0.8262985419996767,
+      "max_latency": 0.9210970789999919
+    },
+    {
+      "target_rps": 50,
+      "actual_rps": 1.1796574814956997,
+      "completed": 18,
+      "errors": 0,
+      "duration": 15.258666419999827,
+      "avg_latency": 0.8476989828888892,
+      "p95_latency": 1.5507600110004205,
+      "max_latency": 1.5507600110004205
+    }
+  ],
+  "qwen2.5-coder:1.5b": [
+    {
+      "target_rps": 10,
+      "actual_rps": 1.0559472421725922,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.152272159999484,
+      "avg_latency": 0.9470111760000464,
+      "p95_latency": 2.755069695000202,
+      "max_latency": 2.755069695000202
+    },
+    {
+      "target_rps": 20,
+      "actual_rps": 1.3579961459517034,
+      "completed": 21,
+      "errors": 0,
+      "duration": 15.463961413000106,
+      "avg_latency": 0.7363723079047088,
+      "p95_latency": 0.8186953099993843,
+      "max_latency": 0.8278657969995038
+    },
+    {
+      "target_rps": 30,
+      "actual_rps": 1.3951697594300592,
+      "completed": 21,
+      "errors": 0,
+      "duration": 15.051931750999756,
+      "avg_latency": 0.7167538768570965,
+      "p95_latency": 0.7284664059998249,
+      "max_latency": 0.7327616880002097
+    }
+  ],
+  "qwen2.5:7b": [
+    {
+      "target_rps": 5,
+      "actual_rps": 0.8298025710009971,
+      "completed": 13,
+      "errors": 0,
+      "duration": 15.66637710499981,
+      "avg_latency": 1.2050966776923815,
+      "p95_latency": 4.728212312999858,
+      "max_latency": 4.728212312999858
+    },
+    {
+      "target_rps": 10,
+      "actual_rps": 1.1797905290397186,
+      "completed": 18,
+      "errors": 0,
+      "duration": 15.256945666999854,
+      "avg_latency": 0.8476028279999102,
+      "p95_latency": 1.6377801690005072,
+      "max_latency": 1.6377801690005072
+    },
+    {
+      "target_rps": 15,
+      "actual_rps": 1.1292674871284738,
+      "completed": 17,
+      "errors": 0,
+      "duration": 15.054006418999961,
+      "avg_latency": 0.8855245778234829,
+      "p95_latency": 1.6383745709999857,
+      "max_latency": 1.6383745709999857
+    },
+    {
+      "target_rps": 20,
+      "actual_rps": 1.1960123466064596,
+      "completed": 19,
+      "errors": 0,
+      "duration": 15.886123628999485,
+      "avg_latency": 0.8361080360526486,
+      "p95_latency": 1.5508883929996955,
+      "max_latency": 1.5508883929996955
+    }
+  ],
+  "qwen3:8b": [
+    {
+      "target_rps": 5,
+      "actual_rps": 0.4625731635411056,
+      "completed": 7,
+      "errors": 0,
+      "duration": 15.132741264999822,
+      "avg_latency": 2.1618151457143022,
+      "p95_latency": 8.790740065000136,
+      "max_latency": 8.790740065000136
+    },
+    {
+      "target_rps": 10,
+      "actual_rps": 1.0208256952323804,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.673586660999717,
+      "avg_latency": 0.9795942796250756,
+      "p95_latency": 1.6543881429997782,
+      "max_latency": 1.6543881429997782
+    },
+    {
+      "target_rps": 15,
+      "actual_rps": 1.0071063079668607,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.88710136499958,
+      "avg_latency": 0.9929389447500512,
+      "p95_latency": 1.8429284990006636,
+      "max_latency": 1.8429284990006636
+    },
+    {
+      "target_rps": 20,
+      "actual_rps": 1.022737809062228,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.644283274000372,
+      "avg_latency": 0.9777624078124632,
+      "p95_latency": 1.6406356989991764,
+      "max_latency": 1.6406356989991764
+    }
+  ],
+  "qwen2.5-coder:14b": [
+    {
+      "target_rps": 3,
+      "actual_rps": 0.7861131266196412,
+      "completed": 12,
+      "errors": 0,
+      "duration": 15.264978530000008,
+      "avg_latency": 1.27207649558333,
+      "p95_latency": 5.024935192000157,
+      "max_latency": 5.024935192000157
+    },
+    {
+      "target_rps": 5,
+      "actual_rps": 1.0406345657785674,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.375234041000112,
+      "avg_latency": 0.96094617331255,
+      "p95_latency": 1.5359843719998025,
+      "max_latency": 1.5359843719998025
+    },
+    {
+      "target_rps": 8,
+      "actual_rps": 0.9912606816414552,
+      "completed": 15,
+      "errors": 0,
+      "duration": 15.132245511000292,
+      "avg_latency": 1.0088112479998623,
+      "p95_latency": 1.7408119570000053,
+      "max_latency": 1.7408119570000053
+    },
+    {
+      "target_rps": 10,
+      "actual_rps": 1.0203272816354052,
+      "completed": 16,
+      "errors": 0,
+      "duration": 15.68124295799953,
+      "avg_latency": 0.9800731765625983,
+      "p95_latency": 1.8459134439999616,
+      "max_latency": 1.8459134439999616
+    }
+  ],
+  "deepseek-coder-v2:16b": [
+    {
+      "target_rps": 3,
+      "actual_rps": 0.13202854601762198,
+      "completed": 2,
+      "errors": 0,
+      "duration": 15.14823922800042,
+      "avg_latency": 7.574112912500368,
+      "p95_latency": 14.430079354000554,
+      "max_latency": 14.430079354000554
+    },
+    {
+      "target_rps": 5,
+      "actual_rps": 1.196380239762913,
+      "completed": 18,
+      "errors": 0,
+      "duration": 15.04538390200014,
+      "avg_latency": 0.8358503771666316,
+      "p95_latency": 1.434005471999626,
+      "max_latency": 1.434005471999626
+    },
+    {
+      "target_rps": 8,
+      "actual_rps": 1.3399134947777287,
+      "completed": 21,
+      "errors": 0,
+      "duration": 15.672653556999649,
+      "avg_latency": 0.7463125447142634,
+      "p95_latency": 0.8183250759993825,
+      "max_latency": 1.433967832000235
+    },
+    {
+      "target_rps": 10,
+      "actual_rps": 1.340368436041035,
+      "completed": 21,
+      "errors": 0,
+      "duration": 15.667334021999523,
+      "avg_latency": 0.7460580771429315,
+      "p95_latency": 0.9261510550004459,
+      "max_latency": 1.5344959680005559
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "qwen2.5:0.5b": [
+    {
+      "concurrency": 50,
+      "success": 50,
+      "errors": 0,
+      "wall": 20.176531307000005,
+      "avg_wall": 11.229421414880017,
+      "p95_wall": 19.40281859100014,
+      "max_wall": 20.16297956499966,
+      "avg_tps": 355.86879663355376,
+      "total_tokens": 6400,
+      "throughput": 317.20021160325
+    },
+    {
+      "concurrency": 75,
+      "success": 75,
+      "errors": 0,
+      "wall": 29.815821492000396,
+      "avg_wall": 16.34907910036002,
+      "p95_wall": 28.772787172999415,
+      "max_wall": 29.800833176000197,
+      "avg_tps": 359.1162993135521,
+      "total_tokens": 9600,
+      "throughput": 321.976706312643
+    },
+    {
+      "concurrency": 100,
+      "success": 100,
+      "errors": 0,
+      "wall": 39.930507576999844,
+      "avg_wall": 21.627017705479975,
+      "p95_wall": 38.4584117509994,
+      "max_wall": 39.8977766349999,
+      "avg_tps": 359.2013031989689,
+      "total_tokens": 12800,
+      "throughput": 320.5569069042553
+    },
+    {
+      "concurrency": 150,
+      "success": 150,
+      "errors": 0,
+      "wall": 59.49665829300011,
+      "avg_wall": 32.083296302433425,
+      "p95_wall": 56.912600440999995,
+      "max_wall": 59.45985315899998,
+      "avg_tps": 359.2337655504893,
+      "total_tokens": 19200,
+      "throughput": 322.7071998808194
+    }
+  ],
+  "qwen2.5-coder:1.5b": [
+    {
+      "concurrency": 50,
+      "success": 50,
+      "errors": 0,
+      "wall": 27.748996592000367,
+      "avg_wall": 14.912122346199958,
+      "p95_wall": 26.717063899000095,
+      "max_wall": 27.725292274999447,
+      "avg_tps": 249.66800511320127,
+      "total_tokens": 6388,
+      "throughput": 230.20652220057454
+    },
+    {
+      "concurrency": 75,
+      "success": 75,
+      "errors": 0,
+      "wall": 40.23569696300001,
+      "avg_wall": 21.178283074133397,
+      "p95_wall": 38.677029943999514,
+      "max_wall": 40.22743338200053,
+      "avg_tps": 255.58912593686586,
+      "total_tokens": 9566,
+      "throughput": 237.7490815878426
+    },
+    {
+      "concurrency": 100,
+      "success": 100,
+      "errors": 0,
+      "wall": 54.383939355999246,
+      "avg_wall": 28.8700984984099,
+      "p95_wall": 52.318220242999814,
+      "max_wall": 54.368239280000125,
+      "avg_tps": 255.58138971927937,
+      "total_tokens": 12799,
+      "throughput": 235.34521683354492
+    }
+  ],
+  "qwen2.5:7b": [
+    {
+      "concurrency": 50,
+      "success": 50,
+      "errors": 0,
+      "wall": 47.40831541699936,
+      "avg_wall": 24.825343711359963,
+      "p95_wall": 45.552137944000606,
+      "max_wall": 47.3888609279993,
+      "avg_tps": 142.07787867836487,
+      "total_tokens": 6400,
+      "throughput": 134.99741435033422
+    },
+    {
+      "concurrency": 75,
+      "success": 75,
+      "errors": 0,
+      "wall": 71.78874636799992,
+      "avg_wall": 37.394841587853385,
+      "p95_wall": 69.00547392699991,
+      "max_wall": 71.76561717700042,
+      "avg_tps": 140.62599709331542,
+      "total_tokens": 9600,
+      "throughput": 133.72569498273384
+    },
+    {
+      "concurrency": 100,
+      "success": 100,
+      "errors": 0,
+      "wall": 95.54617308599973,
+      "avg_wall": 49.37219280242998,
+      "p95_wall": 91.85024728200005,
+      "max_wall": 95.52090351300012,
+      "avg_tps": 140.23544276323162,
+      "total_tokens": 12800,
+      "throughput": 133.96664237382805
+    }
+  ],
+  "qwen3:8b": [
+    {
+      "concurrency": 50,
+      "success": 50,
+      "errors": 0,
+      "wall": 48.01305232499999,
+      "avg_wall": 25.354840208879995,
+      "p95_wall": 46.151938668000184,
+      "max_wall": 48.00283018200025,
+      "avg_tps": 140.7335162149743,
+      "total_tokens": 6400,
+      "throughput": 133.29708673130065
+    },
+    {
+      "concurrency": 75,
+      "success": 75,
+      "errors": 0,
+      "wall": 71.68548241200006,
+      "avg_wall": 37.43868494333329,
+      "p95_wall": 68.88927578099992,
+      "max_wall": 71.672258134,
+      "avg_tps": 140.84317531815427,
+      "total_tokens": 9600,
+      "throughput": 133.91832874647673
+    },
+    {
+      "concurrency": 100,
+      "success": 100,
+      "errors": 0,
+      "wall": 95.23837211099999,
+      "avg_wall": 49.57377511998001,
+      "p95_wall": 91.62064267200003,
+      "max_wall": 95.23258515399993,
+      "avg_tps": 140.92650736543942,
+      "total_tokens": 12800,
+      "throughput": 134.3996092780927
+    }
+  ],
+  "deepseek-coder-v2:16b": [
+    {
+      "concurrency": 50,
+      "success": 15,
+      "errors": 35,
+      "wall": 120.93477074099974,
+      "avg_wall": 69.01145519373313,
+      "p95_wall": 117.13659745699988,
+      "max_wall": 117.13659745699988,
+      "avg_tps": 17.96555515075572,
+      "total_tokens": 1920,
+      "throughput": 15.876327281522475,
+      "error_types": [
+        "The read operation timed out"
+      ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/repository"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/service"
+	"github.com/inno-agent/inno-agent/backend/metrics"
 )
 
 func main() {
@@ -55,8 +56,12 @@ func main() {
 	messageHandler := handler.NewMessageHandler(chatService, logger)
 	streamHandler := handler.NewStreamHandler(chatService, logger)
 
+	metrics.Init("chat-api")
+
 	router := chi.NewRouter()
+	router.Use(metrics.ChiMiddleware("chat-api"))
 	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)
+	router.Handle("/metrics", metrics.Handler())
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

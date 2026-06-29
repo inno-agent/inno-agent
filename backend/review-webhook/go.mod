@@ -4,10 +4,13 @@ go 1.26.0
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/inno-agent/inno-agent/backend/metrics v0.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/segmentio/kafka-go v0.4.47
 	go.uber.org/zap v1.28.0
 )
+
+replace github.com/inno-agent/inno-agent/backend/metrics => ../metrics
 
 require (
 	github.com/klauspost/compress v1.15.9 // indirect

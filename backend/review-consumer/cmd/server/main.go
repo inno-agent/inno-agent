@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/metrics"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/gitflame"
@@ -67,6 +68,8 @@ func main() {
 
 		tokenSrc = tokensource.NewStatic(cfg.OrchestratorToken)
 	}
+
+	metrics.ListenAndServe(":9090", "review-consumer")
 
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)

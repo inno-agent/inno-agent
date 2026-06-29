@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/metrics"
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/config"
 	internalkafka "github.com/inno-agent/inno-agent/backend/review-webhook/internal/kafka"
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/webhook"
@@ -34,13 +35,17 @@ func main() {
 
 	webhookHandler := webhook.New(cfg, publisher, logger)
 
+	metrics.Init("review-webhook")
+
 	router := chi.NewRouter()
 	router.Use(chimw.Logger)
+	router.Use(metrics.ChiMiddleware("review-webhook"))
 
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	router.Post("/hooks/gitflame", webhookHandler.ServeHTTP)
+	router.Handle("/metrics", metrics.Handler())
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

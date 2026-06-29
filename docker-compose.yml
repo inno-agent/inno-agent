@@ -10,6 +10,8 @@ volumes:
   postgres-data:
   redis-data:
   authentik-media:
+  prometheus-data:
+  grafana-data:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
@@ -123,10 +125,11 @@ services:
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
     build:
-      context: ./backend/identity
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: identity/Dockerfile
     restart: unless-stopped
     environment:
+      METRICS_ENV: local
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
@@ -163,10 +166,11 @@ services:
   # ─── Chat API ──────────────────────────────────────────────────────────────
   chat-api:
     build:
-      context: ./backend/chat-api
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: chat-api/Dockerfile
     restart: unless-stopped
     environment:
+      METRICS_ENV: local
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
@@ -184,12 +188,13 @@ services:
   # ─── Review API ────────────────────────────────────────────────────────────
   review-api:
     build:
-      context: ./backend/review-api
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: review-api/Dockerfile
     restart: unless-stopped
     ports:
       - "8001:8001"
     environment:
+      METRICS_ENV: local
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: ${REVIEW_AUTH_SERVICE_URL-http://identity:8081}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
@@ -246,12 +251,13 @@ services:
   # ─── AI Orchestrator ──────────────────────────────────────────────────────
   orchestrator:
     build:
-      context: ./backend/innoagent
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: innoagent/Dockerfile
     restart: unless-stopped
     networks:
       - innoagent
     environment:
+      METRICS_ENV: local
       LLM_BASE_URL: http://ollama:11434/v1
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
@@ -299,9 +305,11 @@ services:
   # ─── Review Consumer (webhook-driven PR reviewer) ─────────────────────────
   review-consumer:
     build:
-      context: ./backend/review-consumer
+      context: ./backend
+      dockerfile: review-consumer/Dockerfile
     restart: unless-stopped
     environment:
+      METRICS_ENV: local
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: review-consumer
@@ -332,9 +340,11 @@ services:
   # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
   review-webhook:
     build:
-      context: ./backend/review-webhook
+      context: ./backend
+      dockerfile: review-webhook/Dockerfile
     restart: unless-stopped
     environment:
+      METRICS_ENV: local
       SERVER_PORT: "8002"
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
@@ -353,3 +363,58 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Monitoring (Prometheus + Grafana) ─────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    networks:
+      - innoagent
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - innoagent
+    depends_on:
+      - prometheus
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./infrastructure/monitoring/prometheus/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      - innoagent
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_ADMIN_USER:-postgres}:${POSTGRES_ADMIN_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-authentik}?sslmode=disable
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy

@@ -1,15 +1,21 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
+COPY metrics ./metrics
 
+WORKDIR /app/metrics
+COPY metrics/go.mod metrics/go.sum ./
+RUN go mod download
+
+WORKDIR /app/innoagent
 RUN apk add --no-cache git ca-certificates tzdata
 
-COPY go.mod .
+COPY innoagent/go.mod .
 RUN go mod download || true
 
-COPY . .
+COPY innoagent/ .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
     -o server \
     ./cmd/server
@@ -22,7 +28,7 @@ RUN apk add --no-cache ca-certificates curl tzdata && \
 
 WORKDIR /app
 
-COPY --from=builder /app/server .
+COPY --from=builder /app/innoagent/server .
 
 RUN chown -R appuser:appgroup /app
 

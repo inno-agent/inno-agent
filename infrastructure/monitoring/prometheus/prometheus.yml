@@ -1,0 +1,130 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          service: prometheus
+          layer: infra
+          env: local
+
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://identity:8081/identity/v1/config
+        labels:
+          service: identity
+          layer: backend
+          env: local
+      - targets:
+          - http://chat-api:8000/health
+        labels:
+          service: chat-api
+          layer: backend
+          env: local
+      - targets:
+          - http://review-api:8001/health
+        labels:
+          service: review-api
+          layer: backend
+          env: local
+      - targets:
+          - http://orchestrator:8080/health
+        labels:
+          service: orchestrator
+          layer: ai
+          env: local
+      - targets:
+          - http://review-webhook:8002/healthz
+        labels:
+          service: review-webhook
+          layer: backend
+          env: local
+      - targets:
+          - http://review-consumer:9090/healthz
+        labels:
+          service: review-consumer
+          layer: backend
+          env: local
+      - targets:
+          - http://ollama:11434/api/tags
+        labels:
+          service: ollama
+          layer: ai
+          env: local
+      - targets:
+          - http://authentik-server:9000/-/health/live/
+        labels:
+          service: authentik-server
+          layer: infra
+          env: local
+      - targets:
+          - http://frontend:80/
+        labels:
+          service: frontend
+          layer: frontend
+          env: local
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: backend-metrics
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["identity:8081"]
+        labels:
+          service: identity
+          layer: backend
+          env: local
+      - targets: ["chat-api:8000"]
+        labels:
+          service: chat-api
+          layer: backend
+          env: local
+      - targets: ["review-api:8001"]
+        labels:
+          service: review-api
+          layer: backend
+          env: local
+      - targets: ["review-webhook:8002"]
+        labels:
+          service: review-webhook
+          layer: backend
+          env: local
+      - targets: ["orchestrator:8080"]
+        labels:
+          service: orchestrator
+          layer: ai
+          env: local
+      - targets: ["review-consumer:9090"]
+        labels:
+          service: review-consumer
+          layer: backend
+          env: local
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          service: postgres
+          layer: infra
+          env: local
+
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ["redpanda:9644"]
+        labels:
+          service: redpanda
+          layer: infra
+          env: local

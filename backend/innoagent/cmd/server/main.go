@@ -17,6 +17,8 @@ import (
 	"innoagent/internal/config"
 	"innoagent/internal/llm"
 	"innoagent/internal/orchestrator"
+
+	"github.com/inno-agent/inno-agent/backend/metrics"
 )
 
 type ChatRequest struct {
@@ -69,6 +71,8 @@ func main() {
 
 	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models)
 	identityClient := auth.NewClient(cfg.IdentityURL)
+
+	metrics.Init("orchestrator")
 
 	mux := http.NewServeMux()
 
@@ -174,9 +178,11 @@ func main() {
 		_ = json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
 	})
 
+	mux.Handle("/metrics", metrics.Handler())
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
-		Handler:      mux,
+		Handler:      metrics.StdMiddleware("orchestrator", mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 200 * time.Second,
 		IdleTimeout:  60 * time.Second,

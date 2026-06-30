@@ -44,6 +44,7 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message, model
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	middleware.SetCorrelationIDHeader(ctx, req)
 	if tok := middleware.TokenFromContext(ctx); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}
@@ -90,6 +91,7 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		return nil, fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	middleware.SetCorrelationIDHeader(ctx, req)
 	if tok := middleware.TokenFromContext(ctx); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
@@ -33,7 +32,7 @@ func (m *mockChatService) GetHistory(ctx context.Context, userID string, chatID 
 }
 
 func newTestChatHandler(svc domain.ChatService) *ChatHandler {
-	return NewChatHandler(svc, zap.NewNop())
+	return NewChatHandler(svc)
 }
 
 func getChats(r *chi.Mux, userID, query string) *httptest.ResponseRecorder {

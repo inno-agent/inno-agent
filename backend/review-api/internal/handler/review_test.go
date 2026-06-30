@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
@@ -38,7 +37,7 @@ func postReview(r *chi.Mux, body string) *httptest.ResponseRecorder {
 }
 
 func TestReview_InvalidBody(t *testing.T) {
-	h := NewReviewHandler(&mockReviewService{}, zap.NewNop())
+	h := NewReviewHandler(&mockReviewService{})
 	r := newReviewRouter(h)
 
 	rec := postReview(r, "not-json")
@@ -48,7 +47,7 @@ func TestReview_InvalidBody(t *testing.T) {
 }
 
 func TestReview_MissingPRID(t *testing.T) {
-	h := NewReviewHandler(&mockReviewService{}, zap.NewNop())
+	h := NewReviewHandler(&mockReviewService{})
 	r := newReviewRouter(h)
 
 	rec := postReview(r, `{}`)
@@ -66,7 +65,7 @@ func TestReview_Success(t *testing.T) {
 			return "# Summary\nLooks good.", nil
 		},
 	}
-	h := NewReviewHandler(svc, zap.NewNop())
+	h := NewReviewHandler(svc)
 	r := newReviewRouter(h)
 
 	rec := postReview(r, `{"pr_id":"my-org/backend/42","diff":"diff --git a/main.go"}`)
@@ -84,7 +83,7 @@ func TestReview_DiffUnavailable(t *testing.T) {
 			return "", domain.ErrDiffUnavailable
 		},
 	}
-	h := NewReviewHandler(svc, zap.NewNop())
+	h := NewReviewHandler(svc)
 	r := newReviewRouter(h)
 
 	rec := postReview(r, `{"pr_id":"my-org/backend/42"}`)
@@ -99,7 +98,7 @@ func TestReview_ServiceError(t *testing.T) {
 			return "", errors.New("upstream failure")
 		},
 	}
-	h := NewReviewHandler(svc, zap.NewNop())
+	h := NewReviewHandler(svc)
 	r := newReviewRouter(h)
 
 	rec := postReview(r, `{"pr_id":"my-org/backend/42","diff":"diff content"}`)

@@ -36,8 +36,8 @@ func main() {
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 
-	reviewService := service.NewReviewService(gitFlameClient, llmClient, logger)
-	reviewHandler := handler.NewReviewHandler(reviewService, logger)
+	reviewService := service.NewReviewService(gitFlameClient, llmClient)
+	reviewHandler := handler.NewReviewHandler(reviewService)
 
 	// Onboarding (installations) is enabled only when a review DB is configured.
 	var installHandler *handler.InstallationHandler
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

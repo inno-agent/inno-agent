@@ -22,12 +22,11 @@ type streamRequest struct {
 // StreamHandler handles SSE streaming of LLM responses.
 type StreamHandler struct {
 	service domain.ChatService
-	logger  *zap.Logger
 }
 
-// NewStreamHandler creates a StreamHandler with the given service and logger.
-func NewStreamHandler(service domain.ChatService, logger *zap.Logger) *StreamHandler {
-	return &StreamHandler{service: service, logger: logger}
+// NewStreamHandler creates a StreamHandler with the given service.
+func NewStreamHandler(service domain.ChatService) *StreamHandler {
+	return &StreamHandler{service: service}
 }
 
 // Stream accepts a POST request with JSON body, sends the user message,
@@ -41,7 +40,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		var err error
 		chatID, err = uuid.Parse(chatIDParam)
 		if err != nil {
-			h.logger.Error("invalid chat_id", zap.Error(err))
+			middleware.LoggerFromContext(ctx).Error("invalid chat_id", zap.Error(err))
 			writeError(w, http.StatusBadRequest, "invalid chat_id")
 			return
 		}
@@ -55,19 +54,19 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	var req streamRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Error("invalid request body", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("invalid request body", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Message == "" {
-		h.logger.Error("missing message", zap.String("function", "Stream"))
+		middleware.LoggerFromContext(ctx).Error("missing message", zap.String("function", "Stream"))
 		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		h.logger.Error("streaming not supported")
+		middleware.LoggerFromContext(ctx).Error("streaming not supported")
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
@@ -82,7 +81,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, req.Message, req.Model)
 	if err != nil {
-		h.logger.Error("failed to start stream", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("failed to start stream", zap.Error(err))
 		switch {
 		case errors.Is(err, domain.ErrAccessDenied):
 			writeSSEEvent(w, "error", map[string]string{"code": "AUTH_FAILED", "message": "access denied"})

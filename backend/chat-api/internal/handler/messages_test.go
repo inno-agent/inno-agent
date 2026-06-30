@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
@@ -27,7 +26,7 @@ func (m *mockMsgService) GetHistory(ctx context.Context, userID string, chatID u
 }
 
 func newTestMessageHandler(svc domain.ChatService) *MessageHandler {
-	return NewMessageHandler(svc, zap.NewNop())
+	return NewMessageHandler(svc)
 }
 
 func newMsgRouter(h *MessageHandler) *chi.Mux {

@@ -4,6 +4,35 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Correlation ID: keep a sane client-provided value, otherwise fall back to
+# NGINX's generated request ID. This keeps logs searchable without trusting
+# arbitrary header content.
+map $http_x_correlation_id $correlation_id {
+    "~^[A-Za-z0-9._:-]{1,128}$" $http_x_correlation_id;
+    default                     $request_id;
+}
+
+# ─── Structured JSON Logging ────────────────────────────────────────────────
+log_format json_analytics escape=json '{'
+    '"time":"$time_iso8601",'
+    '"correlation_id":"$correlation_id",'
+    '"request_id":"$request_id",'
+    '"host":"$host",'
+    '"remote_addr":"$remote_addr",'
+    '"x_forwarded_for":"$proxy_add_x_forwarded_for",'
+    '"method":"$request_method",'
+    '"uri":"$request_uri",'
+    '"request":"$request",'
+    '"status":$status,'
+    '"body_bytes_sent":$body_bytes_sent,'
+    '"request_time":$request_time,'
+    '"upstream_addr":"$upstream_addr",'
+    '"upstream_status":"$upstream_status",'
+    '"upstream_response_time":"$upstream_response_time"'
+'}';
+
+access_log /var/log/nginx/access_json.log json_analytics;
+
 # ─── HTTP → HTTPS redirect ───────────────────────────────────────────────────
 server {
     listen 80;
@@ -20,11 +49,15 @@ server {
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
+    # Expose the effective correlation ID back to clients.
+    add_header X-Correlation-ID $correlation_id always;
+    
     location /identity/v1 {
         set $upstream identity:8081;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
@@ -33,6 +66,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
@@ -44,6 +78,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
@@ -53,6 +88,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 }
@@ -68,6 +104,8 @@ server {
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
+    add_header X-Correlation-ID $correlation_id always;
+
     # JWKS is public key material fetched cross-origin by the browser OIDC
     # client. Force exactly one CORS header (hide authentik's, if any).
     location ~ ^/application/o/[^/]+/jwks/$ {
@@ -76,6 +114,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin "*" always;
@@ -88,6 +127,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_buffering off;
@@ -105,11 +145,22 @@ server {
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
+    add_header X-Correlation-ID $correlation_id always;
+
+    # SECURITY: the bot-token mint endpoint re-signs aicore tokens impersonating
+    # any onboarded user. It must be reachable ONLY on the internal docker
+    # network (the review-consumer calls it directly), never via the public
+    # ingress. An exact-match location outranks the /identity/v1 prefix below.
+    location = /identity/v1/bot-token {
+        return 403;
+    }
+
     location /identity/v1 {
         set $upstream identity:8081;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
@@ -118,6 +169,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
@@ -129,6 +181,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
@@ -140,6 +193,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
@@ -148,6 +202,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 }

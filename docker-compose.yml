@@ -10,6 +10,9 @@ volumes:
   postgres-data:
   redis-data:
   authentik-media:
+  loki-data:
+  grafana-data:
+  nginx-logs:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
@@ -66,6 +69,7 @@ services:
     volumes:
       - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
       - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
+      - nginx-logs:/var/log/nginx # <-- Том для логов Nginx
     depends_on:
       authentik-server:
         condition: service_healthy
@@ -258,7 +262,7 @@ services:
       OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-2048}
     healthcheck:
       test: ["CMD", "ollama", "list"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
       start_period: 30s
@@ -388,3 +392,58 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Loki (Log Aggregation) ──────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./infrastructure/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - innoagent
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "3100:3100"
+
+  # ─── Promtail (Log Collector) ────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./infrastructure/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - nginx-logs:/var/log/nginx # <-- Используем тот же том
+    networks:
+      - innoagent
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # ─── Grafana (Dashboard & Visualization) ──────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.0.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: https://grafana.${AUTH_DOMAIN:-localhost}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infrastructure/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - innoagent
+    depends_on:
+      loki:
+        condition: service_healthy
+    ports:
+      - "3000:3000"

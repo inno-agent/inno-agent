@@ -121,7 +121,7 @@ export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
             isMounted = false
             window.removeEventListener(chatsUpdatedEventName, handleChatsUpdated)
         }
-    }, [])
+    }, [t])
 
     return (
         <>

@@ -67,7 +67,8 @@ export async function* parseSseStream(
                     done: false,
                     value: streamEvent,
                 })
-            } catch {
+            } catch (error) {
+                console.error('Failed to parse SSE event:', error)
             }
         },
     })

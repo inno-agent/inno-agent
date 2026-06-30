@@ -145,6 +145,7 @@ services:
     build:
       context: ./backend/identity
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/identity:${TAG:-latest}
     restart: unless-stopped
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
@@ -188,6 +189,7 @@ services:
     build:
       context: ./backend/chat-api
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/chat-api:${TAG:-latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
@@ -225,6 +227,7 @@ services:
     build:
       context: ./backend/review-api
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-api:${TAG:-latest}
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -287,6 +290,7 @@ services:
     build:
       context: ./backend/innoagent
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/innoagent:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent
@@ -307,6 +311,7 @@ services:
     build:
       context: ./frontend/chat-front
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/chat-front:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent
@@ -339,6 +344,7 @@ services:
   review-consumer:
     build:
       context: ./backend/review-consumer
+    image: ghcr.io/inno-agent/review-consumer:${TAG:-latest}
     restart: unless-stopped
     environment:
       KAFKA_BROKERS: redpanda:9092
@@ -372,6 +378,7 @@ services:
   review-webhook:
     build:
       context: ./backend/review-webhook
+    image: ghcr.io/inno-agent/review-webhook:${TAG:-latest}
     restart: unless-stopped
     environment:
       SERVER_PORT: "8002"
@@ -389,6 +396,7 @@ services:
     build:
       context: ./frontend/review-front
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-front:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent

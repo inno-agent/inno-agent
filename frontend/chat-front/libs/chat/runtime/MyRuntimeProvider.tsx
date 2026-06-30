@@ -26,6 +26,7 @@ export function MyRuntimeProvider({
     const [isRunning, setIsRunning] = useState<boolean>(false)
     const chatIdRef = useRef<string>(initialChatId ?? 'new')
     const pendingNavigationChatIdRef = useRef<string | null>(null)
+    const abortControllerRef = useRef<AbortController | null>(null)
     const { selectedModelId } = useModelContext()
 
     useChatHistory({
@@ -42,6 +43,7 @@ export function MyRuntimeProvider({
                 throw new Error('Only text content is supported')
             }
 
+            abortControllerRef.current = new AbortController()
             pendingNavigationChatIdRef.current = null
             setMessages((prev) => [
                 ...prev,
@@ -66,21 +68,38 @@ export function MyRuntimeProvider({
                             replace: true,
                         })
                     },
+                    signal: abortControllerRef.current.signal,
                 })
             } catch (error) {
-                console.error('Error:', error)
-                setMessages((prev) => appendAssistantError(prev))
+                if (error instanceof DOMException && error.name === 'AbortError') {
+                    console.log('Message generation cancelled')
+                } else if (error instanceof Error && error.name === 'AbortError') {
+                    console.log('Message generation cancelled')
+                } else {
+                    console.error('Error:', error)
+                    setMessages((prev) => appendAssistantError(prev))
+                }
             } finally {
                 setIsRunning(false)
+                abortControllerRef.current = null
             }
         },
         [initialChatId, navigate, selectedModelId],
     )
 
+    const onCancel = useCallback(async () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort()
+            abortControllerRef.current = null
+        }
+        setIsRunning(false)
+    }, [])
+
     const runtime = useExternalStoreRuntime<ThreadMessageLike>({
         messages,
         setMessages,
         onNew,
+        onCancel,
         convertMessage: (message) => message,
         isRunning,
     })

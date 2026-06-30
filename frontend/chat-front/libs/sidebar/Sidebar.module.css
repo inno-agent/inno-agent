@@ -5,6 +5,52 @@
     background: var(--color-bg-main);
     border-right: 1px solid var(--color-muted);
     overflow: hidden;
+    transition: transform 0.3s ease;
+    width: 280px;
+}
+
+@media (max-width: 1200px) {
+    .sidebar {
+        width: 240px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 220px;
+    }
+}
+
+@media (max-width: 900px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 280px;
+        z-index: 1000;
+        transform: translateX(-100%);
+    }
+
+    .sidebarOpen {
+        transform: translateX(0);
+    }
+}
+
+.overlay {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+    }
 }
 
 .header {
@@ -29,6 +75,39 @@
     font-weight: 400;
     letter-spacing: 0.06em;
     color: var(--color-text-primary);
+    white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+    .header {
+        gap: 12px;
+        padding: 18px;
+    }
+
+    .logoIcon {
+        width: 48px;
+        height: 35px;
+    }
+
+    .logo {
+        font-size: 20px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .header {
+        gap: 10px;
+        padding: 16px;
+    }
+
+    .logoIcon {
+        width: 42px;
+        height: 30px;
+    }
+
+    .logo {
+        font-size: 18px;
+    }
 }
 
 .divider {
@@ -56,6 +135,7 @@
     cursor: pointer;
     font-size: 16px;
     transition: background 0.2s ease;
+    white-space: nowrap;
 }
 
 .navItem:hover {
@@ -76,6 +156,28 @@
     height: 16px;
 }
 
+@media (max-width: 1200px) {
+    .nav {
+        padding: 18px;
+    }
+
+    .navItem {
+        font-size: 15px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .nav {
+        padding: 16px;
+    }
+
+    .navItem {
+        font-size: 14px;
+        padding: 7px;
+        gap: 6px;
+    }
+}
+
 .sectionTitle {
     font-size: 12px;
     font-weight: 700;
@@ -92,6 +194,18 @@
     overflow-y: auto;
     gap: 4px;
     padding: 20px;
+}
+
+@media (max-width: 1200px) {
+    .chatList {
+        padding: 18px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .chatList {
+        padding: 16px;
+    }
 }
 
 .profile {
@@ -111,6 +225,9 @@
     flex: 1;
     font-size: 16px;
     color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .profileMenu {
@@ -125,3 +242,22 @@
     border-radius: 6px;
 }
 
+@media (max-width: 1200px) {
+    .profile {
+        padding: 18px;
+    }
+
+    .profileName {
+        font-size: 15px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .profile {
+        padding: 16px;
+    }
+
+    .profileName {
+        font-size: 14px;
+    }
+}

@@ -19,7 +19,12 @@ import { useAuth } from '@libs/auth/useAuth'
 
 const profileName = 'Фёдор Маркин'
 
-export const Sidebar = () => {
+interface SidebarProps {
+    isOpen?: boolean
+    onClose?: () => void
+}
+
+export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
     const navigate = useNavigate({ from: '/' })
     const chatId = useRouterState({
         select: (state) => {
@@ -35,6 +40,12 @@ export const Sidebar = () => {
     const [settingsOpen, setSettingsOpen] = useState(false)
     const { clearSession } = useAuth()
     const { t } = useTranslation()
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+            return
+        }
+    }, [isOpen])
 
     useEffect(() => {
         getCurrentUser().then((user) => setEmail(user.email))
@@ -58,6 +69,13 @@ export const Sidebar = () => {
         } catch (error) {
             console.error('Failed to delete chat', error)
             setErrorMessage(t('sidebar.deleteError'))
+        }
+    }
+
+    const handleNavigate = (action: () => void) => {
+        action()
+        if (onClose) {
+            onClose()
         }
     }
 
@@ -106,110 +124,117 @@ export const Sidebar = () => {
     }, [])
 
     return (
-        <aside className={styles.sidebar}>
+        <>
+            {isOpen && <div className={styles.overlay} onClick={onClose} />}
+            <aside className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ''}`}>
 
-            <div className={styles.header}>
-                <Logo className={styles.logoIcon} />
-                <span className={styles.logo}>INNOAGENT</span>
-            </div>
+                <div className={styles.header}>
+                    <Logo className={styles.logoIcon} />
+                    <span className={styles.logo}>INNOAGENT</span>
+                </div>
 
-            <div className={styles.divider} />
+                <div className={styles.divider} />
 
-            <nav className={styles.nav}>
-                <button
-                    className={styles.navItem}
-                    onClick={() =>
-                        navigate({
-                            to: '/',
-                            search: { chatId: undefined },
-                        })
-                    }
-                >
-                    <span className={styles.navIcon}><Plus /></span>
-                    {t('sidebar.newChat')}
-                </button>
-                <button className={styles.navItem}>
-                    <span className={styles.navIcon}><Loop /></span>
-                    {t('sidebar.searchChat')}
-                </button>
-                <button className={styles.navItem}>
-                    <span className={styles.navIcon}><Folder /></span>
-                    {t('sidebar.projects')}
-                </button>
-            </nav>
-
-            <div className={styles.divider} />
-
-            <div className={styles.chatList}>
-                <span className={styles.sectionTitle}>{t('sidebar.recent')}</span>
-                {isLoading && <span className={styles.sectionTitle}>{t('sidebar.loading')}</span>}
-                {!isLoading && errorMessage && <span className={styles.sectionTitle}>{errorMessage}</span>}
-                {!isLoading && !errorMessage && chats.length === 0 && (
-                    <span className={styles.sectionTitle}>{t('sidebar.noChats')}</span>
-                )}
-                {!isLoading &&
-                    !errorMessage &&
-                    chats.map((chat) => (
-                        <ChatListItem
-                            key={chat.id}
-                            chatId={chat.id}
-                            title={chat.title || chat.last_message || t('sidebar.newChat')}
-                            isActive={chat.id === chatId}
-                            onClick={() =>
+                <nav className={styles.nav}>
+                    <button
+                        className={styles.navItem}
+                        onClick={() =>
+                            handleNavigate(() =>
                                 navigate({
                                     to: '/',
-                                    search: { chatId: chat.id },
+                                    search: { chatId: undefined },
                                 })
-                            }
-                            onDelete={handleDeleteChat}
-                        />
-                    ))}
-            </div>
-
-            <div className={styles.divider} />
-
-            <Popover open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
-                <PopoverTrigger asChild>
-                    <div
-                        className={styles.profile}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.currentTarget.click()}
+                            )
+                        }
                     >
-                        <Avatar name={profileName} />
-                        <span className={styles.profileName}>{profileName}</span>
-                        <button
-                            className={styles.profileMenu}
-                            onClick={(e) => e.stopPropagation()}
+                        <span className={styles.navIcon}><Plus /></span>
+                        {t('sidebar.newChat')}
+                    </button>
+                    <button className={styles.navItem}>
+                        <span className={styles.navIcon}><Loop /></span>
+                        {t('sidebar.searchChat')}
+                    </button>
+                    <button className={styles.navItem}>
+                        <span className={styles.navIcon}><Folder /></span>
+                        {t('sidebar.projects')}
+                    </button>
+                </nav>
+
+                <div className={styles.divider} />
+
+                <div className={styles.chatList}>
+                    <span className={styles.sectionTitle}>{t('sidebar.recent')}</span>
+                    {isLoading && <span className={styles.sectionTitle}>{t('sidebar.loading')}</span>}
+                    {!isLoading && errorMessage && <span className={styles.sectionTitle}>{errorMessage}</span>}
+                    {!isLoading && !errorMessage && chats.length === 0 && (
+                        <span className={styles.sectionTitle}>{t('sidebar.noChats')}</span>
+                    )}
+                    {!isLoading &&
+                        !errorMessage &&
+                        chats.map((chat) => (
+                            <ChatListItem
+                                key={chat.id}
+                                chatId={chat.id}
+                                title={chat.title || chat.last_message || t('sidebar.newChat')}
+                                isActive={chat.id === chatId}
+                                onClick={() =>
+                                    handleNavigate(() =>
+                                        navigate({
+                                            to: '/',
+                                            search: { chatId: chat.id },
+                                        })
+                                    )
+                                }
+                                onDelete={handleDeleteChat}
+                            />
+                        ))}
+                </div>
+
+                <div className={styles.divider} />
+
+                <Popover open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
+                    <PopoverTrigger asChild>
+                        <div
+                            className={styles.profile}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.currentTarget.click()}
                         >
-                            <ThreePoints />
-                        </button>
-                    </div>
-                </PopoverTrigger>
-                <PopoverContent
-                    side="top"
-                    align="start"
-                    alignOffset={20}
-                    className="p-0 border-none bg-transparent shadow-none"
-                >
-                    <AccountMenu
-                        email={email}
-                        onOpenSettings={() => {
-                            setAccountMenuOpen(false)
-                            setSettingsOpen(true)
-                        }}
-                        onLogout={handleLogout}
-                    />
-                </PopoverContent>
-            </Popover>
+                            <Avatar name={profileName} />
+                            <span className={styles.profileName}>{profileName}</span>
+                            <button
+                                className={styles.profileMenu}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <ThreePoints />
+                            </button>
+                        </div>
+                    </PopoverTrigger>
+                    <PopoverContent
+                        side="top"
+                        align="start"
+                        alignOffset={20}
+                        className="p-0 border-none bg-transparent shadow-none"
+                    >
+                        <AccountMenu
+                            email={email}
+                            onOpenSettings={() => {
+                                setAccountMenuOpen(false)
+                                setSettingsOpen(true)
+                            }}
+                            onLogout={handleLogout}
+                        />
+                    </PopoverContent>
+                </Popover>
 
-            <SettingsDialog
-                open={settingsOpen}
-                onOpenChange={setSettingsOpen}
-                email={email}
-                onLogout={handleLogout}
-            />
+                <SettingsDialog
+                    open={settingsOpen}
+                    onOpenChange={setSettingsOpen}
+                    email={email}
+                    onLogout={handleLogout}
+                />
 
-        </aside>
+            </aside>
+        </>
     )
 }

@@ -1,0 +1,104 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA). Defaults to main."
+        required: false
+        default: main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: inno-agent
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: identity
+            context: backend/identity
+          - name: chat-api
+            context: backend/chat-api
+          - name: review-api
+            context: backend/review-api
+          - name: innoagent
+            context: backend/innoagent
+          - name: review-consumer
+            context: backend/review-consumer
+          - name: review-webhook
+            context: backend/review-webhook
+          - name: chat-front
+            context: frontend/chat-front
+          - name: review-front
+            context: frontend/review-front
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service.context }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}:${{ steps.sha.outputs.short }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_REF: ${{ inputs.ref || github.sha }}
+          DEPLOY_TAG: ${{ steps.sha.outputs.short }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DEPLOY_REF,DEPLOY_TAG
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch --all --tags
+            git checkout "$DEPLOY_REF"
+            if grep -q '^TAG=' .env; then
+              sed -i "s/^TAG=.*/TAG=$DEPLOY_TAG/" .env
+            else
+              echo "TAG=$DEPLOY_TAG" >> .env
+            fi
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f

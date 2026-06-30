@@ -265,17 +265,27 @@ services:
 
   # ─── Pull models on first boot ────────────────────────────────────────────
   ollama-pull:
-    image: ollama/ollama:latest
+    image: curlimages/curl:latest
     networks:
       - innoagent
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
-    entrypoint: ["sh", "-c", "for m in $$LLM_MODELS $$ROUTER_MODEL; do ollama pull $$m; done"]
+      OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
+    entrypoint: ["sh", "/scripts/ollama-pull.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
     depends_on:
       ollama:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "/scripts/ollama-pull.sh", "healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
     restart: "no"
 
   # ─── AI Orchestrator ──────────────────────────────────────────────────────

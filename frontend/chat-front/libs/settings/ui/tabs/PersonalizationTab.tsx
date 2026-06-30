@@ -1,15 +1,12 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@shared/ui/button'
 import { Switch } from '@shared/ui/switch'
-import { SettingsRow, SettingsSectionTitle, SettingsSelect } from '@libs/settings/ui/rows/SettingsRow'
+import { SettingsRow, SettingsSectionTitle } from '@libs/settings/ui/rows/SettingsRow'
 import styles from './PersonalizationTab.module.css'
 
-const defaultOptions = ['По умолчанию']
-
 export const PersonalizationTab = () => {
-    const [baseStyle, setBaseStyle] = useState(defaultOptions[0])
-    const [headingsStyle, setHeadingsStyle] = useState(defaultOptions[0])
-    const [emojiStyle, setEmojiStyle] = useState(defaultOptions[0])
+    const { t } = useTranslation()
     const [nickname, setNickname] = useState('')
     const [profession, setProfession] = useState('')
     const [instructions, setInstructions] = useState('')
@@ -18,71 +15,57 @@ export const PersonalizationTab = () => {
 
     return (
         <>
-            <SettingsSectionTitle>Персонализация</SettingsSectionTitle>
-
-            <SettingsRow label="Базовый стиль и тон">
-                <SettingsSelect value={baseStyle} options={defaultOptions} onChange={setBaseStyle} />
-            </SettingsRow>
-
-            <SettingsRow label="Заголовки и списки">
-                <SettingsSelect value={headingsStyle} options={defaultOptions} onChange={setHeadingsStyle} />
-            </SettingsRow>
-
-            <SettingsRow label="Эмодзи">
-                <SettingsSelect value={emojiStyle} options={defaultOptions} onChange={setEmojiStyle} />
-            </SettingsRow>
-
-            <SettingsSectionTitle>О вас</SettingsSectionTitle>
+            <SettingsSectionTitle>{t('personalization.aboutYou')}</SettingsSectionTitle>
 
             <div className={styles.field}>
-                <label className={styles.fieldLabel}>Псевдоним</label>
+                <label className={styles.fieldLabel}>{t('personalization.nickname')}</label>
                 <input
                     className={styles.input}
-                    placeholder="Как бы вы хотели, чтобы InnoAgent обращался к вам?"
+                    placeholder={t('personalization.nicknamePlaceholder')}
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
                 />
             </div>
 
             <div className={styles.field}>
-                <label className={styles.fieldLabel}>Профессия</label>
+                <label className={styles.fieldLabel}>{t('personalization.profession')}</label>
                 <input
                     className={styles.input}
-                    placeholder="Дизайнер интерьеров"
+                    placeholder={t('personalization.professionPlaceholder')}
                     value={profession}
                     onChange={(e) => setProfession(e.target.value)}
                 />
             </div>
 
             <div className={styles.field}>
-                <label className={styles.fieldLabel}>Инструкции для InnoAgent</label>
+                <label className={styles.fieldLabel}>{t('personalization.instructions')}</label>
                 <span className={styles.fieldHint}>
-                    InnoAgent будет помнить об этом в чатах в соответствии с <a href="#" className={styles.link}>протоколом</a>
+                    {t('personalization.instructionsHint')} <a href="#" className={styles.link}>{t('personalization.instructionsHintLink')}</a>
                 </span>
                 <textarea
                     className={styles.textarea}
-                    placeholder="Например, задавай уточняющие вопросы, прежде чем давать подробные ответы"
+                    placeholder={t('personalization.instructionsPlaceholder')}
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
                 />
             </div>
 
-            <SettingsRow label="Память">
+            <SettingsRow label={t('personalization.memory')}>
                 <Button variant="outline" size="sm">
-                    Управление
+                    {t('personalization.memoryManage')}
                 </Button>
             </SettingsRow>
 
             <SettingsRow
-                label="Ссылаться на сохраненную память"
-                description="Позволяет InnoAgent сохранять и использовать память при ответе"
+                label={t('personalization.memoryUse')}
+                description={t('personalization.memoryUseDesc')}
             >
                 <Switch checked={useSavedMemory} onCheckedChange={setUseSavedMemory} />
             </SettingsRow>
 
             <SettingsRow
-                label="Ссылаться на историю чата"
-                description="Позволяет InnoAgent ссылаться на недавние обсуждения при ответе"
+                label={t('personalization.chatHistory')}
+                description={t('personalization.chatHistoryDesc')}
             >
                 <Switch checked={useChatHistory} onCheckedChange={setUseChatHistory} />
             </SettingsRow>

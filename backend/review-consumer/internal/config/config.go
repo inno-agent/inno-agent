@@ -12,11 +12,18 @@ type Config struct {
 	GitFlameBaseURL   string
 	GitFlameToken     string
 
-	// Slice 2: delegated-auth via identity service.
+	// Delegated-auth via identity service.
 	BotGitFlameUsername string
 	IdentityURL         string
-	BotTokenSecret      string
 	OnboardingURL       string
+
+	// ReviewDatabaseDSN is the DSN for the shared inno_review database
+	// (read installations, write rotated refresh tokens).
+	ReviewDatabaseDSN string
+	// ReviewServiceClientID is the client ID for service token requests.
+	ReviewServiceClientID string
+	// ReviewServiceClientSecret is the client secret for service token requests.
+	ReviewServiceClientSecret string
 }
 
 func Load() *Config {
@@ -32,8 +39,11 @@ func Load() *Config {
 
 		BotGitFlameUsername: getEnv("BOT_GITFLAME_USERNAME", ""),
 		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),
-		BotTokenSecret:      getEnv("BOT_TOKEN_SECRET", ""),
 		OnboardingURL:       getEnv("ONBOARDING_URL", ""),
+
+		ReviewDatabaseDSN:         getEnv("REVIEW_DATABASE_DSN", ""),
+		ReviewServiceClientID:     getEnv("REVIEW_SERVICE_CLIENT_ID", "review-consumer"),
+		ReviewServiceClientSecret: os.Getenv("REVIEW_SERVICE_CLIENT_SECRET"),
 	}
 }
 

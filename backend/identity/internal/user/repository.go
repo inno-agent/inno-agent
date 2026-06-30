@@ -95,3 +95,17 @@ func (r *Repository) findByIdentity(ctx context.Context, q querier, prov, sub st
 	`, prov, sub).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
+
+// UserExists reports whether a user with the given ID exists.
+func (r *Repository) UserExists(ctx context.Context, userID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(
+		ctx,
+		`SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)`,
+		userID,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("user: exists: %w", err)
+	}
+	return exists, nil
+}

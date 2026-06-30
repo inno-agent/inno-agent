@@ -11,11 +11,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/inno-agent/identity/internal/botprincipal"
 	"github.com/inno-agent/identity/internal/config"
 	"github.com/inno-agent/identity/internal/db"
+	"github.com/inno-agent/identity/internal/delegation"
 	"github.com/inno-agent/identity/internal/issuer"
 	"github.com/inno-agent/identity/internal/provider"
+	"github.com/inno-agent/identity/internal/refresh"
+	"github.com/inno-agent/identity/internal/serviceclient"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
 )
@@ -28,14 +30,6 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	if err := db.EnsureDatabase(ctx, cfg.DatabaseDSN); err != nil {
-		log.Fatalf("ensure db: %v", err)
-	}
-
-	if err := db.Migrate(cfg.DatabaseDSN); err != nil {
-		log.Fatalf("migrate: %v", err)
-	}
 
 	pool, err := db.NewPool(ctx, cfg.DatabaseDSN)
 	if err != nil {
@@ -63,8 +57,15 @@ func main() {
 	repo := user.NewRepository(pool)
 	svc := user.NewService(repo)
 
-	botRepo := botprincipal.NewRepository(pool)
-	botSvc := botprincipal.NewService(botRepo)
+	refreshRepo := refresh.NewRepository(pool)
+	svcClientRepo := serviceclient.NewRepository(pool)
+	delegationRepo := delegation.NewRepository(pool)
+
+	if cfg.SeedClientID != "" {
+		if err := svcClientRepo.EnsureClient(ctx, cfg.SeedClientID, cfg.SeedClientSecret, cfg.SeedClientName); err != nil {
+			log.Fatalf("seed service client: %v", err)
+		}
+	}
 
 	// HTTP server
 	r := gin.New()
@@ -72,7 +73,7 @@ func main() {
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
-	}, botSvc, cfg.BotTokenSecret)
+	}, refreshRepo, cfg.RefreshExpiry, svcClientRepo, cfg.ServiceTokenExpiry, delegationRepo, cfg.DelegateTokenExpiry)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

@@ -20,6 +20,10 @@
     flex-shrink: 0;
 }
 
+:global(.light) .logoIcon {
+    filter: invert(1);
+}
+
 .logo {
     font-size: 24px;
     font-weight: 400;
@@ -115,8 +119,9 @@
     justify-content: center;
     background: transparent;
     border: none;
-    color: var(--color-muted);
+    color: var(--color-text-primary);
     cursor: pointer;
     padding: 4px;
     border-radius: 6px;
 }
+

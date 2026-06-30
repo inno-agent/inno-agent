@@ -85,6 +85,7 @@ services:
       AUTHENTIK_PG_PASSWORD: ${AUTHENTIK_PG_PASSWORD}
       IDENTITY_PG_PASSWORD: ${IDENTITY_PG_PASSWORD}
       CHAT_PG_PASSWORD: ${CHAT_PG_PASSWORD}
+      REVIEW_PG_PASSWORD: ${REVIEW_PG_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}"]
       interval: 10s
@@ -123,6 +124,22 @@ services:
     <<: *authentik
     command: worker
 
+  # ─── Identity DB migrations ───────────────────────────────────────────────
+  identity-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/identity/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
     build:
@@ -135,16 +152,18 @@ services:
       OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      # Service secret guarding the internal /identity/v1/bot-token mint endpoint
-      # (consumer presents it; nginx blocks the path from the public ingress).
-      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      # Refresh-token TTL for the generic /refresh flow (default 720h).
+      AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
+      SEED_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      SEED_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      SEED_CLIENT_NAME: PR Review Bot
     secrets:
       - identity_rsa_key
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      identity-migrate:
+        condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
 
@@ -185,6 +204,22 @@ services:
       orchestrator:
         condition: service_started
 
+  # ─── Review API DB migrations ────────────────────────────────────────────
+  review-api-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/review-api/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Review API ────────────────────────────────────────────────────────────
   review-api:
     build:
@@ -199,9 +234,13 @@ services:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_CONSUMER_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
     networks:
       - innoagent
     depends_on:
+      review-api-migrate:
+        condition: service_completed_successfully
       identity:
         condition: service_started
       orchestrator:
@@ -218,6 +257,9 @@ services:
       - ./.ollama:/root/.ollama
     environment:
       OLLAMA_HOST: "0.0.0.0"
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-6}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-4}
+      OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-2048}
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 60s
@@ -307,9 +349,11 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Slice 2: mint a per-assigner token from identity instead of a static one.
+      # Service credentials auth: bot authenticates as itself via identity.
       IDENTITY_URL: http://identity:8081
-      BOT_TOKEN_SECRET: ${BOT_TOKEN_SECRET:-}
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:
@@ -317,6 +361,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       orchestrator:
         condition: service_started
       identity:

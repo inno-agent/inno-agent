@@ -8,8 +8,15 @@ psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<-EOSQL
 	CREATE ROLE authentik LOGIN PASSWORD '${AUTHENTIK_PG_PASSWORD}';
 	CREATE ROLE identity  LOGIN PASSWORD '${IDENTITY_PG_PASSWORD}';
 	CREATE ROLE chat      LOGIN PASSWORD '${CHAT_PG_PASSWORD}';
+	CREATE ROLE review    LOGIN PASSWORD '${REVIEW_PG_PASSWORD}';
 
 	ALTER DATABASE "${POSTGRES_DB}" OWNER TO authentik;
-	CREATE DATABASE inno_auth OWNER identity;
-	CREATE DATABASE llm_chat  OWNER chat;
+	CREATE DATABASE inno_auth   OWNER identity;
+	CREATE DATABASE llm_chat    OWNER chat;
+	CREATE DATABASE inno_review OWNER review;
+EOSQL
+
+# pgcrypto is required by identity migrations (bcrypt for service_clients).
+psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "inno_auth" <<-EOSQL
+	CREATE EXTENSION IF NOT EXISTS pgcrypto;
 EOSQL

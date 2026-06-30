@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import styles from './Sidebar.module.css'
 import Avatar from './ui/Avatar'
@@ -33,6 +34,7 @@ export const Sidebar = () => {
     const [accountMenuOpen, setAccountMenuOpen] = useState(false)
     const [settingsOpen, setSettingsOpen] = useState(false)
     const { clearSession } = useAuth()
+    const { t } = useTranslation()
 
     useEffect(() => {
         getCurrentUser().then((user) => setEmail(user.email))
@@ -55,7 +57,7 @@ export const Sidebar = () => {
             }
         } catch (error) {
             console.error('Failed to delete chat', error)
-            setErrorMessage('Не удалось удалить чат')
+            setErrorMessage(t('sidebar.deleteError'))
         }
     }
 
@@ -82,7 +84,7 @@ export const Sidebar = () => {
                 }
 
                 console.error('Failed to load chats', error)
-                setErrorMessage('Не удалось загрузить чаты')
+                setErrorMessage(t('sidebar.loadError'))
             } finally {
                 if (isMounted && showLoader) {
                     setIsLoading(false)
@@ -124,26 +126,26 @@ export const Sidebar = () => {
                     }
                 >
                     <span className={styles.navIcon}><Plus /></span>
-                    Новый чат
+                    {t('sidebar.newChat')}
                 </button>
                 <button className={styles.navItem}>
                     <span className={styles.navIcon}><Loop /></span>
-                    Искать чат
+                    {t('sidebar.searchChat')}
                 </button>
                 <button className={styles.navItem}>
                     <span className={styles.navIcon}><Folder /></span>
-                    Проекты
+                    {t('sidebar.projects')}
                 </button>
             </nav>
 
             <div className={styles.divider} />
 
             <div className={styles.chatList}>
-                <span className={styles.sectionTitle}>Недавние</span>
-                {isLoading && <span className={styles.sectionTitle}>Загрузка...</span>}
+                <span className={styles.sectionTitle}>{t('sidebar.recent')}</span>
+                {isLoading && <span className={styles.sectionTitle}>{t('sidebar.loading')}</span>}
                 {!isLoading && errorMessage && <span className={styles.sectionTitle}>{errorMessage}</span>}
                 {!isLoading && !errorMessage && chats.length === 0 && (
-                    <span className={styles.sectionTitle}>Чатов пока нет</span>
+                    <span className={styles.sectionTitle}>{t('sidebar.noChats')}</span>
                 )}
                 {!isLoading &&
                     !errorMessage &&
@@ -151,7 +153,7 @@ export const Sidebar = () => {
                         <ChatListItem
                             key={chat.id}
                             chatId={chat.id}
-                            title={chat.title || chat.last_message || 'Новый чат'}
+                            title={chat.title || chat.last_message || t('sidebar.newChat')}
                             isActive={chat.id === chatId}
                             onClick={() =>
                                 navigate({

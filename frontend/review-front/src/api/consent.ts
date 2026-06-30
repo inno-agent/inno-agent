@@ -1,6 +1,11 @@
-import { identityClient } from '@/api/client'
+import { apiClient } from '@/api/client'
 
-/** Links the logged-in user's GitFlame username to the bot principal record. */
+/**
+ * Links the logged-in user's GitFlame username to their inno-agent account.
+ * The bot authenticates independently via service credentials.
+ */
 export async function linkGitFlameUsername(gitflameUsername: string): Promise<void> {
-    await identityClient.post('/bot/consent', { gitflame_username: gitflameUsername })
+    await apiClient.post('/installations', {
+        gitflame_username: gitflameUsername,
+    })
 }

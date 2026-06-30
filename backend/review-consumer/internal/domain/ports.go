@@ -5,22 +5,18 @@ import (
 	"errors"
 )
 
-// ErrPermanent wraps errors that should NOT be retried (e.g. 4xx responses).
-// Callers check with errors.Is(err, domain.ErrPermanent).
-var ErrPermanent = errors.New("permanent error")
-
-// ErrTransient wraps errors that are safe to retry (e.g. 5xx, network faults).
-var ErrTransient = errors.New("transient error")
-
-// ErrNotOnboarded is returned when the assigner has not linked their account.
-var ErrNotOnboarded = errors.New("assigner not onboarded")
+var (
+	ErrPermanent    = errors.New("permanent error")
+	ErrTransient    = errors.New("transient error")
+	ErrNotOnboarded = errors.New("assigner not onboarded")
+)
 
 type PRRef struct {
 	Owner    string
 	Repo     string
 	Index    int64
 	HeadSHA  string
-	Assigner string // GitFlame login of the user who assigned the bot as reviewer
+	Assigner string
 }
 
 type LLMMessage struct {
@@ -46,5 +42,5 @@ type Reviewer interface {
 }
 
 type TokenSource interface {
-	Token(ctx context.Context, ref PRRef) (string, error)
+	Token(ctx context.Context, ref PRRef) (token string, err error)
 }

@@ -14,18 +14,25 @@ type Config struct {
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	IdleTimeout     time.Duration
+
+	// ReviewDatabaseDSN is the DSN for the shared inno_review database.
+	ReviewDatabaseDSN string
+	// ReviewConsumerClientID is the service client that gets delegation grants at install time.
+	ReviewConsumerClientID string
 }
 
 func Load() *Config {
 	return &Config{
-		ServerPort:      getEnv("SERVER_PORT", "8001"),
-		OrchestratorURL: getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
-		AuthServiceURL:  getEnvAllowEmpty("AUTH_SERVICE_URL", "http://identity:8081"),
-		GitFlameBaseURL: getEnv("GITFLAME_BASE_URL", ""),
-		GitFlameToken:   getEnv("GITFLAME_TOKEN", ""),
-		ReadTimeout:     getDuration("READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:    getDuration("WRITE_TIMEOUT", 0),
-		IdleTimeout:     getDuration("IDLE_TIMEOUT", 120*time.Second),
+		ServerPort:             getEnv("SERVER_PORT", "8001"),
+		OrchestratorURL:        getEnv("ORCHESTRATOR_URL", "http://orchestrator:8080"),
+		AuthServiceURL:         getEnvAllowEmpty("AUTH_SERVICE_URL", "http://identity:8081"),
+		GitFlameBaseURL:        getEnv("GITFLAME_BASE_URL", ""),
+		GitFlameToken:          getEnv("GITFLAME_TOKEN", ""),
+		ReadTimeout:            getDuration("READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:           getDuration("WRITE_TIMEOUT", 0),
+		IdleTimeout:            getDuration("IDLE_TIMEOUT", 120*time.Second),
+		ReviewDatabaseDSN:      getEnv("REVIEW_DATABASE_DSN", ""),
+		ReviewConsumerClientID: getEnv("REVIEW_CONSUMER_CLIENT_ID", "review-consumer"),
 	}
 }
 

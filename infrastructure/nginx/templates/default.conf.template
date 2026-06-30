@@ -51,15 +51,7 @@ server {
 
     # Expose the effective correlation ID back to clients.
     add_header X-Correlation-ID $correlation_id always;
-
-    # SECURITY: the bot-token mint endpoint re-signs aicore tokens impersonating
-    # any onboarded user. It must be reachable ONLY on the internal docker
-    # network (the review-consumer calls it directly), never via the public
-    # ingress. An exact-match location outranks the /identity/v1 prefix below.
-    location = /identity/v1/bot-token {
-        return 403;
-    }
-
+    
     location /identity/v1 {
         set $upstream identity:8081;
         proxy_set_header Host $host;

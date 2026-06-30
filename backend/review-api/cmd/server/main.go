@@ -13,8 +13,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/config"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/handler"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/identityclient"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/installation"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/service"
 )
@@ -36,8 +39,25 @@ func main() {
 	reviewService := service.NewReviewService(gitFlameClient, llmClient)
 	reviewHandler := handler.NewReviewHandler(reviewService)
 
+	// Onboarding (installations) is enabled only when a review DB is configured.
+	var installHandler *handler.InstallationHandler
+	if cfg.ReviewDatabaseDSN != "" {
+		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
+		if err != nil {
+			logger.Fatal("review db pool", zap.Error(err))
+		}
+		defer pool.Close()
+
+		installRepo := installation.NewRepository(pool)
+		identityClient := identityclient.New(cfg.AuthServiceURL)
+		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, logger)
+		logger.Info("onboarding enabled (installations)")
+	} else {
+		logger.Warn("REVIEW_DATABASE_DSN unset; /installations disabled")
+	}
+
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, cfg.AuthServiceURL, logger)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

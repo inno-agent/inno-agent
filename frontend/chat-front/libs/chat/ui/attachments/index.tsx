@@ -24,6 +24,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from "@shared/ui/avatar";
 import { TooltipIconButton } from "@libs/chat/ui/common/TooltipIconButton";
 import { cn } from "@shared/lib/utils";
+import { attachmentStyles as styles } from "./attachments.styles";
 
 const useFileSrc = (file: File | undefined) => {
   const src = useMemo(() => {
@@ -68,10 +69,8 @@ const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
       src={src}
       alt="Attachment preview"
       className={cn(
-        "block h-auto max-h-[80vh] w-auto max-w-full object-contain",
-        isLoaded
-          ? "aui-attachment-preview-image-loaded"
-          : "aui-attachment-preview-image-loading invisible",
+        styles.previewImage,
+        isLoaded ? styles.previewImageLoaded : styles.previewImageLoading,
       )}
       onLoad={() => setIsLoaded(true)}
     />
@@ -86,16 +85,16 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
   return (
     <Dialog>
       <DialogTrigger
-        className="aui-attachment-preview-trigger hover:bg-accent/50 cursor-pointer transition-colors"
+        className={styles.previewTrigger}
         asChild
       >
         {children}
       </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
+      <DialogContent className={styles.previewDialogContent}>
         <DialogTitle className="aui-sr-only sr-only">
           Image Attachment Preview
         </DialogTitle>
-        <div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden">
+        <div className={styles.previewWrapper}>
           <AttachmentPreview src={src} />
         </div>
       </DialogContent>
@@ -107,14 +106,14 @@ const AttachmentThumb: FC = () => {
   const src = useAttachmentSrc();
 
   return (
-    <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
+    <Avatar className={styles.avatar}>
       <AvatarImage
         src={src}
         alt="Attachment preview"
-        className="aui-attachment-tile-image object-cover"
+        className={styles.avatarImage}
       />
       <AvatarFallback>
-        <FileText className="aui-attachment-tile-fallback-icon text-muted-foreground size-8" />
+        <FileText className={styles.fallbackIcon} />
       </AvatarFallback>
     </Avatar>
   );
@@ -143,14 +142,14 @@ const AttachmentUI: FC = () => {
     <Tooltip>
       <AttachmentPrimitive.Root
         className={cn(
-          "aui-attachment-root relative",
-          isImage && "aui-attachment-root-composer only:*:first:size-24",
+          styles.root,
+          isImage && styles.rootImage,
         )}
       >
         <AttachmentPreviewDialog>
           <TooltipTrigger asChild>
             <div
-              className="aui-attachment-tile bg-muted size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border transition-opacity hover:opacity-75"
+              className={styles.tile}
               role="button"
               tabIndex={0}
               aria-label={`${typeLabel} attachment`}
@@ -173,10 +172,10 @@ const AttachmentRemove: FC = () => {
     <AttachmentPrimitive.Remove asChild>
       <TooltipIconButton
         tooltip="Remove file"
-        className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive absolute end-1.5 top-1.5 size-3.5 rounded-full bg-white opacity-100 shadow-sm hover:bg-white! [&_svg]:text-black"
+        className={styles.tileRemove}
         side="top"
       >
-        <XIcon className="aui-attachment-remove-icon size-3 dark:stroke-[2.5px]" />
+        <XIcon className={styles.removeIcon} />
       </TooltipIconButton>
     </AttachmentPrimitive.Remove>
   );
@@ -184,7 +183,7 @@ const AttachmentRemove: FC = () => {
 
 export const UserMessageAttachments: FC = () => {
   return (
-    <div className="aui-user-message-attachments-end col-span-full col-start-1 row-start-1 flex w-full flex-row justify-end gap-2">
+    <div className={styles.userMessageContainer}>
       <MessagePrimitive.Attachments>
         {() => <AttachmentUI />}
       </MessagePrimitive.Attachments>
@@ -194,7 +193,7 @@ export const UserMessageAttachments: FC = () => {
 
 export const ComposerAttachments: FC = () => {
   return (
-    <div className="aui-composer-attachments flex w-full flex-row items-center gap-2 overflow-x-auto empty:hidden">
+    <div className={styles.composerContainer}>
       <ComposerPrimitive.Attachments>
         {() => <AttachmentUI />}
       </ComposerPrimitive.Attachments>
@@ -210,10 +209,10 @@ export const ComposerAddAttachment: FC = () => {
         side="bottom"
         variant="ghost"
         size="icon"
-        className="aui-composer-add-attachment hover:bg-muted-foreground/15 dark:border-muted-foreground/15 dark:hover:bg-muted-foreground/30 size-8 rounded-full p-1 text-xs font-semibold"
+        className={styles.addButton}
         aria-label="Add Attachment"
       >
-        <PlusIcon className="aui-attachment-add-icon size-5 stroke-[1.5px]" />
+        <PlusIcon className={styles.addIcon} />
       </TooltipIconButton>
     </ComposerPrimitive.AddAttachment>
   );

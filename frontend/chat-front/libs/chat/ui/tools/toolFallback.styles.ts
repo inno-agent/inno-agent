@@ -1,0 +1,17 @@
+export const toolFallbackStyles = {
+  root: "aui-tool-fallback-root group/tool-fallback-root w-full rounded-lg border py-3",
+  trigger: "aui-tool-fallback-trigger group/trigger flex w-full items-center gap-2 px-4 text-sm transition-colors",
+  triggerIcon: "aui-tool-fallback-trigger-icon size-4 shrink-0",
+  triggerIconCancelled: "text-muted-foreground",
+  triggerIconSpinning: "animate-spin",
+  triggerLabel: "aui-tool-fallback-trigger-label-wrapper relative inline-block grow text-start leading-none",
+  triggerLabelCancelled: "text-muted-foreground line-through",
+  triggerShimmer: "aui-tool-fallback-trigger-shimmer shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none",
+  triggerChevron: "aui-tool-fallback-trigger-chevron size-4 shrink-0 transition-transform duration-(--animation-duration) ease-out group-data-[state=closed]/trigger:-rotate-90 group-data-[state=open]/trigger:rotate-0",
+  content: "aui-tool-fallback-content relative overflow-hidden text-sm outline-none group/collapsible-content ease-out data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=closed]:fill-mode-forwards data-[state=closed]:pointer-events-none data-[state=open]:duration-(--animation-duration) data-[state=closed]:duration-(--animation-duration)",
+  args: "aui-tool-fallback-args px-4",
+  result: "aui-tool-fallback-result border-t border-dashed px-4 pt-2",
+  error: "aui-tool-fallback-error px-4",
+  cancelled: "border-muted-foreground/30 bg-muted/30",
+  cancelledOpacity: "opacity-60",
+} as const

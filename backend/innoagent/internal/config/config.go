@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	BaseURL     string
+	APIKey      string
 	Models      []string
 	Model       string
 	RouterModel string
@@ -30,6 +31,8 @@ func Load() Config {
 	if baseURL == "" {
 		baseURL = fmt.Sprintf("http://%s:%s/v1", ollamaHost, ollamaPort)
 	}
+
+	apiKey := os.Getenv("OLLAMA_API_KEY")
 
 	// LLM_MODELS is the single source of truth for which models exist. The first
 	// entry is the default (used when a request omits the model).
@@ -58,6 +61,7 @@ func Load() Config {
 
 	return Config{
 		BaseURL:     baseURL,
+		APIKey:      apiKey,
 		Models:      models,
 		Model:       models[0],
 		RouterModel: routerModel,

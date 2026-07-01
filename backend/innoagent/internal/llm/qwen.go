@@ -24,6 +24,7 @@ type QwenProvider struct {
 	baseURL     string
 	model       string
 	temperature float64
+	apiKey      string
 
 	httpClient *http.Client
 }
@@ -39,6 +40,12 @@ func WithModel(model string) QwenOption {
 func WithTemperature(t float64) QwenOption {
 	return func(p *QwenProvider) {
 		p.temperature = t
+	}
+}
+
+func WithAPIKey(apiKey string) QwenOption {
+	return func(p *QwenProvider) {
+		p.apiKey = apiKey
 	}
 }
 
@@ -127,6 +134,9 @@ func (p *QwenProvider) Chat(
 		"Accept",
 		"application/json",
 	)
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	correlation.SetHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
@@ -206,6 +216,9 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
 	correlation.SetHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
@@ -252,6 +265,9 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 				case ch <- openaiChunk.Choices[0].Delta.Content:
 				}
 			}
+		}
+		if err := scanner.Err(); err != nil {
+			return
 		}
 	}()
 

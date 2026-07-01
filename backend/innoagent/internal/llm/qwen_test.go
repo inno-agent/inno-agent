@@ -272,6 +272,39 @@ func TestChat_CustomModel(t *testing.T) {
 	}
 }
 
+func TestChat_SendsAuthorizationHeader(t *testing.T) {
+	srv := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer test-secret" {
+				t.Fatalf("unexpected auth header: %q", got)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+		}),
+	)
+	t.Cleanup(srv.Close)
+
+	provider := llm.NewQwenProvider(
+		srv.URL+"/v1",
+		llm.WithModel("test-model"),
+		llm.WithAPIKey("test-secret"),
+	)
+
+	got, err := provider.Chat(
+		context.Background(),
+		[]llm.Message{{Role: "user", Content: "Hello"}},
+		"",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "ok" {
+		t.Fatalf("unexpected response: %q", got)
+	}
+}
+
 func TestProviderInterface(t *testing.T) {
 	var _ llm.Provider = llm.NewQwenProvider(
 		"http://localhost:8000/v1",

@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { linkGitFlameUsername } from '@/api/consent'
+import { acceptGitFlameInvite, linkGitFlameUsername } from '@/api/consent'
 
 type Status = 'idle' | 'loading' | 'linked' | 'taken' | 'error'
+type InviteStatus = 'idle' | 'loading' | 'accepted' | 'error'
 
 export default function OnboardingPage() {
     const [username, setUsername] = useState('')
     const [status, setStatus] = useState<Status>('idle')
+
+    const [repoFullName, setRepoFullName] = useState('')
+    const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle')
 
     async function submit() {
         const trimmed = username.trim()
@@ -21,6 +25,18 @@ export default function OnboardingPage() {
             } else {
                 setStatus('error')
             }
+        }
+    }
+
+    async function acceptInvite() {
+        const trimmed = repoFullName.trim()
+        if (!trimmed) return
+        setInviteStatus('loading')
+        try {
+            await acceptGitFlameInvite(trimmed)
+            setInviteStatus('accepted')
+        } catch {
+            setInviteStatus('error')
         }
     }
 
@@ -64,6 +80,40 @@ export default function OnboardingPage() {
 
             {status === 'error' && (
                 <div className="error">Something went wrong. Please try again.</div>
+            )}
+
+            <h1 style={{ marginTop: '40px' }}>Accept pending invite</h1>
+
+            <p style={{ color: '#9a9a9a', fontSize: '14px', marginBottom: '24px' }}>
+                Invited the bot as a collaborator on a repo? Confirm it here instead of
+                logging into the bot's GitFlame account by hand.
+            </p>
+
+            <div className="field">
+                <label htmlFor="gf-repo">Repository (owner/repo)</label>
+                <input
+                    id="gf-repo"
+                    value={repoFullName}
+                    onChange={(e) => setRepoFullName(e.target.value)}
+                    placeholder="owner/repo"
+                    disabled={inviteStatus === 'loading'}
+                />
+            </div>
+
+            <button onClick={acceptInvite} disabled={inviteStatus === 'loading' || !repoFullName.trim()}>
+                {inviteStatus === 'loading' ? 'Accepting…' : 'Accept invite'}
+            </button>
+
+            {inviteStatus === 'accepted' && (
+                <div className="result" style={{ marginTop: '16px' }}>
+                    Invite accepted. The bot can now be assigned as a reviewer on this repo.
+                </div>
+            )}
+
+            {inviteStatus === 'error' && (
+                <div className="error">
+                    Couldn't accept the invite. Check the repo name and that an invite is pending.
+                </div>
             )}
         </div>
     )

@@ -12,10 +12,11 @@ import (
 // RegisterRoutes mounts all API routes and middleware onto the given router.
 // installH may be nil when the review database is not configured (dev mode); in
 // that case the /installations route is not registered.
-func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, authServiceURL string, logger *zap.Logger) {
+func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string, logger *zap.Logger) {
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.CorrelationID)
-	r.Use(middleware.RequestLogger())	r.Use(func(next http.Handler) http.Handler {
+	r.Use(middleware.RequestLogger())
+	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -40,5 +41,6 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *Installation
 		if installH != nil {
 			r.Post("/installations", installH.Create)
 		}
+		r.Post("/invitations/accept", inviteH.AcceptInvite)
 	})
 }

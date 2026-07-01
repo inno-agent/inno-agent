@@ -38,6 +38,7 @@ func main() {
 
 	reviewService := service.NewReviewService(gitFlameClient, llmClient)
 	reviewHandler := handler.NewReviewHandler(reviewService)
+	inviteHandler := handler.NewInviteHandler(gitFlameClient, logger)
 
 	// Onboarding (installations) is enabled only when a review DB is configured.
 	var installHandler *handler.InstallationHandler
@@ -57,7 +58,7 @@ func main() {
 	}
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL, logger)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, inviteHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

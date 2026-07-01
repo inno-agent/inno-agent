@@ -44,14 +44,14 @@ docker compose up -d --build
 > Сброс с нуля: `docker compose down -v`, затем снова `./scripts/dev-setup.sh && docker compose up -d --build`.
 > Firefox требует `certutil` (nss), иначе mkcert не пропишет CA в его стор.
 
-- Authentik (вход / админка): `https://auth.localhost` (443, дефолт)
-- Чат-приложение (`frontend`, код в `frontend/chat-front`): `https://localhost:9443`
+- Authentik (вход / админка): `https://localhost` (443, дефолт — без поддомена,
+  ему так проще: сам строит свои API/issuer URL из Host без порта)
+- Чат-приложение (`frontend`, код в `frontend/chat-front`): `https://chat.localhost:9443`
 - PR-ревьюер (`review-front`, код в `frontend/review-front`): `https://review.localhost:8443`
 
-Authentik — на дефолтном порту (сам строит свои API/issuer URL из Host без
-порта, так проще и меньше багов), чат и ревьюер — на своих портах, не
-поддоменах: так работает и без DNS, в том числе на голом IP на проде (см.
-раздел 3).
+Поддомены `chat.`/`review.` — просто для читаемости локально (mkcert их
+покрывает); реально роутит порт, не hostname. На проде (голый IP, без DNS)
+поддоменов физически нет — там различают только порты, см. раздел 3.
 
 ⚠️ **SMTP-переменные (`AUTHENTIK_EMAIL__*`) в `.env` обязательны** — саморегистрация
 активирует аккаунт письмом-подтверждением; без SMTP новые пользователи останутся

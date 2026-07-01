@@ -33,6 +33,9 @@ func (f *fakeReviewer) Review(_ context.Context, _ domain.PRRef) (string, error)
 type fakePoster struct {
 	posted []string
 	err    error
+
+	removedReviewers []string
+	removeErr        error
 }
 
 func (f *fakePoster) PostPRComment(_ context.Context, _ domain.PRRef, body string) error {
@@ -41,6 +44,16 @@ func (f *fakePoster) PostPRComment(_ context.Context, _ domain.PRRef, body strin
 	}
 
 	f.posted = append(f.posted, body)
+
+	return nil
+}
+
+func (f *fakePoster) RemoveRequestedReviewer(_ context.Context, _ domain.PRRef, reviewer string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
+
+	f.removedReviewers = append(f.removedReviewers, reviewer)
 
 	return nil
 }
@@ -132,6 +145,28 @@ func TestProcess_ReviewRequest_Done(t *testing.T) {
 
 	if len(poster.posted) != 1 || poster.posted[0] != "# Review" {
 		t.Fatalf("unexpected posted comments: %v", poster.posted)
+	}
+
+	if len(poster.removedReviewers) != 1 || poster.removedReviewers[0] != testBotUsername {
+		t.Fatalf("expected bot removed as reviewer, got %v", poster.removedReviewers)
+	}
+}
+
+func TestProcess_RemoveReviewerFails_StillDone(t *testing.T) {
+	// The review comment already posted successfully — a failure removing the
+	// bot as reviewer must not turn into a retry (that would double-post).
+	data := makeEnvelope("del-900")
+	reviewer := &fakeReviewer{result: "# Review"}
+	poster := &fakePoster{removeErr: errors.New("gitflame down")}
+	p := newProc(reviewer, poster)
+	result := p.Process(context.Background(), data)
+
+	if result != processor.Done {
+		t.Fatalf("expected Done even when reviewer removal fails, got %v", result)
+	}
+
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected exactly 1 posted comment, got %d", len(poster.posted))
 	}
 }
 

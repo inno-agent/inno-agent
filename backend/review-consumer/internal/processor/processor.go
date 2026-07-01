@@ -207,5 +207,11 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 
 	p.logger.Info("review posted", zap.String("pr", prLabel))
 
+	// Best effort: the review is already posted, so a failure here must not
+	// cause a redelivery (that would re-review and double-post the comment).
+	if err := p.poster.RemoveRequestedReviewer(ctx, ref, p.botUsername); err != nil {
+		p.logger.Warn("failed to remove self as reviewer", zap.String("pr", prLabel), zap.Error(err))
+	}
+
 	return Done
 }

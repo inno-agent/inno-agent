@@ -45,8 +45,8 @@ docker compose up -d --build
 > Firefox требует `certutil` (nss), иначе mkcert не пропишет CA в его стор.
 
 - Authentik (вход / админка): `https://auth.localhost` (443, дефолт)
-- Приложение: `https://localhost:9443`
-- PR-ревьюер: `https://review.localhost:8443`
+- Чат-приложение (`frontend`, код в `frontend/chat-front`): `https://localhost:9443`
+- PR-ревьюер (`review-front`, код в `frontend/review-front`): `https://review.localhost:8443`
 
 Authentik — на дефолтном порту (сам строит свои API/issuer URL из Host без
 порта, так проще и меньше багов), чат и ревьюер — на своих портах, не

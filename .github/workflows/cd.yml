@@ -95,15 +95,5 @@ jobs:
 
       - name: Deploy
         env:
-          DEPLOY_TAG: ${{ steps.sha.outputs.short }}
-          ENV_FILE: ~/.env.innoagent
-        run: |
-          set -euo pipefail
-          if grep -q '^TAG=' "$ENV_FILE"; then
-            sed -i "s/^TAG=.*/TAG=$DEPLOY_TAG/" "$ENV_FILE"
-          else
-            echo "TAG=$DEPLOY_TAG" >> "$ENV_FILE"
-          fi
-          docker compose --env-file "$ENV_FILE" --profile gpu pull
-          docker compose --env-file "$ENV_FILE" --profile gpu up -d --remove-orphans
-          docker image prune -f
+          TAG: ${{ steps.sha.outputs.short }}
+        run: ./scripts/prod.sh

@@ -230,7 +230,7 @@ services:
     image: ghcr.io/inno-agent/review-api:${TAG:-latest}
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: ${REVIEW_AUTH_SERVICE_URL-http://identity:8081}
@@ -447,7 +447,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
 
   # ─── Promtail (Log Collector) ────────────────────────────────────────────
   promtail:
@@ -484,4 +484,4 @@ services:
       loki:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"

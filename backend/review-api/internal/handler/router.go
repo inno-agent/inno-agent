@@ -15,7 +15,8 @@ import (
 func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, authServiceURL string, logger *zap.Logger) {
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.CorrelationID)
-	r.Use(middleware.RequestLogger())	r.Use(func(next http.Handler) http.Handler {
+	r.Use(middleware.RequestLogger())
+	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")

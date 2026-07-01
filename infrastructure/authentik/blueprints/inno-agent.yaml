@@ -35,7 +35,7 @@ entries:
         ]
       redirect_uris:
         - matching_mode: strict
-          url: !Env [APP_CALLBACK_URL, "https://localhost/callback"]
+          url: !Env [APP_CALLBACK_URL, "https://localhost:9443/callback"]
         - matching_mode: strict
           url: !Env [REVIEW_CALLBACK_URL, "https://review.localhost:8443/callback"]
       property_mappings:

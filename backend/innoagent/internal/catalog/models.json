@@ -1,8 +1,11 @@
 {
   "models": [
-    { "id": "auto", "name": "Auto", "description": "Automatically selects the best model for your query" },
+    { "id": "auto", "name": "Auto", "description": "Automatically selects the best model" },
     { "id": "qwen2.5:0.5b", "name": "Fast", "description": "Tiny model, fastest responses" },
     { "id": "llama3.2:1b", "name": "General", "description": "General Q&A and conversation" },
-    { "id": "qwen2.5-coder:1.5b", "name": "Code", "description": "Programming, debugging, code generation" }
+    { "id": "qwen2.5-coder:1.5b", "name": "Code", "description": "Programming, debugging, code generation" },
+    { "id": "qwen2.5-coder:32b", "name": "Code Pro", "description": "Advanced code generation, 32B parameters" },
+    { "id": "qwen3:32b", "name": "General Pro", "description": "Advanced reasoning, 32B parameters" },
+    { "id": "qwen3:8b", "name": "Fast Pro", "description": "Smart and fast, 8B parameters" }
   ]
 }

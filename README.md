@@ -44,12 +44,14 @@ docker compose up -d --build
 > Сброс с нуля: `docker compose down -v`, затем снова `./scripts/dev-setup.sh && docker compose up -d --build`.
 > Firefox требует `certutil` (nss), иначе mkcert не пропишет CA в его стор.
 
-- Приложение: `https://localhost`
-- PR-ревьюер: `https://review.localhost:8443`
-- Authentik (вход / админка): `https://auth.localhost:9443`
+- Authentik (вход / админка): `https://localhost` (443, дефолт — без поддомена,
+  ему так проще: сам строит свои API/issuer URL из Host без порта)
+- Чат-приложение (`frontend`, код в `frontend/chat-front`): `https://chat.localhost:9443`
+- PR-ревьюер (`review-front`, код в `frontend/review-front`): `https://review.localhost:8443`
 
-Authentik и ревьюер — на своих портах, не поддоменах: так работает и без
-DNS, в том числе на голом IP на проде (см. раздел 3).
+Поддомены `chat.`/`review.` — просто для читаемости локально (mkcert их
+покрывает); реально роутит порт, не hostname. На проде (голый IP, без DNS)
+поддоменов физически нет — там различают только порты, см. раздел 3.
 
 ⚠️ **SMTP-переменные (`AUTHENTIK_EMAIL__*`) в `.env` обязательны** — саморегистрация
 активирует аккаунт письмом-подтверждением; без SMTP новые пользователи останутся
@@ -112,20 +114,24 @@ GHCR-пакетов и SSH-секреты не нужны — раннер и е
 
 | Сервис | Адрес |
 |---|---|
-| Chat-приложение | `https://<AUTH_DOMAIN>` (443) |
+| Authentik | `https://<AUTH_DOMAIN>` (443, дефолт) |
+| Chat-приложение | `https://<AUTH_DOMAIN>:9443` |
 | PR-ревьюер | `https://<AUTH_DOMAIN>:8443` |
-| Authentik | `https://<AUTH_DOMAIN>:9443` |
+
+Authentik — на дефолтном порту специально: он сам генерит свои абсолютные
+API/issuer URL из полученного `Host`-заголовка (nginx форвардит его через
+`$http_host`, с портом как есть) — на дефолтном порту в `Host` порта нет
+вообще, и нечему рассинхронизироваться с тем, что реально видит браузер.
 
 `AUTH_DOMAIN` в `.env.prod` — голый IP (`10.100.32.36`), без dashes/nip.io.
 Плюс три явных URL-переменных (замена прежней сборки из `AUTH_DOMAIN` +
 `auth.`/`review.` префиксов, которая на голом IP не работает):
 
 - `AUTH_ISSUER_URL` — куда реально смотрит браузер при заходе в Authentik
-  (без порта — nginx форвардит `Host` без порта, так его же видит и
-  authentik при сборке issuer).
+  (без порта — см. выше).
 - `APP_CALLBACK_URL` / `REVIEW_CALLBACK_URL` — OAuth `redirect_uri` для
-  чата и ревьюера (тут порт **нужен**, если не дефолтный 443 — так его
-  реально шлёт браузер в `redirect_uri`).
+  чата и ревьюера (тут порт **нужен** — они не на 443, так его реально
+  шлёт браузер в `redirect_uri`).
 
 Если позже дадут публичный IP/домен — поменять только эти переменные в
 `~/.env.innoagent`, порты/код трогать не надо.

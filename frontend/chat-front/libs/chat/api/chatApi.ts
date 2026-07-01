@@ -29,7 +29,7 @@ export const getChatHistory = async (chatId: string, limit?: number, offset?: nu
     return data
 }
 
-export const streamMessage = async (chatId: string, message: string, model?: string) => {
+export const streamMessage = async (chatId: string, message: string, model?: string, signal?: AbortSignal) => {
     const token = localStorage.getItem('aicore_token')
     const body: Record<string, string> = { message }
     if (model) {
@@ -43,6 +43,7 @@ export const streamMessage = async (chatId: string, message: string, model?: str
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(body),
+        signal,
     })
 
     if (!response.ok) throw new Error('Failed to stream message')

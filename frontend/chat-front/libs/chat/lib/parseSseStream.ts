@@ -6,13 +6,6 @@ interface AsyncQueueItem<T> {
     value?: T
 }
 
-const debugSseEvent = (event: ChatStreamEvent) => {
-    console.log('[chat:sse] received', {
-        type: event.type,
-        at: new Date().toISOString(),
-        chunkLength: event.type === 'chunk' ? event.content.length : undefined,
-    })
-}
 
 export async function* parseSseStream(
     response: Response,
@@ -62,40 +55,53 @@ export async function* parseSseStream(
                     ...payload,
                 } as ChatStreamEvent
 
-                debugSseEvent(streamEvent)
                 pushItem({
                     done: false,
                     value: streamEvent,
                 })
             } catch {
-                // Ignore malformed SSE payloads and keep consuming the stream.
+                // Failed to parse SSE event
             }
         },
     })
 
     const pump = (async () => {
-        while (!streamClosed) {
-            const result = await reader.read()
-            if (result.done) {
-                break
+        try {
+            while (!streamClosed) {
+                const result = await reader.read()
+                if (result.done) {
+                    break
+                }
+
+                parser.feed(decoder.decode(result.value, { stream: true }))
             }
-
-            parser.feed(decoder.decode(result.value, { stream: true }))
-        }
-
-        if (!streamClosed) {
-            streamClosed = true
-            pushItem({ done: true })
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                streamClosed = true
+            } else {
+                throw error
+            }
+        } finally {
+            reader.releaseLock()
+            if (!streamClosed) {
+                streamClosed = true
+                pushItem({ done: true })
+            }
         }
     })()
 
-    while (true) {
-        const item = await nextItem()
-        if (item.done) {
-            break
-        }
+    try {
+        while (true) {
+            const item = await nextItem()
+            if (item.done) {
+                break
+            }
 
-        yield item.value!
+            yield item.value!
+        }
+    } finally {
+        streamClosed = true
+        reader.cancel().catch(() => {})
     }
 
     await pump

@@ -52,6 +52,7 @@ func main() {
 	log.Printf("ollama base url: %s", cfg.BaseURL)
 	log.Printf("model: %s", cfg.Model)
 	log.Printf("api port: %s", cfg.ServerPort)
+	log.Printf("max concurrent llm: %d", cfg.MaxConcurrentLLM)
 
 	cat, err := catalog.Load(cfg.Models)
 	if err != nil {
@@ -77,7 +78,7 @@ func main() {
 		}
 	}
 
-	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models)
+	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, cfg.MaxConcurrentLLM)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	mux := http.NewServeMux()
@@ -208,6 +209,19 @@ func main() {
 		log.Printf("server listening on :%s", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	// Preload model into VRAM to eliminate cold start penalty
+	go func() {
+		time.Sleep(3 * time.Second)
+		log.Printf("preloading model %s ...", cfg.Model)
+		start := time.Now()
+		_, err := provider.Chat(context.Background(), []llm.Message{{Role: "user", Content: "hi"}}, cfg.Model)
+		if err != nil {
+			log.Printf("model preload failed (non-fatal): %v", err)
+		} else {
+			log.Printf("model preloaded in %v", time.Since(start).Round(time.Millisecond))
 		}
 	}()
 

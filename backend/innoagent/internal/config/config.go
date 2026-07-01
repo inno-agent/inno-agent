@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -12,13 +13,14 @@ func getBoolEnv(key string) bool {
 }
 
 type Config struct {
-	BaseURL     string
-	Models      []string
-	Model       string
-	RouterModel string
-	ServerPort  string
-	IdentityURL string
-	PerfLog     bool
+	BaseURL          string
+	Models           []string
+	Model            string
+	RouterModel      string
+	ServerPort       string
+	IdentityURL      string
+	PerfLog          bool
+	MaxConcurrentLLM int
 }
 
 func Load() Config {
@@ -62,13 +64,21 @@ func Load() Config {
 		identityURL = "http://identity:8081"
 	}
 
+	maxConcurrent := 16
+	if v := os.Getenv("MAX_CONCURRENT_LLM"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxConcurrent = n
+		}
+	}
+
 	return Config{
-		BaseURL:     baseURL,
-		Models:      models,
-		Model:       models[0],
-		RouterModel: routerModel,
-		ServerPort:  serverPort,
-		IdentityURL: identityURL,
-		PerfLog:     getBoolEnv("PERF_LOG"),
+		BaseURL:          baseURL,
+		Models:           models,
+		Model:            models[0],
+		RouterModel:      routerModel,
+		ServerPort:       serverPort,
+		IdentityURL:      identityURL,
+		PerfLog:          getBoolEnv("PERF_LOG"),
+		MaxConcurrentLLM: maxConcurrent,
 	}
 }

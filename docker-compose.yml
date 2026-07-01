@@ -250,6 +250,8 @@ services:
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+      MAX_CONCURRENT_LLM: ${MAX_CONCURRENT_LLM:-16}
+      PERF_LOG: ${PERF_LOG:-false}
     depends_on:
       ollama:
         condition: service_healthy

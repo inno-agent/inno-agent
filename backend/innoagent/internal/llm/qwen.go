@@ -84,11 +84,12 @@ func (p *QwenProvider) Chat(
 		model = p.model
 	}
 
+	maxTokens := 1024
 	reqBody := ChatRequest{
 		Model:       model,
 		Messages:    chatMessages,
 		Temperature: p.temperature,
-		MaxTokens:   1024,
+		MaxTokens:   maxTokens,
 		Stream:      false,
 	}
 
@@ -254,6 +255,19 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	return ch, nil
 }
 
+// adaptiveTimeout calculates timeout based on expected output length.
+// At ~40 tok/s for 32B model: 2048 tokens ≈ 51s.
+func adaptiveTimeout(maxTokens int) time.Duration {
+	if maxTokens <= 0 {
+		maxTokens = 1024
+	}
+	estimated := time.Duration(maxTokens/40) * time.Second
+	if estimated < 30*time.Second {
+		estimated = 30 * time.Second
+	}
+	return estimated
+}
+
 func (p *QwenProvider) parseErrorResponse(
 	statusCode int,
 	body []byte,
@@ -290,7 +304,7 @@ type ChatRequest struct {
 	Model       string        `json:"model"`
 	Messages    []ChatMessage `json:"messages"`
 	Temperature float64       `json:"temperature"`
-	MaxTokens   int           `json:"max_tokens"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
 	Stream      bool          `json:"stream"`
 }
 

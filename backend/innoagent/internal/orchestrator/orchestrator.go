@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"innoagent/internal/catalog"
 	"innoagent/internal/llm"
@@ -22,20 +23,32 @@ type AIOrchestrator struct {
 	routerProvider llm.Provider
 	routes         []RouteInfo
 	models         []string
+	limiter        *llm.ConcurrencyLimiter
+	coalescer      *llm.RequestCoalescer
+	routeCache     sync.Map // hash(messages) → model
 }
 
-func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string) *AIOrchestrator {
+func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string, maxConcurrent int) *AIOrchestrator {
 	return &AIOrchestrator{
 		provider:       provider,
 		routerProvider: routerProvider,
 		routes:         routes,
 		models:         models,
+		limiter:        llm.NewLimiter(maxConcurrent),
+		coalescer:      &llm.RequestCoalescer{},
 	}
 }
 
 func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) string {
 	if len(messages) == 0 {
 		return o.models[0]
+	}
+
+	// Check route cache first
+	cacheKey := llm.HashMessages(messages, "route")
+	if cached, ok := o.routeCache.Load(cacheKey); ok {
+		log.Printf("auto: route cache hit → %s", cached)
+		return cached.(string)
 	}
 
 	routesJSON, err := json.Marshal(o.routes)
@@ -96,12 +109,15 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 	for _, m := range o.models {
 		if m == chosen {
 			log.Printf("auto: routed to %s", chosen)
+			o.routeCache.Store(cacheKey, chosen)
 			return chosen
 		}
 	}
 
 	log.Printf("auto: router returned unknown route %q, falling back to %s", chosen, o.models[0])
-	return o.models[0]
+	fallback := o.models[0]
+	o.routeCache.Store(cacheKey, fallback)
+	return fallback
 }
 
 // resolveModel maps the requested model name to a concrete model ID.
@@ -120,10 +136,34 @@ func (o *AIOrchestrator) resolveModel(ctx context.Context, messages []llm.Messag
 
 func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message, modelName string) (string, error) {
 	resolved := o.resolveModel(ctx, messages, modelName)
-	return o.provider.Chat(ctx, messages, resolved)
+
+	key := llm.HashMessages(messages, resolved)
+	return o.coalescer.Do(key, func() (string, error) {
+		o.limiter.Acquire()
+		defer o.limiter.Release()
+		return o.provider.Chat(ctx, messages, resolved)
+	})
 }
 
 func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message, modelName string) (<-chan string, error) {
 	resolved := o.resolveModel(ctx, messages, modelName)
-	return o.provider.Stream(ctx, messages, resolved)
+
+	o.limiter.Acquire()
+	ch, err := o.provider.Stream(ctx, messages, resolved)
+	if err != nil {
+		o.limiter.Release()
+		return nil, err
+	}
+
+	// Wrap channel to release limiter when stream ends
+	wrapped := make(chan string, 64)
+	go func() {
+		defer close(wrapped)
+		defer o.limiter.Release()
+		for chunk := range ch {
+			wrapped <- chunk
+		}
+	}()
+
+	return wrapped, nil
 }

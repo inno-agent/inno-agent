@@ -73,7 +73,7 @@ func TestResolveModel_AutoRoutesSuccessfully(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "tell me about history"},
@@ -101,7 +101,7 @@ func TestResolveModel_AutoSendsArchRouterFormat(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	_, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "system", Content: "you are helpful"},
@@ -153,7 +153,7 @@ func TestResolveModel_AutoFallbackOnInvalidJSON(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -184,7 +184,7 @@ func TestResolveModel_AutoHandlesSingleQuotedJSON(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "tell me a joke"},
@@ -212,7 +212,7 @@ func TestResolveModel_AutoFallbackOnUnknownRoute(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -235,7 +235,7 @@ func TestResolveModel_AutoFallbackOnRouterError(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -256,7 +256,7 @@ func TestResolveModel_EmptyModelNameUsesDefault(t *testing.T) {
 	}
 	routerProvider := &mockProvider{}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -280,7 +280,7 @@ func TestResolveModel_ConcreteModelBypassesRouter(t *testing.T) {
 	}
 	routerProvider := &mockProvider{}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -310,7 +310,7 @@ func TestResolveModel_NeverLoopsBackToAuto(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{
 		{Role: "user", Content: "hello"},
@@ -337,7 +337,7 @@ func TestResolveModel_AutoEmptyMessagesFallsBack(t *testing.T) {
 		},
 	}
 
-	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels())
+	orch := New(mainProvider, routerProvider, defaultRoutes(), defaultModels(), 16)
 
 	answer, err := orch.Ask(context.Background(), []llm.Message{}, "auto")
 	if err != nil {

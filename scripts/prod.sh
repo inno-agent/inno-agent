@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ENV_FILE="${ENV_FILE:-$HOME/.env.innoagent}"
+export ENV_FILE="${ENV_FILE:-$HOME/.env.innoagent}"
 TAG="${TAG:?TAG env var required (image tag to deploy, e.g. a short git SHA)}"
 
 if [ ! -f "$ENV_FILE" ]; then

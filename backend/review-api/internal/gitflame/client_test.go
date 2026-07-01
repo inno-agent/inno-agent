@@ -35,3 +35,23 @@ func TestClient_GetPRDiff_ConfiguredButUnavailable(t *testing.T) {
 		t.Fatalf("expected ErrDiffUnavailable, got %v", err)
 	}
 }
+
+func TestClient_AcceptInvite_NotConfigured(t *testing.T) {
+	client := gitflame.NewClient("", "")
+
+	err := client.AcceptInvite(context.Background(), "owner", "repo")
+	if !errors.Is(err, domain.ErrDiffUnavailable) {
+		t.Fatalf("expected ErrDiffUnavailable, got %v", err)
+	}
+}
+
+func TestClient_AcceptInvite_MissingOwnerOrRepo(t *testing.T) {
+	client := gitflame.NewClient("https://gitflame.example", "token")
+
+	if err := client.AcceptInvite(context.Background(), "", "repo"); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+	if err := client.AcceptInvite(context.Background(), "owner", ""); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}

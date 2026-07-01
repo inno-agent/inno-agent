@@ -68,7 +68,8 @@ func (c *Client) GetPRDiff(ctx context.Context, prID string) (string, error) {
 		return "", fmt.Errorf("%w: pr_index must be integer, got %q", domain.ErrValidation, parts[2])
 	}
 
-	repoBase := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d",
+	repoBase := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/pulls/%d",
 		strings.TrimRight(c.baseURL, "/"),
 		url.PathEscape(owner),
 		url.PathEscape(repo),
@@ -171,6 +172,50 @@ func (c *Client) getFileDiff(ctx context.Context, repoBase, filename string) (st
 		return "", fmt.Errorf("%w: failed to decode patch for %s: %w", domain.ErrDiffUnavailable, filename, err)
 	}
 	return string(decoded), nil
+}
+
+// AcceptInvite confirms the bot account's pending collaborator invitation on owner/repo.
+// GitFlame requires a collaborator invitation to be confirmed by the invitee before
+// that account can be assigned as a PR reviewer.
+func (c *Client) AcceptInvite(ctx context.Context, owner, repo string) error {
+	if owner == "" || repo == "" {
+		return fmt.Errorf("%w: owner and repo are required", domain.ErrValidation)
+	}
+	if c.baseURL == "" || c.token == "" {
+		return fmt.Errorf("%w: gitflame is not configured", domain.ErrDiffUnavailable)
+	}
+
+	confirmURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/collaborators/confirm",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(owner),
+		url.PathEscape(repo),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, confirmURL, nil)
+	if err != nil {
+		return fmt.Errorf("gitflame: failed to create confirm request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitflame: confirm invitation request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent:
+		return nil
+	case http.StatusNotFound:
+		return fmt.Errorf("gitflame: no pending invitation for %s/%s (404)", owner, repo)
+	case http.StatusUnauthorized:
+		return fmt.Errorf("gitflame: authentication failed (401) confirming invitation for %s/%s", owner, repo)
+	default:
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("gitflame: confirm invitation for %s/%s returned %d: %s",
+			owner, repo, resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
 }
 
 func checkStatus(resp *http.Response, endpoint string) error {

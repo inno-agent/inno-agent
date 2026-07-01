@@ -16,6 +16,7 @@ import (
 // InstallationStore persists installation rows.
 type InstallationStore interface {
 	Upsert(ctx context.Context, gitflameUsername, userID string) error
+	GetGitFlameUsername(ctx context.Context, userID string) (string, error)
 }
 
 // DelegationGranter creates delegation grants in identity on behalf of a user.
@@ -88,4 +89,33 @@ func (h *InstallationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type installationResponse struct {
+	GitFlameUsername string `json:"gitflame_username"`
+}
+
+// Get handles GET /api/v1/installations/me. It lets the frontend restore
+// onboarding state after a page reload instead of re-asking for the username.
+func (h *InstallationHandler) Get(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	username, err := h.store.GetGitFlameUsername(ctx, userID)
+	if err != nil {
+		if errors.Is(err, installation.ErrNotLinked) {
+			writeError(w, http.StatusNotFound, "not_linked")
+			return
+		}
+		h.logger.Error("get installation", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, installationResponse{GitFlameUsername: username})
 }

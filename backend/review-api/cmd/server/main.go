@@ -39,8 +39,11 @@ func main() {
 	reviewService := service.NewReviewService(gitFlameClient, llmClient)
 	reviewHandler := handler.NewReviewHandler(reviewService)
 
-	// Onboarding (installations) is enabled only when a review DB is configured.
+	// Onboarding (installations) and invite acceptance both need the review DB —
+	// invite acceptance looks up the caller's own linked gitflame_username there,
+	// so the repo owner can never be spoofed via the request body.
 	var installHandler *handler.InstallationHandler
+	var inviteHandler *handler.InviteHandler
 	if cfg.ReviewDatabaseDSN != "" {
 		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
@@ -51,13 +54,14 @@ func main() {
 		installRepo := installation.NewRepository(pool)
 		identityClient := identityclient.New(cfg.AuthServiceURL)
 		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, logger)
+		inviteHandler = handler.NewInviteHandler(installRepo, gitFlameClient, logger)
 		logger.Info("onboarding enabled (installations)")
 	} else {
-		logger.Warn("REVIEW_DATABASE_DSN unset; /installations disabled")
+		logger.Warn("REVIEW_DATABASE_DSN unset; /installations and /invitations/accept disabled")
 	}
 
 	router := chi.NewRouter()
-	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL, logger)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, inviteHandler, cfg.AuthServiceURL, logger)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

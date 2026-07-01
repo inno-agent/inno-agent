@@ -55,24 +55,34 @@ docker compose up -d --build
 ## 3. Деплой (CD)
 
 Пуш в `main` гонит `.github/workflows/cd.yml`: собирает 8 сервисов, пушит в GHCR
-(`ghcr.io/inno-agent/<service>`), затем по SSH деплоит на VPS
-(`git checkout` нужного рефа + `docker compose pull && up -d`).
+(`ghcr.io/inno-agent/<service>`), затем джоба `deploy` выполняется прямо на
+self-hosted раннере `agr01`, который живёт на проде: логинится в GHCR через
+встроенный `GITHUB_TOKEN`, обновляет `TAG` в `~/.env.innoagent` и гонит
+`docker compose --profile gpu pull && up -d`. Публичность GHCR-пакетов и
+SSH-секреты не нужны — раннер и есть прод-хост.
 
 Ручной запуск (повтор / rollback): Actions → CD → Run workflow → указать `ref`
 (ветка, тег или SHA). Воркфлоу пересоберёт и передеплоит именно этот коммит.
 
-### Требуемые GitHub Actions secrets
+### Self-hosted раннер (одноразовая настройка на VPS)
 
-| Secret | Значение |
-|---|---|
-| `SSH_HOST` | адрес VPS |
-| `SSH_USER` | пользователь для SSH |
-| `SSH_PRIVATE_KEY` | приватный ключ (публичный — в `~/.ssh/authorized_keys` на VPS) |
-| `DEPLOY_PATH` | абсолютный путь к клону репозитория на VPS |
-
-### Одноразовая настройка
-
-После первого успешного запуска зайти в GitHub → организация `inno-agent` →
-Packages и выставить каждому из 8 пакетов видимость **Public** — иначе
-`docker compose pull` на сервере не сможет их скачать (новый package в GHCR
-по умолчанию приватный).
+- Зарегистрировать GitHub Actions runner с лейблами `self-hosted, agr01` в
+  этом репозитории, юзер раннера должен иметь доступ к `docker`.
+- Раннер переиспользует один и тот же рабочий каталог между запусками — это
+  и есть каталог деплоя (`docker-compose.yml` там же, где чекаутится репо).
+  Checkout деплой-джобы идёт с `clean: false` — специально, чтобы не сносить
+  gitignored рантайм-файлы (`backend/identity/dev-private-key.pem`, `.ollama/`,
+  прод-сертификаты `infrastructure/nginx/certs/*.pem`) при каждом деплое.
+- `backend/identity/dev-private-key.pem` (JWT-ключ) и реальные сертификаты в
+  `infrastructure/nginx/certs/` (`fullchain.pem`, `privkey.pem`) положить на
+  раннер вручную один раз — они gitignored, в репо не попадают.
+- `~/.env.innoagent` (в домашней директории раннера, вне репо) — полный набор
+  переменных как в `.env.example`, плюс:
+  - `OLLAMA_BASE_URL` — прод использует `--profile gpu` (внешний GPU Ollama),
+    заполнить реальным адресом (пример закомментирован в `.env.example`).
+  - `GRAFANA_ADMIN_PASSWORD` — переопределить дефолтный `admin` из
+    `.env.example`.
+  - `TAG` пишет туда сама CD-джоба при каждом деплое, руками не трогать.
+- Grafana (`3000`), Loki (`3100`) и `review-api` (`8001`) забинжены на
+  `127.0.0.1` — наружу не торчат, доступ только через SSH-туннель или с самого
+  хоста.

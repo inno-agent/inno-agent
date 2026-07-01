@@ -87,6 +87,7 @@ export default function OnboardingPage() {
             <p style={{ color: '#9a9a9a', fontSize: '14px', marginBottom: '24px' }}>
                 Invited the bot as a collaborator on a repo? Confirm it here instead of
                 logging into the bot's GitFlame account by hand.
+                {status !== 'linked' && ' Link your GitFlame account above first.'}
             </p>
 
             <div className="field">
@@ -96,11 +97,14 @@ export default function OnboardingPage() {
                     value={repoFullName}
                     onChange={(e) => setRepoFullName(e.target.value)}
                     placeholder="owner/repo"
-                    disabled={inviteStatus === 'loading'}
+                    disabled={status !== 'linked' || inviteStatus === 'loading'}
                 />
             </div>
 
-            <button onClick={acceptInvite} disabled={inviteStatus === 'loading' || !repoFullName.trim()}>
+            <button
+                onClick={acceptInvite}
+                disabled={status !== 'linked' || inviteStatus === 'loading' || !repoFullName.trim()}
+            >
                 {inviteStatus === 'loading' ? 'Accepting…' : 'Accept invite'}
             </button>
 

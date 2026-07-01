@@ -29,12 +29,11 @@ export default function OnboardingPage() {
     }
 
     async function acceptInvite() {
-        const trimmedUsername = username.trim()
-        const trimmedRepo = repoName.trim()
-        if (!trimmedUsername || !trimmedRepo) return
+        const trimmed = repoName.trim()
+        if (!trimmed) return
         setInviteStatus('loading')
         try {
-            await acceptGitFlameInvite(`${trimmedUsername}/${trimmedRepo}`)
+            await acceptGitFlameInvite(trimmed)
             setInviteStatus('accepted')
         } catch {
             setInviteStatus('error')

@@ -10,6 +10,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
+
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/installation"
 )
 
 type fakeAccepter struct {
@@ -25,6 +27,18 @@ func (f *fakeAccepter) AcceptInvite(_ context.Context, owner, repo string) error
 	f.lastOwner = owner
 	f.lastRepo = repo
 	return nil
+}
+
+type fakeLookup struct {
+	username string
+	err      error
+}
+
+func (f *fakeLookup) GetGitFlameUsername(_ context.Context, _ string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.username, nil
 }
 
 func setupInviteRouter(h *InviteHandler, userID string) *chi.Mux {
@@ -45,9 +59,9 @@ func postAcceptInvite(r *chi.Mux, body string) *httptest.ResponseRecorder {
 }
 
 func TestAcceptInvite_NoUserID_401(t *testing.T) {
-	h := NewInviteHandler(&fakeAccepter{}, zap.NewNop())
+	h := NewInviteHandler(&fakeLookup{username: "owner"}, &fakeAccepter{}, zap.NewNop())
 	r := setupInviteRouter(h, "")
-	rec := postAcceptInvite(r, `{"repo_full_name":"owner/repo"}`)
+	rec := postAcceptInvite(r, `{"repo_name":"repo"}`)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
@@ -55,10 +69,10 @@ func TestAcceptInvite_NoUserID_401(t *testing.T) {
 
 func TestAcceptInvite_Success_204(t *testing.T) {
 	accepter := &fakeAccepter{}
-	h := NewInviteHandler(accepter, zap.NewNop())
+	h := NewInviteHandler(&fakeLookup{username: "owner"}, accepter, zap.NewNop())
 	r := setupInviteRouter(h, "user-uuid-1")
 
-	rec := postAcceptInvite(r, `{"repo_full_name":"owner/repo"}`)
+	rec := postAcceptInvite(r, `{"repo_name":"repo"}`)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -67,28 +81,52 @@ func TestAcceptInvite_Success_204(t *testing.T) {
 	}
 }
 
-func TestAcceptInvite_MissingRepoFullName_400(t *testing.T) {
-	h := NewInviteHandler(&fakeAccepter{}, zap.NewNop())
+func TestAcceptInvite_OwnerAlwaysFromLookup_NotRequestBody(t *testing.T) {
+	// Even if a client tries to sneak an owner/repo path into repo_name, the
+	// resolved owner must come from the caller's own linked account, never
+	// from the request body — otherwise any authenticated caller could accept
+	// invites on someone else's repo.
+	accepter := &fakeAccepter{}
+	h := NewInviteHandler(&fakeLookup{username: "victim"}, accepter, zap.NewNop())
+	r := setupInviteRouter(h, "attacker-uuid")
+
+	rec := postAcceptInvite(r, `{"repo_name":"attacker-owned-repo/../victim-repo"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for slash in repo_name, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAcceptInvite_MissingRepoName_400(t *testing.T) {
+	h := NewInviteHandler(&fakeLookup{username: "owner"}, &fakeAccepter{}, zap.NewNop())
 	r := setupInviteRouter(h, "user-uuid-1")
-	rec := postAcceptInvite(r, `{"repo_full_name":""}`)
+	rec := postAcceptInvite(r, `{"repo_name":""}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
-func TestAcceptInvite_MalformedRepoFullName_400(t *testing.T) {
-	h := NewInviteHandler(&fakeAccepter{}, zap.NewNop())
+func TestAcceptInvite_RepoNameWithSlash_400(t *testing.T) {
+	h := NewInviteHandler(&fakeLookup{username: "owner"}, &fakeAccepter{}, zap.NewNop())
 	r := setupInviteRouter(h, "user-uuid-1")
-	rec := postAcceptInvite(r, `{"repo_full_name":"no-slash"}`)
+	rec := postAcceptInvite(r, `{"repo_name":"owner/repo"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAcceptInvite_NotLinked_409(t *testing.T) {
+	h := NewInviteHandler(&fakeLookup{err: installation.ErrNotLinked}, &fakeAccepter{}, zap.NewNop())
+	r := setupInviteRouter(h, "user-uuid-1")
+	rec := postAcceptInvite(r, `{"repo_name":"repo"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rec.Code)
 	}
 }
 
 func TestAcceptInvite_AccepterError_502(t *testing.T) {
-	h := NewInviteHandler(&fakeAccepter{err: errors.New("gitflame: no pending invitation")}, zap.NewNop())
+	h := NewInviteHandler(&fakeLookup{username: "owner"}, &fakeAccepter{err: errors.New("gitflame: no pending invitation")}, zap.NewNop())
 	r := setupInviteRouter(h, "user-uuid-1")
-	rec := postAcceptInvite(r, `{"repo_full_name":"owner/repo"}`)
+	rec := postAcceptInvite(r, `{"repo_name":"repo"}`)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rec.Code)
 	}

@@ -13,9 +13,10 @@ export async function linkGitFlameUsername(gitflameUsername: string): Promise<vo
 /**
  * Confirms the bot's pending collaborator invitation on a repo, so it can be
  * assigned as a PR reviewer without logging into the bot's GitFlame account by hand.
+ * The repo owner is resolved server-side from the caller's own linked account.
  */
-export async function acceptGitFlameInvite(repoFullName: string): Promise<void> {
+export async function acceptGitFlameInvite(repoName: string): Promise<void> {
     await apiClient.post('/invitations/accept', {
-        repo_full_name: repoFullName,
+        repo_name: repoName,
     })
 }

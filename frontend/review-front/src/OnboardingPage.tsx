@@ -8,7 +8,7 @@ export default function OnboardingPage() {
     const [username, setUsername] = useState('')
     const [status, setStatus] = useState<Status>('idle')
 
-    const [repoFullName, setRepoFullName] = useState('')
+    const [repoName, setRepoName] = useState('')
     const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle')
 
     async function submit() {
@@ -29,11 +29,12 @@ export default function OnboardingPage() {
     }
 
     async function acceptInvite() {
-        const trimmed = repoFullName.trim()
-        if (!trimmed) return
+        const trimmedUsername = username.trim()
+        const trimmedRepo = repoName.trim()
+        if (!trimmedUsername || !trimmedRepo) return
         setInviteStatus('loading')
         try {
-            await acceptGitFlameInvite(trimmed)
+            await acceptGitFlameInvite(`${trimmedUsername}/${trimmedRepo}`)
             setInviteStatus('accepted')
         } catch {
             setInviteStatus('error')
@@ -91,19 +92,19 @@ export default function OnboardingPage() {
             </p>
 
             <div className="field">
-                <label htmlFor="gf-repo">Repository (owner/repo)</label>
+                <label htmlFor="gf-repo">Repository name</label>
                 <input
                     id="gf-repo"
-                    value={repoFullName}
-                    onChange={(e) => setRepoFullName(e.target.value)}
-                    placeholder="owner/repo"
+                    value={repoName}
+                    onChange={(e) => setRepoName(e.target.value)}
+                    placeholder="repo-name"
                     disabled={status !== 'linked' || inviteStatus === 'loading'}
                 />
             </div>
 
             <button
                 onClick={acceptInvite}
-                disabled={status !== 'linked' || inviteStatus === 'loading' || !repoFullName.trim()}
+                disabled={status !== 'linked' || inviteStatus === 'loading' || !repoName.trim()}
             >
                 {inviteStatus === 'loading' ? 'Accepting…' : 'Accept invite'}
             </button>

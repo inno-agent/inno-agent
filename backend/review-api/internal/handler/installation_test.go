@@ -18,6 +18,9 @@ type fakeStore struct {
 	err                  error
 	lastGitFlameUsername string
 	lastUserID           string
+
+	getUsername string
+	getErr      error
 }
 
 func (f *fakeStore) Upsert(_ context.Context, gitflameUsername, userID string) error {
@@ -27,6 +30,13 @@ func (f *fakeStore) Upsert(_ context.Context, gitflameUsername, userID string) e
 	f.lastGitFlameUsername = gitflameUsername
 	f.lastUserID = userID
 	return nil
+}
+
+func (f *fakeStore) GetGitFlameUsername(_ context.Context, _ string) (string, error) {
+	if f.getErr != nil {
+		return "", f.getErr
+	}
+	return f.getUsername, nil
 }
 
 type fakeDelegationGranter struct {
@@ -52,12 +62,20 @@ func setupRouter(h *InstallationHandler, userID string) *chi.Mux {
 		r.Use(withUserID(userID))
 	}
 	r.Post("/api/v1/installations", h.Create)
+	r.Get("/api/v1/installations/me", h.Get)
 	return r
 }
 
 func postInstall(r *chi.Mux, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/installations", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func getInstall(r *chi.Mux) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/installations/me", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
@@ -104,5 +122,35 @@ func TestInstallation_MissingUsername_400(t *testing.T) {
 	rec := postInstall(r, `{"gitflame_username":""}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestInstallationGet_NoUserID_401(t *testing.T) {
+	h := NewInstallationHandler(&fakeStore{}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
+	r := setupRouter(h, "")
+	rec := getInstall(r)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestInstallationGet_Linked_200(t *testing.T) {
+	h := NewInstallationHandler(&fakeStore{getUsername: "alice"}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
+	r := setupRouter(h, "user-uuid-1")
+	rec := getInstall(r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "alice") {
+		t.Fatalf("expected body to contain alice, got %s", rec.Body.String())
+	}
+}
+
+func TestInstallationGet_NotLinked_404(t *testing.T) {
+	h := NewInstallationHandler(&fakeStore{getErr: installation.ErrNotLinked}, &fakeDelegationGranter{}, "review-consumer", zap.NewNop())
+	r := setupRouter(h, "user-uuid-1")
+	rec := getInstall(r)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }

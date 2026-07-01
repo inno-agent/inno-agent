@@ -1,15 +1,37 @@
-import { useState } from 'react'
-import { acceptGitFlameInvite, linkGitFlameUsername } from '@/api/consent'
+import { useEffect, useState } from 'react'
+import { acceptGitFlameInvite, getLinkedGitFlameUsername, linkGitFlameUsername } from '@/api/consent'
 
-type Status = 'idle' | 'loading' | 'linked' | 'taken' | 'error'
+type Status = 'checking' | 'idle' | 'loading' | 'linked' | 'taken' | 'error'
 type InviteStatus = 'idle' | 'loading' | 'accepted' | 'error'
 
 export default function OnboardingPage() {
     const [username, setUsername] = useState('')
-    const [status, setStatus] = useState<Status>('idle')
+    const [status, setStatus] = useState<Status>('checking')
 
     const [repoName, setRepoName] = useState('')
     const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle')
+
+    // Restore onboarding state on mount so a page reload doesn't force
+    // re-entering the username that's already linked server-side.
+    useEffect(() => {
+        let cancelled = false
+        getLinkedGitFlameUsername()
+            .then((linked) => {
+                if (cancelled) return
+                if (linked) {
+                    setUsername(linked)
+                    setStatus('linked')
+                } else {
+                    setStatus('idle')
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setStatus('idle')
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [])
 
     async function submit() {
         const trimmed = username.trim()
@@ -56,12 +78,15 @@ export default function OnboardingPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="your-gitflame-username"
-                    disabled={status === 'loading' || status === 'linked'}
+                    disabled={status === 'checking' || status === 'loading' || status === 'linked'}
                 />
             </div>
 
             {status !== 'linked' && (
-                <button onClick={submit} disabled={status === 'loading' || !username.trim()}>
+                <button
+                    onClick={submit}
+                    disabled={status === 'checking' || status === 'loading' || !username.trim()}
+                >
                     {status === 'loading' ? 'Linking…' : 'Link account'}
                 </button>
             )}

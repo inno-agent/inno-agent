@@ -41,6 +41,7 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *Installation
 		r.Post("/review", reviewH.Review)
 		if installH != nil {
 			r.Post("/installations", installH.Create)
+			r.Get("/installations/me", installH.Get)
 		}
 		if inviteH != nil {
 			r.Post("/invitations/accept", inviteH.AcceptInvite)

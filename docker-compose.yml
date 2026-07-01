@@ -24,7 +24,7 @@ x-authentik: &authentik
   image: ${AUTHENTIK_IMAGE}
   restart: unless-stopped
   env_file:
-    - .env
+    - ${ENV_FILE:-.env}
   environment:
     AUTHENTIK_POSTGRESQL__HOST: postgres
     AUTHENTIK_POSTGRESQL__USER: authentik
@@ -60,7 +60,7 @@ services:
     image: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}
     ports:
       - "80:80"
       - "443:443"

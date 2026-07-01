@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ENV_FILE="${ENV_FILE:-$HOME/.env.innoagent}"
+export ENV_FILE="${ENV_FILE:-$HOME/.env.innoagent}"
 TAG="${TAG:?TAG env var required (image tag to deploy, e.g. a short git SHA)}"
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -40,12 +40,6 @@ else
         -subj "/CN=$AUTH_DOMAIN" \
         -addext "subjectAltName=DNS:$AUTH_DOMAIN,DNS:auth.$AUTH_DOMAIN,DNS:review.$AUTH_DOMAIN"
 fi
-
-echo "==> linking .env -> $ENV_FILE"
-# `proxy` and the authentik services read `env_file: - .env` (a literal path
-# in docker-compose.yml, separate from --env-file which only covers ${VAR}
-# substitution) — symlink so they see the same prod values.
-ln -sf "$ENV_FILE" .env
 
 echo "==> setting TAG=$TAG in $ENV_FILE"
 if grep -q '^TAG=' "$ENV_FILE"; then

@@ -43,7 +43,8 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer func() { _ = logger.Sync() }()
 
-	logger.Info("starting InnoAgent orchestrator",
+	logger.Info(
+		"starting InnoAgent orchestrator",
 		zap.String("ollama_base_url", cfg.BaseURL),
 		zap.String("model", cfg.Model),
 		zap.String("api_port", cfg.ServerPort),
@@ -57,12 +58,14 @@ func main() {
 	provider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.Model),
+		llm.WithAPIKey(cfg.APIKey),
 	)
 
 	routerProvider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.RouterModel),
 		llm.WithTemperature(0),
+		llm.WithAPIKey(cfg.APIKey),
 	)
 
 	routes := make([]orchestrator.RouteInfo, len(cfg.Models))

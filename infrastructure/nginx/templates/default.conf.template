@@ -110,9 +110,11 @@ server {
 
     add_header X-Correlation-ID $correlation_id always;
 
-    # JWKS is public key material fetched cross-origin by the browser OIDC
-    # client. Force exactly one CORS header (hide authentik's, if any).
-    location ~ ^/application/o/[^/]+/jwks/$ {
+    # JWKS and the OIDC discovery document are public, fetched cross-origin by
+    # the browser OIDC client (chat/review live on their own ports now, so
+    # this really is cross-origin). Force exactly one CORS header (hide
+    # authentik's, if any).
+    location ~ ^/application/o/[^/]+/(jwks/|\.well-known/openid-configuration)$ {
         set $upstream authentik-server:9000;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;

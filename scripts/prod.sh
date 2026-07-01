@@ -41,6 +41,12 @@ else
         -addext "subjectAltName=DNS:$AUTH_DOMAIN,DNS:auth.$AUTH_DOMAIN,DNS:review.$AUTH_DOMAIN"
 fi
 
+echo "==> linking .env -> $ENV_FILE"
+# `proxy` and the authentik services read `env_file: - .env` (a literal path
+# in docker-compose.yml, separate from --env-file which only covers ${VAR}
+# substitution) — symlink so they see the same prod values.
+ln -sf "$ENV_FILE" .env
+
 echo "==> setting TAG=$TAG in $ENV_FILE"
 if grep -q '^TAG=' "$ENV_FILE"; then
     sed -i "s/^TAG=.*/TAG=$TAG/" "$ENV_FILE"

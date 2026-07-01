@@ -35,19 +35,9 @@ entries:
         ]
       redirect_uris:
         - matching_mode: strict
-          url:
-            !Format [
-              "%s://%s/callback",
-              !Env [APP_SCHEME, https],
-              !Env [AUTH_DOMAIN, localhost],
-            ]
+          url: !Env [APP_CALLBACK_URL, "https://localhost/callback"]
         - matching_mode: strict
-          url:
-            !Format [
-              "%s://review.%s/callback",
-              !Env [APP_SCHEME, https],
-              !Env [AUTH_DOMAIN, localhost],
-            ]
+          url: !Env [REVIEW_CALLBACK_URL, "https://review.localhost:8443/callback"]
       property_mappings:
         - !Find [
             authentik_providers_oauth2.scopemapping,

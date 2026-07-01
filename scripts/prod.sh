@@ -33,12 +33,20 @@ if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
 else
     AUTH_DOMAIN="$(grep -m1 '^AUTH_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)"
     : "${AUTH_DOMAIN:?AUTH_DOMAIN not set in $ENV_FILE}"
-    echo "==> generating self-signed TLS cert for $AUTH_DOMAIN / auth.$AUTH_DOMAIN / review.$AUTH_DOMAIN"
+    # Auth/review/chat now share one host, split by port — not by subdomain —
+    # so the cert only needs to cover $AUTH_DOMAIN itself. Bare IPs need an
+    # IP: SAN (browsers won't match a DNS: SAN against a literal IP).
+    if [[ "$AUTH_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        SAN="IP:$AUTH_DOMAIN"
+    else
+        SAN="DNS:$AUTH_DOMAIN"
+    fi
+    echo "==> generating self-signed TLS cert for $AUTH_DOMAIN"
     mkdir -p "$CERT_DIR"
     openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
         -keyout "$CERT_DIR/privkey.pem" -out "$CERT_DIR/fullchain.pem" \
         -subj "/CN=$AUTH_DOMAIN" \
-        -addext "subjectAltName=DNS:$AUTH_DOMAIN,DNS:auth.$AUTH_DOMAIN,DNS:review.$AUTH_DOMAIN"
+        -addext "subjectAltName=$SAN"
 fi
 
 echo "==> setting TAG=$TAG in $ENV_FILE"

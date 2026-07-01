@@ -35,6 +35,7 @@ type SourceProvider interface {
 
 type CommentPoster interface {
 	PostPRComment(ctx context.Context, ref PRRef, body string) error
+	RemoveRequestedReviewer(ctx context.Context, ref PRRef, reviewer string) error
 }
 
 type Reviewer interface {

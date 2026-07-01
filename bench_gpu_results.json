@@ -1,0 +1,310 @@
+[
+  {
+    "model": "qwen2.5-coder:32b",
+    "phase": "direct",
+    "tests": {
+      "cold_start": {
+        "wall_time": 14.238058531000206,
+        "load_duration_s": 7.664361935,
+        "prompt_eval_duration_s": 0.115053,
+        "eval_duration_s": 6.226436,
+        "total_duration_s": 14.013380027,
+        "prompt_eval_count": 58,
+        "eval_count": 256,
+        "response_length": 1013,
+        "tokens_per_sec": 41.115013468379026,
+        "ttft_s": 7.779414934999999
+      },
+      "warm_baseline": {
+        "wall_time": 7.664903835999212,
+        "load_duration_s": 0.472858321,
+        "prompt_eval_duration_s": 0.064894,
+        "eval_duration_s": 6.232987,
+        "total_duration_s": 6.776901773,
+        "prompt_eval_count": 58,
+        "eval_count": 256,
+        "response_length": 1037,
+        "tokens_per_sec": 41.07180072732383,
+        "ttft_s": 0.537752321
+      },
+      "gpu_baseline": {
+        "vram_bytes": 28467129220,
+        "vram_gb": 28.46712922,
+        "context_length": 32768
+      },
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "total_wall": 3.882102423998731,
+          "successes": 1,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 3.8796676649999426,
+          "p50_wall": 3.8796676649999426,
+          "p95_wall": 3.8796676649999426,
+          "max_wall": 3.8796676649999426,
+          "avg_tps": 41.15169446924441,
+          "total_tokens": 128,
+          "throughput": 32.97182454762606,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 2,
+          "total_wall": 7.07455653299985,
+          "successes": 2,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 5.527143729999807,
+          "p50_wall": 7.07309053499921,
+          "p95_wall": 7.07309053499921,
+          "max_wall": 7.07309053499921,
+          "avg_tps": 41.171718354599534,
+          "total_tokens": 256,
+          "throughput": 36.18601375306947,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 5,
+          "total_wall": 16.692666662000192,
+          "successes": 5,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 10.341449371799536,
+          "p50_wall": 10.341106309999304,
+          "p95_wall": 16.691568027999892,
+          "max_wall": 16.691568027999892,
+          "avg_tps": 40.99134027772774,
+          "total_tokens": 640,
+          "throughput": 38.34018931540278,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 10,
+          "total_wall": 32.47497689299962,
+          "successes": 10,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 18.177853310999854,
+          "p50_wall": 19.76521010400029,
+          "p95_wall": 32.47133517600014,
+          "max_wall": 32.47133517600014,
+          "avg_tps": 40.904215105629326,
+          "total_tokens": 1280,
+          "throughput": 39.41496261005561,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 20,
+          "total_wall": 64.82445276599901,
+          "successes": 20,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 34.33445553769989,
+          "p50_wall": 35.952735796001434,
+          "p95_wall": 64.82013800499954,
+          "max_wall": 64.82013800499954,
+          "avg_tps": 40.70495849270318,
+          "total_tokens": 2560,
+          "throughput": 39.491270512394394,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 30,
+          "total_wall": 97.59306367700083,
+          "successes": 30,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 50.81884961476656,
+          "p50_wall": 52.429929089001234,
+          "p95_wall": 94.30928659200072,
+          "max_wall": 97.58098564099964,
+          "avg_tps": 40.47232841339114,
+          "total_tokens": 3840,
+          "throughput": 39.34705864659672,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 50,
+          "total_wall": 162.6174770180005,
+          "successes": 50,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 83.52599570090003,
+          "p50_wall": 85.08355708199997,
+          "p95_wall": 156.1559398440004,
+          "max_wall": 162.60427863400037,
+          "avg_tps": 40.37890785983717,
+          "total_tokens": 6400,
+          "throughput": 39.35616341711887,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        }
+      ],
+      "sustained": {
+        "target_rps": 50,
+        "actual_rps": 0.24578096690308696,
+        "completed": 8,
+        "errors": 0,
+        "duration": 32.54930640400016,
+        "avg_latency": 4.0686355931252365,
+        "p95_latency": 4.199536852000165
+      }
+    }
+  },
+  {
+    "model": "qwen2.5-coder:32b",
+    "phase": "stack",
+    "tests": {
+      "warm_baseline": {
+        "error": "<urlopen error [Errno 111] Connection refused>",
+        "wall_time": 0.0003293820009275805
+      },
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "total_wall": 0.0010449019991938258,
+          "successes": 0,
+          "errors": 1,
+          "error_rate": 100.0,
+          "error_types": {
+            "<urlopen error [Errno 111] Connection refused>": 1
+          }
+        }
+      ]
+    }
+  },
+  {
+    "model": "qwen2.5-coder:32b",
+    "phase": "breaking",
+    "tests": {
+      "breaking": [
+        {
+          "concurrency": 50,
+          "total_wall": 81.9846904090009,
+          "successes": 50,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 42.51727950803983,
+          "p50_wall": 43.3110184770012,
+          "p95_wall": 78.74827148700024,
+          "max_wall": 81.96791604499958,
+          "avg_tps": 40.73609391591949,
+          "total_tokens": 3200,
+          "throughput": 39.03167754901566,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 75,
+          "total_wall": 121.96502659399994,
+          "successes": 75,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 62.49806541605336,
+          "p50_wall": 62.443038106999666,
+          "p95_wall": 117.1478195159998,
+          "max_wall": 121.94537021399992,
+          "avg_tps": 40.715180754182754,
+          "total_tokens": 4800,
+          "throughput": 39.35554424120575,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 100,
+          "total_wall": 163.3388727670008,
+          "successes": 100,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 83.76418724061999,
+          "p50_wall": 84.57128597600058,
+          "p95_wall": 156.87317657300082,
+          "max_wall": 163.30715185400004,
+          "avg_tps": 40.72465688464889,
+          "total_tokens": 6400,
+          "throughput": 39.18234460408855,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 150,
+          "total_wall": 245.562486892999,
+          "successes": 150,
+          "errors": 0,
+          "error_rate": 0.0,
+          "avg_wall": 125.80792522958002,
+          "p50_wall": 126.65788936700119,
+          "p95_wall": 234.28932449199965,
+          "max_wall": 245.52079795099962,
+          "avg_tps": 40.713207079864084,
+          "total_tokens": 9600,
+          "throughput": 39.09391911388765,
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        },
+        {
+          "concurrency": 200,
+          "total_wall": 302.59897660099887,
+          "successes": 184,
+          "errors": 16,
+          "error_rate": 8.0,
+          "avg_wall": 154.37171675241845,
+          "p50_wall": 155.2351625150004,
+          "p95_wall": 286.9868469760004,
+          "max_wall": 302.563287070001,
+          "avg_tps": 40.708451079842696,
+          "total_tokens": 11776,
+          "throughput": 38.91619242165384,
+          "error_types": {
+            "The read operation timed out": 3,
+            "HTTP 504": 13
+          },
+          "gpu": {
+            "vram_bytes": 28467129220,
+            "vram_gb": 28.46712922,
+            "context_length": 32768
+          }
+        }
+      ]
+    }
+  }
+]

@@ -242,8 +242,9 @@ services:
       orchestrator:
         condition: service_started
 
-  # ─── Ollama (LLM runtime) ─────────────────────────────────────────────────
+  # ─── Ollama (LLM runtime) — local profile only ───────────────────────────
   ollama:
+    profiles: ["local"]
     image: ollama/ollama:latest
     restart: unless-stopped
     networks:
@@ -263,14 +264,15 @@ services:
       retries: 5
       start_period: 30s
 
-  # ─── Pull models on first boot ────────────────────────────────────────────
+  # ─── Pull models — local profile (pulls to local Ollama) ─────────────────
   ollama-pull:
+    profiles: ["local"]
     image: curlimages/curl:latest
     networks:
       - innoagent
     environment:
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_API_KEY: ""
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
       OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
@@ -288,6 +290,29 @@ services:
       start_period: 120s
     restart: "no"
 
+  # ─── Pull models — GPU profile (pulls to remote Ollama) ──────────────────
+  ollama-pull-remote:
+    profiles: ["gpu"]
+    image: curlimages/curl:latest
+    networks:
+      - innoagent
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+      ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+      OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
+    entrypoint: ["sh", "/scripts/ollama-pull.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "sh", "/scripts/ollama-pull.sh", "healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    restart: "no"
+
   # ─── AI Orchestrator ──────────────────────────────────────────────────────
   orchestrator:
     build:
@@ -297,16 +322,11 @@ services:
     networks:
       - innoagent
     environment:
-      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
-    depends_on:
-      ollama:
-        condition: service_healthy
-      ollama-pull:
-        condition: service_completed_successfully
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:

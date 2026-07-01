@@ -64,6 +64,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
+      - "9443:9443"
     networks:
       - innoagent
     volumes:
@@ -150,7 +152,7 @@ services:
     environment:
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
-      OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
+      OIDC_ISSUER: "${AUTH_ISSUER_URL:-https://auth.localhost}/application/o/inno-agent/"
       OIDC_CLIENT_ID: "inno-agent-web"
       OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
       # Refresh-token TTL for the generic /refresh flow (default 720h).

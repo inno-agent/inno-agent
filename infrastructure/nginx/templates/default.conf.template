@@ -94,11 +94,11 @@ server {
 }
 
 # ─── Authentik entrypoint (TLS, self-signed) ────────────────────────────────
-# Same 443 listener, routed by SNI/Host. No http2: websocket proxying
-# requires HTTP/1.1.
+# Own port — no domain/subdomain needed to reach this over a bare IP.
+# No http2: websocket proxying requires HTTP/1.1.
 server {
-    listen 443 ssl;
-    server_name auth.${AUTH_DOMAIN};
+    listen 9443 ssl default_server;
+    server_name _;
     resolver 127.0.0.11 valid=10s ipv6=off;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
@@ -136,10 +136,11 @@ server {
 }
 
 # ─── Review entrypoint (TLS, self-signed) ──────────────────────────────────
+# Own port — no domain/subdomain needed to reach this over a bare IP.
 server {
-    listen 443 ssl;
+    listen 8443 ssl default_server;
     http2 on;
-    server_name review.${AUTH_DOMAIN};
+    server_name _;
     resolver 127.0.0.11 valid=10s ipv6=off;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;

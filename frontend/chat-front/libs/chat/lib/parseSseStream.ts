@@ -6,13 +6,6 @@ interface AsyncQueueItem<T> {
     value?: T
 }
 
-const debugSseEvent = (event: ChatStreamEvent) => {
-    console.log('[chat:sse] received', {
-        type: event.type,
-        at: new Date().toISOString(),
-        chunkLength: event.type === 'chunk' ? event.content.length : undefined,
-    })
-}
 
 export async function* parseSseStream(
     response: Response,
@@ -62,13 +55,12 @@ export async function* parseSseStream(
                     ...payload,
                 } as ChatStreamEvent
 
-                debugSseEvent(streamEvent)
                 pushItem({
                     done: false,
                     value: streamEvent,
                 })
-            } catch (error) {
-                console.error('Failed to parse SSE event:', error)
+            } catch {
+                // Failed to parse SSE event
             }
         },
     })

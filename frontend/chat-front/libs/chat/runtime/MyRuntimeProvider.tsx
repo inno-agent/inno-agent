@@ -72,11 +72,10 @@ export function MyRuntimeProvider({
                 })
             } catch (error) {
                 if (error instanceof DOMException && error.name === 'AbortError') {
-                    console.log('Message generation cancelled')
+                    // Message generation cancelled
                 } else if (error instanceof Error && error.name === 'AbortError') {
-                    console.log('Message generation cancelled')
+                    // Message generation cancelled
                 } else {
-                    console.error('Error:', error)
                     setMessages((prev) => appendAssistantError(prev))
                 }
             } finally {

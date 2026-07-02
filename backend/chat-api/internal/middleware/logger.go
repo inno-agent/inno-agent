@@ -33,7 +33,8 @@ func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
 	return context.WithValue(ctx, LoggerKey, logger)
 }
 
-// LoggerFromContext returns the request logger, enriched with correlation_id when present.
+// LoggerFromContext returns the request logger set by the Logger middleware,
+// already enriched with correlation_id, or a no-op logger if absent.
 func LoggerFromContext(ctx context.Context) *zap.Logger {
 	log, _ := ctx.Value(LoggerKey).(*zap.Logger)
 	if log == nil {

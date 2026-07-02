@@ -38,9 +38,11 @@ func NewChatService(
 
 // ListChats returns a paginated list of chats belonging to the given user.
 func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error) {
+	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+
 	chats, total, err := s.chatRepo.ListByUser(ctx, userID, limit, offset)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error(
+		log.Error(
 			"failed to list chats",
 			zap.String("function", "ListChats"),
 			zap.Error(err),
@@ -66,9 +68,11 @@ func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offse
 
 // GetHistory returns paginated message history for the given chat, scoped to the user.
 func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.MessageDTO, int, error) {
+	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+
 	msgs, total, err := s.messageRepo.ListByChat(ctx, userID, chatID, limit, offset)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error(
+		log.Error(
 			"failed to get history",
 			zap.String("function", "GetHistory"),
 			zap.Error(err),
@@ -90,6 +94,8 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 
 // Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
+	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+
 	if chatID == uuid.Nil {
 		title := s.generateTitle(ctx, message)
 		chat, err := s.chatRepo.Create(ctx, userID, &title)
@@ -113,7 +119,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 	}
 
 	if err := s.chatRepo.UpdateTimestamp(ctx, chatID); err != nil {
-		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Warn("failed to update chat timestamp after user message",
+		log.Warn("failed to update chat timestamp after user message",
 			zap.String("function", "Stream"), zap.Error(err))
 	}
 
@@ -136,7 +142,6 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 	}
 
 	outCh := make(chan string, 4)
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
 
 	//nolint:gosec // context.Background intentional: save must complete even if request context is cancelled
 	go func() {
@@ -207,6 +212,8 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 }
 
 func (s *ChatService) generateTitle(ctx context.Context, message string) string {
+	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+
 	titleCtx := context.WithValue(context.Background(), middleware.TokenKey, middleware.TokenFromContext(ctx))
 	titleCtx, cancel := context.WithTimeout(titleCtx, 15*time.Second)
 	defer cancel()
@@ -218,7 +225,7 @@ func (s *ChatService) generateTitle(ctx context.Context, message string) string 
 		},
 	}, "")
 	if err != nil {
-		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Warn(
+		log.Warn(
 			"failed to generate title, using fallback",
 			zap.String("function", "generateTitle"),
 			zap.Error(err),

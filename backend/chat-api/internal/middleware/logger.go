@@ -13,7 +13,16 @@ const LoggerKey contextKey = "logger"
 func Logger(base *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), LoggerKey, base)
+			ctx := r.Context()
+
+			id := CorrelationIDFromContext(ctx)
+			
+			enrichedLogger := base
+			if id != "" {
+				enrichedLogger = base.With(zap.String("correlation_id", id))
+			}
+
+			ctx = context.WithValue(r.Context(), LoggerKey, enrichedLogger)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -30,8 +39,6 @@ func LoggerFromContext(ctx context.Context) *zap.Logger {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	if id := CorrelationIDFromContext(ctx); id != "" {
-		return log.With(zap.String("correlation_id", id))
-	}
+
 	return log
 }

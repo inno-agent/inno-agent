@@ -14,8 +14,8 @@ import (
 // (dev mode); in that case the /installations and /invitations/accept routes
 // are not registered.
 func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string, logger *zap.Logger) {
-	r.Use(middleware.Logger(logger))
 	r.Use(middleware.CorrelationID)
+	r.Use(middleware.Logger(logger))
 	r.Use(middleware.RequestLogger())
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

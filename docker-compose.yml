@@ -38,7 +38,7 @@ x-authentik: &authentik
     AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
   volumes:
     - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
-    - authentik-media:/media
+    - ./infrastructure/authentik/branding:/media/public/branding
   healthcheck:
     test: ["CMD", "ak", "healthcheck"]
     interval: 30s

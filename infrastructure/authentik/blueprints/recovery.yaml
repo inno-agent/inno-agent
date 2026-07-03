@@ -1,0 +1,196 @@
+# Recovery flow for inactive unverified users and password reset for active users.
+# Linked from login page via brand flow_recovery and identification recovery_flow.
+version: 1
+metadata:
+  name: inno-agent recovery
+  labels:
+    blueprints.goauthentik.io/description: Recovery and email verification resend
+entries:
+  # ─── Flow ───────────────────────────────────────────────────────────────
+  - model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: inno-agent-recovery
+    attrs:
+      name: inno-agent-recovery
+      title: Восстановление доступа InnoAgent
+      designation: recovery
+      authentication: require_unauthenticated
+      denied_action: message_continue
+
+  # ─── Prompt fields ──────────────────────────────────────────────────────
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-recovery-password
+    attrs:
+      field_key: password
+      label: Новый пароль
+      type: password
+      required: true
+      placeholder: Пароль
+      order: 0
+  - model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: inno-agent-recovery-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Новый пароль (ещё раз)
+      type: password
+      required: true
+      placeholder: Пароль (ещё раз)
+      order: 1
+
+  # ─── Stages ─────────────────────────────────────────────────────────────
+  - model: authentik_stages_identification.identificationstage
+    state: present
+    identifiers:
+      name: inno-agent-recovery-identification
+    attrs:
+      user_fields:
+        - email
+        - username
+
+  - model: authentik_stages_email.emailstage
+    state: present
+    identifiers:
+      name: inno-agent-recovery-email
+    attrs:
+      use_global_settings: true
+      activate_user_on_success: true
+      subject: Восстановление аккаунта InnoAgent
+      template: email/password_reset.html
+      token_expiry: minutes=30
+      recovery_max_attempts: 5
+      recovery_cache_timeout: minutes=5
+
+  - model: authentik_stages_prompt.promptstage
+    state: present
+    identifiers:
+      name: inno-agent-recovery-password-prompt
+    attrs:
+      fields:
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-recovery-password],
+          ]
+        - !Find [
+            authentik_stages_prompt.prompt,
+            [name, inno-agent-recovery-password-repeat],
+          ]
+      validation_policies:
+        - !Find [
+            authentik_policies_password.passwordpolicy,
+            [name, inno-agent-password-policy],
+          ]
+
+  - model: authentik_stages_user_write.userwritestage
+    state: present
+    identifiers:
+      name: inno-agent-recovery-user-write
+    attrs:
+      user_creation_mode: never_create
+
+  # ─── Flow bindings ──────────────────────────────────────────────────────
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+      order: 10
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_identification.identificationstage,
+          [name, inno-agent-recovery-identification],
+        ]
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+      policy_engine_mode: any
+      invalid_response_action: retry
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+      order: 20
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_email.emailstage,
+          [name, inno-agent-recovery-email],
+        ]
+      evaluate_on_plan: true
+      re_evaluate_policies: true
+      policy_engine_mode: any
+      invalid_response_action: retry
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+      order: 30
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_prompt.promptstage,
+          [name, inno-agent-recovery-password-prompt],
+        ]
+      evaluate_on_plan: true
+      re_evaluate_policies: false
+      policy_engine_mode: any
+      invalid_response_action: retry
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+      order: 40
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_user_write.userwritestage,
+          [name, inno-agent-recovery-user-write],
+        ]
+      evaluate_on_plan: true
+      re_evaluate_policies: false
+      policy_engine_mode: any
+      invalid_response_action: retry
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+      order: 100
+    attrs:
+      stage:
+        !Find [
+          authentik_stages_user_login.userloginstage,
+          [name, default-authentication-login],
+        ]
+      evaluate_on_plan: true
+      re_evaluate_policies: false
+      policy_engine_mode: any
+      invalid_response_action: retry
+
+  # ─── Brand + login page links ───────────────────────────────────────────
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      domain: authentik-default
+    attrs:
+      flow_recovery:
+        !Find [authentik_flows.flow, [slug, inno-agent-recovery]]
+
+  - model: authentik_stages_identification.identificationstage
+    state: present
+    identifiers:
+      name: default-authentication-identification
+    attrs:
+      user_fields:
+        - username
+        - email
+      enrollment_flow:
+        !Find [authentik_flows.flow, [slug, inno-agent-enrollment]]
+      recovery_flow:
+        !Find [authentik_flows.flow, [slug, inno-agent-recovery]]

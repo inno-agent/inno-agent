@@ -9,11 +9,8 @@ entries:
       domain: auth.localhost
     attrs:
       logo: branding/logoIA.png
+      branding_default_flow_background: /media/public/branding/backgroundV0.jpg
       branding_custom_css: |
-        .pf-c-background-image {
-          --ak-flow-background: url("/media/public/branding/backgroundV0.jpg") !important;
-        }
-        
         .pf-c-brand img {
            display: none !important;
         }

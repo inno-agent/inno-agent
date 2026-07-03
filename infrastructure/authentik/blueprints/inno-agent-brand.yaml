@@ -3,11 +3,19 @@ version: 1
 metadata:
   name: inno-agent brand
 entries:
+  # Remove the default brand
+  - model: authentik_brands.brand
+    state: absent
+    identifiers:
+      domain: authentik-default
+
+  # Set the inno-agent brand as the default brand
   - model: authentik_brands.brand
     state: present
     identifiers:
-      domain: auth.localhost
+      domain: default
     attrs:
+      default: true
       logo: branding/logoIA.png
       branding_default_flow_background: /media/public/branding/backgroundV0.jpg
       branding_custom_css: |

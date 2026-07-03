@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/metrics"
+	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
@@ -68,12 +68,12 @@ func main() {
 		logger.Warn("REVIEW_DATABASE_DSN or REVIEW_REFRESH_ENC_KEY unset; /installations disabled")
 	}
 
-	metrics.Init("review-api")
+	telemetry.Init("review-api")
 
 	router := chi.NewRouter()
-	router.Use(metrics.ChiMiddleware("review-api"))
+	router.Use(telemetry.ChiMiddleware("review-api"))
 	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL)
-	router.Handle("/metrics", metrics.Handler())
+	router.Handle("/metrics", telemetry.Handler())
 
 	server := &http.Server{
 		Addr:         ":" + cfg.ServerPort,

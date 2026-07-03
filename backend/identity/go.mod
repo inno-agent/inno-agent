@@ -7,12 +7,12 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
-	github.com/inno-agent/inno-agent/backend/metrics v0.0.0
-	github.com/jackc/pgx/v5 v5.7.1
+	github.com/inno-agent/inno-agent/backend/pkg/telemetry v0.0.0
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/stretchr/testify v1.11.1
 )
 
-replace github.com/inno-agent/inno-agent/backend/metrics => ../metrics
+replace github.com/inno-agent/inno-agent/backend/pkg/telemetry => ../pkg/telemetry
 
 require (
 	github.com/MicahParks/jwkset v0.11.0 // indirect

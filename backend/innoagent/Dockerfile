@@ -1,10 +1,10 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
-COPY metrics ./metrics
+COPY pkg/telemetry ./pkg/telemetry
 
-WORKDIR /app/metrics
-COPY metrics/go.mod metrics/go.sum ./
+WORKDIR /app/pkg/telemetry
+COPY pkg/telemetry/go.mod pkg/telemetry/go.sum ./
 RUN go mod download
 
 WORKDIR /app/innoagent
@@ -15,7 +15,7 @@ RUN go mod download || true
 
 COPY innoagent/ .
 
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
     -o server \
     ./cmd/server

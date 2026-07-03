@@ -18,7 +18,7 @@ import (
 	"github.com/inno-agent/identity/internal/refresh"
 	"github.com/inno-agent/identity/internal/transport"
 	"github.com/inno-agent/identity/internal/user"
-	"github.com/inno-agent/inno-agent/backend/metrics"
+	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 )
 
 func main() {
@@ -66,17 +66,17 @@ func main() {
 
 	refreshRepo := refresh.NewRepository(pool)
 
-	metrics.Init("identity")
+	telemetry.Init("identity")
 
 	// HTTP server
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(metrics.GinMiddleware("identity"))
+	r.Use(telemetry.GinMiddleware("identity"))
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,
 		ClientID:  cfg.OIDCClientID,
 	}, refreshRepo, cfg.RefreshExpiry)
-	r.GET("/metrics", gin.WrapH(metrics.Handler()))
+	r.GET("/metrics", gin.WrapH(telemetry.Handler()))
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

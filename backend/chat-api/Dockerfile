@@ -1,10 +1,10 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
-COPY metrics ./metrics
+COPY pkg/telemetry ./pkg/telemetry
 
-WORKDIR /app/metrics
-COPY metrics/go.mod metrics/go.sum ./
+WORKDIR /app/pkg/telemetry
+COPY pkg/telemetry/go.mod pkg/telemetry/go.sum ./
 RUN go mod download
 
 WORKDIR /app/chat-api
@@ -13,7 +13,7 @@ RUN go mod download
 
 COPY chat-api/cmd ./cmd
 COPY chat-api/internal ./internal
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /chat-api ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /chat-api ./cmd/server
 
 
 FROM alpine:3.21

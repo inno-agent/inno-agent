@@ -1,0 +1,11 @@
+go 1.26.4
+
+use (
+	./chat-api
+	./identity
+	./innoagent
+	./pkg/telemetry
+	./review-api
+	./review-consumer
+	./review-webhook
+)

@@ -1,10 +1,10 @@
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
-COPY metrics ./metrics
+COPY pkg/telemetry ./pkg/telemetry
 
-WORKDIR /app/metrics
-COPY metrics/go.mod metrics/go.sum ./
+WORKDIR /app/pkg/telemetry
+COPY pkg/telemetry/go.mod pkg/telemetry/go.sum ./
 RUN go mod download
 
 WORKDIR /app/review-api
@@ -13,7 +13,7 @@ RUN go mod download
 
 COPY review-api/cmd ./cmd
 COPY review-api/internal ./internal
-RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /review-api ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /review-api ./cmd/server
 
 
 FROM alpine:3.21

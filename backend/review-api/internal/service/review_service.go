@@ -48,6 +48,8 @@ func NewReviewService(diffProvider domain.DiffProvider, llm domain.LLMProvider) 
 // ReviewPR returns an AI-generated markdown review for the given pull request.
 // When diff is non-empty it is used directly; otherwise the diff is fetched via DiffProvider.
 func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, modelName string) (string, error) {
+	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+
 	prID = strings.TrimSpace(prID)
 	if prID == "" {
 		return "", fmt.Errorf("ReviewPR: %w", domain.ErrValidation)
@@ -58,7 +60,7 @@ func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, 
 		var err error
 		diff, err = s.diffProvider.GetPRDiff(ctx, prID)
 		if err != nil {
-			middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error("failed to fetch PR diff", zap.String("pr_id", prID), zap.Error(err))
+			log.Error("failed to fetch PR diff", zap.String("pr_id", prID), zap.Error(err))
 			return "", fmt.Errorf("ReviewPR: fetch diff: %w", err)
 		}
 	}
@@ -76,7 +78,7 @@ func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, 
 
 	review, err := s.llm.Chat(ctx, messages, modelName)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).With(zap.String("layer", "service")).Error("failed to generate review", zap.String("pr_id", prID), zap.Error(err))
+		log.Error("failed to generate review", zap.String("pr_id", prID), zap.Error(err))
 		return "", fmt.Errorf("ReviewPR: llm chat: %w", err)
 	}
 

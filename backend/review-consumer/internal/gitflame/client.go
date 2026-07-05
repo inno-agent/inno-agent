@@ -180,6 +180,46 @@ func (c *Client) PostPRComment(ctx context.Context, ref domain.PRRef, body strin
 	return nil
 }
 
+// RemoveRequestedReviewer cancels a pending review request for reviewer on the PR,
+// so the bot can drop itself from the reviewer list once its review is posted.
+func (c *Client) RemoveRequestedReviewer(ctx context.Context, ref domain.PRRef, reviewer string) error {
+	reqURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/pulls/%d/requested_reviewers",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+		ref.Index,
+	)
+
+	payload, err := json.Marshal(map[string][]string{"reviewers": {reviewer}})
+	if err != nil {
+		return fmt.Errorf("gitflame: marshal remove reviewer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("gitflame: build remove reviewer request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitflame: remove reviewer request failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := fmt.Sprintf("gitflame: remove reviewer returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+		return fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+	}
+	return nil
+}
+
 func (c *Client) listPRFiles(ctx context.Context, repoBase string) ([]prFile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, repoBase+"/files", nil)
 	if err != nil {

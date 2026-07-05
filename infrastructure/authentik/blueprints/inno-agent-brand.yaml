@@ -1,0 +1,78 @@
+# Inno-agent brand: theme and background configuration
+version: 1
+metadata:
+  name: inno-agent brand
+entries:
+  # Remove the default brand
+  - model: authentik_brands.brand
+    state: absent
+    identifiers:
+      domain: authentik-default
+
+  # Set the inno-agent brand as the default brand
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      domain: default
+    attrs:
+      default: true
+      logo: branding/logoIA.png
+      branding_default_flow_background: /media/public/branding/backgroundV0.jpg
+      branding_custom_css: |
+        .pf-c-brand img {
+           display: none !important;
+        }
+  
+        .pf-c-brand {
+          background: url("/media/public/branding/logoIA.svg") no-repeat center;
+          background-size: contain;
+          width: clamp(150px, 50vw, 360px);
+          height: clamp(80px, 25vw, 180px);
+          margin: 0 auto;
+          display: block;
+        }
+
+        .pf-c-login__main {
+          border-radius: 24px;
+          background-color: #353535;
+          color: #EDEDED;
+        }
+
+        .pf-c-form-control {
+          margin-top: 8px;
+          padding: 8px 16px;
+          border-radius: 16px;
+          background-color: #282828;
+          border: none;
+        }
+
+        .pf-c-button.pf-m-primary.pf-m-block {
+          height: 40px;
+          border-radius: 16px;
+          background-color: #EDEDED;
+          color: #282828;
+        }
+
+        .pf-c-login__main-footer-band {
+          border-radius: 24px;
+          background-color: #282828;
+        }
+
+        .pf-c-list.pf-m-inline {
+          display: none !important;
+        }
+    
+        .pf-c-title.pf-m-3xl {
+          display: none !important;
+        }
+  
+        header.pf-c-login__main-header {
+          padding: 0 !important;
+          margin: 0 !important;
+          min-height: 0 !important;
+          height: 0 !important;
+        }
+        
+        pf-c-form__group.pf-m-action{
+          display: none !important;
+        }

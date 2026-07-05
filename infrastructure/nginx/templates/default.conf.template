@@ -4,6 +4,35 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Correlation ID: keep a sane client-provided value, otherwise fall back to
+# NGINX's generated request ID. This keeps logs searchable without trusting
+# arbitrary header content.
+map $http_x_correlation_id $correlation_id {
+    "~^[A-Za-z0-9._:-]{1,128}$" $http_x_correlation_id;
+    default                     $request_id;
+}
+
+# ─── Structured JSON Logging ────────────────────────────────────────────────
+log_format json_analytics escape=json '{'
+    '"time":"$time_iso8601",'
+    '"correlation_id":"$correlation_id",'
+    '"request_id":"$request_id",'
+    '"host":"$host",'
+    '"remote_addr":"$remote_addr",'
+    '"x_forwarded_for":"$proxy_add_x_forwarded_for",'
+    '"method":"$request_method",'
+    '"uri":"$request_uri",'
+    '"request":"$request",'
+    '"status":$status,'
+    '"body_bytes_sent":$body_bytes_sent,'
+    '"request_time":$request_time,'
+    '"upstream_addr":"$upstream_addr",'
+    '"upstream_status":"$upstream_status",'
+    '"upstream_response_time":"$upstream_response_time"'
+'}';
+
+access_log /var/log/nginx/access_json.log json_analytics;
+
 # ─── HTTP → HTTPS redirect ───────────────────────────────────────────────────
 server {
     listen 80;
@@ -11,28 +40,35 @@ server {
 }
 
 # ─── App entrypoint (TLS, self-signed) ─────────────────────────────────────
+# Own port — moved off 443 so Authentik (the OIDC issuer) can sit on the
+# default port instead, where it never needs a port in its own URLs.
 server {
-    listen 443 ssl default_server;
+    listen 9443 ssl;
     http2 on;
-    server_name ${AUTH_DOMAIN};
+    server_name _;
     resolver 127.0.0.11 valid=10s ipv6=off;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
+    # Expose the effective correlation ID back to clients.
+    add_header X-Correlation-ID $correlation_id always;
+    
     location /identity/v1 {
         set $upstream identity:8081;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
     location /api/v1 {
         set $upstream chat-api:8000;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
@@ -41,41 +77,50 @@ server {
     location /llm/ {
         set $upstream orchestrator:8080;
         rewrite ^/llm/(.*)$ /$1 break;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
 
     location / {
         set $upstream frontend:80;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 }
 
 # ─── Authentik entrypoint (TLS, self-signed) ────────────────────────────────
-# Same 443 listener, routed by SNI/Host. No http2: websocket proxying
-# requires HTTP/1.1.
+# Default port: Authentik builds its own absolute API/issuer URLs from the
+# Host header it receives — keeping it on the implicit default port means
+# that Host never carries a port suffix, so there's no port to get wrong.
+# No http2: websocket proxying requires HTTP/1.1.
 server {
-    listen 443 ssl;
-    server_name auth.${AUTH_DOMAIN};
+    listen 443 ssl default_server;
+    server_name ${AUTH_DOMAIN};
     resolver 127.0.0.11 valid=10s ipv6=off;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
-    # JWKS is public key material fetched cross-origin by the browser OIDC
-    # client. Force exactly one CORS header (hide authentik's, if any).
-    location ~ ^/application/o/[^/]+/jwks/$ {
+    add_header X-Correlation-ID $correlation_id always;
+
+    # JWKS and the OIDC discovery document are public, fetched cross-origin by
+    # the browser OIDC client (chat/review live on their own ports now, so
+    # this really is cross-origin). Force exactly one CORS header (hide
+    # authentik's, if any).
+    location ~ ^/application/o/[^/]+/(jwks/|\.well-known/openid-configuration)$ {
         set $upstream authentik-server:9000;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
         proxy_hide_header Access-Control-Allow-Origin;
         add_header Access-Control-Allow-Origin "*" always;
@@ -85,9 +130,10 @@ server {
         set $upstream authentik-server:9000;
         proxy_http_version 1.1;
         # authentik builds the OIDC issuer from Host + X-Forwarded-Proto.
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
         proxy_buffering off;
@@ -96,28 +142,41 @@ server {
 }
 
 # ─── Review entrypoint (TLS, self-signed) ──────────────────────────────────
+# Own port — no domain/subdomain needed to reach this over a bare IP.
 server {
-    listen 443 ssl;
+    listen 8443 ssl default_server;
     http2 on;
-    server_name review.${AUTH_DOMAIN};
+    server_name _;
     resolver 127.0.0.11 valid=10s ipv6=off;
 
     ssl_certificate /etc/nginx/certs/fullchain.pem;
     ssl_certificate_key /etc/nginx/certs/privkey.pem;
 
+    add_header X-Correlation-ID $correlation_id always;
+
+    # SECURITY: the bot-token mint endpoint re-signs aicore tokens impersonating
+    # any onboarded user. It must be reachable ONLY on the internal docker
+    # network (the review-consumer calls it directly), never via the public
+    # ingress. An exact-match location outranks the /identity/v1 prefix below.
+    location = /identity/v1/bot-token {
+        return 403;
+    }
+
     location /identity/v1 {
         set $upstream identity:8081;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
     location /api/v1 {
         set $upstream review-api:8001;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
@@ -126,9 +185,10 @@ server {
     location /llm/ {
         set $upstream orchestrator:8080;
         rewrite ^/llm/(.*)$ /$1 break;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
         proxy_pass http://$upstream;
     }
@@ -137,17 +197,19 @@ server {
     # the service itself validates the auth header.
     location = /hooks/gitflame {
         set $upstream review-webhook:8002;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 
     location / {
         set $upstream review-front:80;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Correlation-ID $correlation_id;
         proxy_pass http://$upstream;
     }
 }

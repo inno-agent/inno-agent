@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"innoagent/internal/correlation"
 )
 
 type Client struct {
@@ -34,6 +36,7 @@ func (c *Client) Validate(ctx context.Context, token string) (string, error) {
 		return "", fmt.Errorf("auth: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	correlation.SetHeader(ctx, req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

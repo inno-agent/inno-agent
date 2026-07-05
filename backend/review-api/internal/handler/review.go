@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
 
 type reviewRequest struct {
@@ -23,12 +24,11 @@ type reviewResponse struct {
 // ReviewHandler handles HTTP requests for AI pull request reviews.
 type ReviewHandler struct {
 	service domain.ReviewService
-	logger  *zap.Logger
 }
 
-// NewReviewHandler creates a ReviewHandler with the given service and logger.
-func NewReviewHandler(service domain.ReviewService, logger *zap.Logger) *ReviewHandler {
-	return &ReviewHandler{service: service, logger: logger}
+// NewReviewHandler creates a ReviewHandler with the given service.
+func NewReviewHandler(service domain.ReviewService) *ReviewHandler {
+	return &ReviewHandler{service: service}
 }
 
 // Review accepts a POST request with a PR identifier and returns a markdown review.
@@ -37,7 +37,7 @@ func (h *ReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 
 	var req reviewRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.logger.Error("invalid request body", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("invalid request body", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -55,7 +55,7 @@ func (h *ReviewHandler) Review(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrDiffUnavailable):
 			writeError(w, http.StatusBadGateway, "failed to fetch PR diff from upstream")
 		default:
-			h.logger.Error("failed to review PR", zap.String("pr_id", req.PRID), zap.Error(err))
+			middleware.LoggerFromContext(ctx).Error("failed to review PR", zap.String("pr_id", req.PRID), zap.Error(err))
 			writeError(w, http.StatusInternalServerError, "failed to generate review")
 		}
 		return

@@ -13,6 +13,8 @@ volumes:
   prometheus-data:
   grafana-data:
   alertmanager-data:
+  loki-data:
+  nginx-logs:
 
 # ─── Secrets ────────────────────────────────────────────────────────────────
 secrets:
@@ -24,7 +26,7 @@ x-authentik: &authentik
   image: ${AUTHENTIK_IMAGE}
   restart: unless-stopped
   env_file:
-    - .env
+    - ${ENV_FILE:-.env}
   environment:
     AUTHENTIK_POSTGRESQL__HOST: postgres
     AUTHENTIK_POSTGRESQL__USER: authentik
@@ -38,7 +40,7 @@ x-authentik: &authentik
     AUTHENTIK_BOOTSTRAP_EMAIL: admin@localhost
   volumes:
     - ./infrastructure/authentik/blueprints:/blueprints/custom:ro
-    - authentik-media:/media
+    - ./infrastructure/authentik/branding:/media/public/branding
   healthcheck:
     test: ["CMD", "ak", "healthcheck"]
     interval: 30s
@@ -60,15 +62,18 @@ services:
     image: ${NGINX_IMAGE:-nginx:alpine}
     restart: unless-stopped
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}
     ports:
       - "80:80"
       - "443:443"
+      - "8443:8443"
+      - "9443:9443"
     networks:
       - innoagent
     volumes:
       - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
       - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
+      - nginx-logs:/var/log/nginx # <-- Том для логов Nginx
     depends_on:
       authentik-server:
         condition: service_healthy
@@ -123,28 +128,48 @@ services:
     <<: *authentik
     command: worker
 
-  # ─── Identity service (JWT issuer + user context) ─────────────────────────
-  identity:
-    build:
-      context: ./backend
-      dockerfile: identity/Dockerfile
-    restart: unless-stopped
-    environment:
-      METRICS_ENV: local
-      AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
-      AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
-      OIDC_ISSUER: "${AUTH_SCHEME:-https}://auth.${AUTH_DOMAIN:-localhost}/application/o/inno-agent/"
-      OIDC_CLIENT_ID: "inno-agent-web"
-      OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
-      # Refresh-token TTL for the generic /refresh flow (default 720h).
-      AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
-    secrets:
-      - identity_rsa_key
+  # ─── Identity DB migrations ───────────────────────────────────────────────
+  identity-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/identity/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      - up
     networks:
       - innoagent
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
+
+  # ─── Identity service (JWT issuer + user context) ─────────────────────────
+  identity:
+    build:
+      context: ./backend/identity
+      dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/identity:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      METRICS_ENV: local
+      AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
+      AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
+      OIDC_ISSUER: "${AUTH_ISSUER_URL:-https://auth.localhost}/application/o/inno-agent/"
+      OIDC_CLIENT_ID: "inno-agent-web"
+      OIDC_JWKS_URL: "http://authentik-server:9000/application/o/inno-agent/jwks/"
+      # Refresh-token TTL for the generic /refresh flow (default 720h).
+      AUTH_REFRESH_EXPIRY: ${AUTH_REFRESH_EXPIRY:-720h}
+      SEED_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      SEED_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      SEED_CLIENT_NAME: PR Review Bot
+    secrets:
+      - identity_rsa_key
+    networks:
+      - innoagent
+    depends_on:
+      identity-migrate:
+        condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
 
@@ -169,6 +194,7 @@ services:
     build:
       context: ./backend
       dockerfile: chat-api/Dockerfile
+    image: ghcr.io/inno-agent/chat-api:${TAG:-latest}
     restart: unless-stopped
     environment:
       METRICS_ENV: local
@@ -186,14 +212,31 @@ services:
       orchestrator:
         condition: service_started
 
+  # ─── Review API DB migrations ────────────────────────────────────────────
+  review-api-migrate:
+    image: migrate/migrate:latest
+    volumes:
+      - ./backend/review-api/internal/db/migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      - up
+    networks:
+      - innoagent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ─── Review API ────────────────────────────────────────────────────────────
   review-api:
     build:
       context: ./backend
       dockerfile: review-api/Dockerfile
+    image: ghcr.io/inno-agent/review-api:${TAG:-latest}
     restart: unless-stopped
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       METRICS_ENV: local
       ORCHESTRATOR_URL: http://orchestrator:8080
@@ -202,19 +245,20 @@ services:
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       SERVER_PORT: "8001"
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
+      REVIEW_CONSUMER_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
     networks:
       - innoagent
     depends_on:
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       identity:
         condition: service_started
       orchestrator:
         condition: service_started
 
-  # ─── Ollama (LLM runtime) ─────────────────────────────────────────────────
+  # ─── Ollama (LLM runtime) — local profile only ───────────────────────────
   ollama:
+    profiles: ["local"]
     image: ollama/ollama:latest
     restart: unless-stopped
     networks:
@@ -229,24 +273,58 @@ services:
       OLLAMA_MAX_QUEUE: ${OLLAMA_MAX_QUEUE:-2048}
     healthcheck:
       test: ["CMD", "ollama", "list"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
       start_period: 30s
 
-  # ─── Pull models on first boot ────────────────────────────────────────────
+  # ─── Pull models — local profile (pulls to local Ollama) ─────────────────
   ollama-pull:
-    image: ollama/ollama:latest
+    profiles: ["local"]
+    image: curlimages/curl:latest
     networks:
       - innoagent
     environment:
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_API_KEY: ""
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
-    entrypoint: ["sh", "-c", "for m in $$LLM_MODELS $$ROUTER_MODEL; do ollama pull $$m; done"]
+      OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
+    entrypoint: ["sh", "/scripts/ollama-pull.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
     depends_on:
       ollama:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "sh", "/scripts/ollama-pull.sh", "healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    restart: "no"
+
+  # ─── Pull models — GPU profile (pulls to remote Ollama) ──────────────────
+  ollama-pull-remote:
+    profiles: ["gpu"]
+    image: curlimages/curl:latest
+    networks:
+      - innoagent
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+      ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+      OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
+    entrypoint: ["sh", "/scripts/ollama-pull.sh"]
+    volumes:
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "sh", "/scripts/ollama-pull.sh", "healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
     restart: "no"
 
   # ─── AI Orchestrator ──────────────────────────────────────────────────────
@@ -254,27 +332,25 @@ services:
     build:
       context: ./backend
       dockerfile: innoagent/Dockerfile
+    image: ghcr.io/inno-agent/innoagent:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent
     environment:
       METRICS_ENV: local
-      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
-    depends_on:
-      ollama:
-        condition: service_healthy
-      ollama-pull:
-        condition: service_completed_successfully
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend/chat-front
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/chat-front:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent
@@ -308,6 +384,7 @@ services:
     build:
       context: ./backend
       dockerfile: review-consumer/Dockerfile
+    image: ghcr.io/inno-agent/review-consumer:${TAG:-latest}
     restart: unless-stopped
     environment:
       METRICS_ENV: local
@@ -319,11 +396,11 @@ services:
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Per-assigner delegated auth: read the assigner's encrypted refresh token
-      # from inno_review and exchange it via identity's generic /refresh.
+      # Service credentials auth: bot authenticates as itself via identity.
       IDENTITY_URL: http://identity:8081
       REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
-      REVIEW_REFRESH_ENC_KEY: ${REVIEW_REFRESH_ENC_KEY:-}
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
     networks:
@@ -331,8 +408,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
       orchestrator:
         condition: service_started
       identity:
@@ -343,6 +420,7 @@ services:
     build:
       context: ./backend
       dockerfile: review-webhook/Dockerfile
+    image: ghcr.io/inno-agent/review-webhook:${TAG:-latest}
     restart: unless-stopped
     environment:
       METRICS_ENV: local
@@ -361,9 +439,43 @@ services:
     build:
       context: ./frontend/review-front
       dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-front:${TAG:-latest}
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Loki (Log Aggregation) ──────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./infrastructure/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - innoagent
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # ─── Promtail (Log Collector) ────────────────────────────────────────────
+  promtail:
+    image: grafana/promtail:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./infrastructure/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - innoagent
+    depends_on:
+      loki:
+        condition: service_healthy
 
   # ─── Monitoring (Prometheus + Grafana) ─────────────────────────────────────
   alertmanager:
@@ -402,11 +514,13 @@ services:
     image: grafana/grafana:11.4.0
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: https://grafana.${AUTH_DOMAIN:-localhost}
     volumes:
       - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -415,6 +529,7 @@ services:
       - innoagent
     depends_on:
       - prometheus
+      - loki
 
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.25.0

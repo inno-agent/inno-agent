@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,10 +14,12 @@ import (
 	"innoagent/internal/auth"
 	"innoagent/internal/catalog"
 	"innoagent/internal/config"
+	"innoagent/internal/correlation"
 	"innoagent/internal/llm"
 	"innoagent/internal/orchestrator"
 
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"go.uber.org/zap"
 )
 
 type ChatRequest struct {
@@ -40,25 +41,32 @@ type HealthResponse struct {
 func main() {
 	cfg := config.Load()
 
-	log.Printf("starting InnoAgent orchestrator")
-	log.Printf("ollama base url: %s", cfg.BaseURL)
-	log.Printf("model: %s", cfg.Model)
-	log.Printf("api port: %s", cfg.ServerPort)
+	logger, _ := zap.NewProduction()
+	defer func() { _ = logger.Sync() }()
+
+	logger.Info(
+		"starting InnoAgent orchestrator",
+		zap.String("ollama_base_url", cfg.BaseURL),
+		zap.String("model", cfg.Model),
+		zap.String("api_port", cfg.ServerPort),
+	)
 
 	cat, err := catalog.Load(cfg.Models)
 	if err != nil {
-		log.Fatalf("catalog: %v", err)
+		logger.Fatal("failed to load catalog", zap.Error(err))
 	}
 
 	provider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.Model),
+		llm.WithAPIKey(cfg.APIKey),
 	)
 
 	routerProvider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.RouterModel),
 		llm.WithTemperature(0),
+		llm.WithAPIKey(cfg.APIKey),
 	)
 
 	routes := make([]orchestrator.RouteInfo, len(cfg.Models))
@@ -69,7 +77,7 @@ func main() {
 		}
 	}
 
-	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models)
+	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, logger)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	telemetry.Init("orchestrator")
@@ -147,7 +155,7 @@ func main() {
 			if err != nil {
 				data, _ := json.Marshal(map[string]string{"error": err.Error()})
 				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-					log.Printf("failed to write error response: %v", err)
+					logger.Error("failed to write error response", zap.Error(err))
 				}
 				flusher.Flush()
 				return
@@ -156,12 +164,12 @@ func main() {
 			for chunk := range ch {
 				data, _ := json.Marshal(map[string]string{"answer": chunk})
 				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-					log.Printf("failed to write chunk: %v", err)
+					logger.Error("failed to write chunk", zap.Error(err))
 				}
 				flusher.Flush()
 			}
 			if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
-				log.Printf("failed to write DONE signal: %v", err)
+				logger.Error("failed to write DONE signal", zap.Error(err))
 			}
 			flusher.Flush()
 			return
@@ -170,7 +178,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		answer, err := orch.Ask(ctx, req.Messages, req.ModelName)
 		if err != nil {
-			log.Printf("orchestrator error: %v", err)
+			logger.Error("orchestrator error", zap.Error(err))
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)
 			return
 		}
@@ -182,7 +190,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.ServerPort,
-		Handler:      telemetry.StdMiddleware("orchestrator", mux),
+		Handler:      correlation.Middleware(logger)(telemetry.StdMiddleware("orchestrator", mux)),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 200 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -192,21 +200,21 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.ServerPort)
+		logger.Info("server listening", zap.String("port", cfg.ServerPort))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Fatal("server error", zap.Error(err))
 		}
 	}()
 
 	<-quit
-	log.Println("shutting down server...")
+	logger.Info("shutting down server")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		logger.Fatal("forced shutdown", zap.Error(err))
 	}
 
-	log.Println("server stopped")
+	logger.Info("server stopped")
 }

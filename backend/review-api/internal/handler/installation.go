@@ -13,38 +13,41 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
 
-// Encryptor encrypts a plaintext into (ciphertext, nonce).
-// *secretbox.SecretBox satisfies it.
-type Encryptor interface {
-	Encrypt(plaintext []byte) (ciphertext []byte, nonce []byte, err error)
+// InstallationStore persists installation rows.
+type InstallationStore interface {
+	Upsert(ctx context.Context, gitflameUsername, userID string) error
+	GetGitFlameUsername(ctx context.Context, userID string) (string, error)
 }
 
-// InstallationStore persists installation rows.
-// *installation.Repository satisfies it.
-type InstallationStore interface {
-	Upsert(ctx context.Context, gitflameUsername, userID string, ciphertext, nonce []byte) error
+// DelegationGranter creates delegation grants in identity on behalf of a user.
+type DelegationGranter interface {
+	GrantDelegation(ctx context.Context, userToken, clientID string) error
 }
 
 type installationRequest struct {
 	GitFlameUsername string `json:"gitflame_username"`
-	RefreshToken     string `json:"refresh_token"`
 }
 
-// InstallationHandler handles onboarding requests linking a gitflame username
-// to the caller's user_id along with their encrypted refresh token.
+// InstallationHandler handles onboarding requests linking a GitFlame username
+// to the caller's user_id.
 type InstallationHandler struct {
-	store  InstallationStore
-	enc    Encryptor
-	logger *zap.Logger
+	store          InstallationStore
+	grantor        DelegationGranter
+	reviewClientID string
+	logger         *zap.Logger
 }
 
 // NewInstallationHandler creates an InstallationHandler.
-func NewInstallationHandler(store InstallationStore, enc Encryptor, logger *zap.Logger) *InstallationHandler {
-	return &InstallationHandler{store: store, enc: enc, logger: logger}
+func NewInstallationHandler(store InstallationStore, grantor DelegationGranter, reviewClientID string, logger *zap.Logger) *InstallationHandler {
+	return &InstallationHandler{
+		store:          store,
+		grantor:        grantor,
+		reviewClientID: reviewClientID,
+		logger:         logger,
+	}
 }
 
-// Create handles POST /api/v1/installations. It is mounted behind the Auth
-// middleware, so user_id is taken from the validated token.
+// Create handles POST /api/v1/installations.
 func (h *InstallationHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -65,28 +68,54 @@ func (h *InstallationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "gitflame_username is required")
 		return
 	}
-	if req.RefreshToken == "" {
-		writeError(w, http.StatusBadRequest, "refresh_token is required")
-		return
-	}
 
-	ciphertext, nonce, err := h.enc.Encrypt([]byte(req.RefreshToken))
-	if err != nil {
-		h.logger.Error("encrypt refresh token", zap.Error(err))
+	// Establish delegation grant before recording the installation.
+	// review-consumer needs this grant to exchange tokens on the user's behalf.
+	userToken := middleware.TokenFromContext(ctx)
+	if err := h.grantor.GrantDelegation(ctx, userToken, h.reviewClientID); err != nil {
+		h.logger.Error("create delegation grant", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
 
-	if err := h.store.Upsert(ctx, req.GitFlameUsername, userID, ciphertext, nonce); err != nil {
+	if err := h.store.Upsert(ctx, req.GitFlameUsername, userID); err != nil {
 		if errors.Is(err, installation.ErrOwnedByAnother) {
 			writeError(w, http.StatusConflict, "username_taken")
 			return
 		}
-
 		h.logger.Error("upsert installation", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type installationResponse struct {
+	GitFlameUsername string `json:"gitflame_username"`
+}
+
+// Get handles GET /api/v1/installations/me. It lets the frontend restore
+// onboarding state after a page reload instead of re-asking for the username.
+func (h *InstallationHandler) Get(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	username, err := h.store.GetGitFlameUsername(ctx, userID)
+	if err != nil {
+		if errors.Is(err, installation.ErrNotLinked) {
+			writeError(w, http.StatusNotFound, "not_linked")
+			return
+		}
+		h.logger.Error("get installation", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, installationResponse{GitFlameUsername: username})
 }

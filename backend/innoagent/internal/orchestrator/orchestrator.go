@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	"innoagent/internal/catalog"
 	"innoagent/internal/llm"
+
+	"go.uber.org/zap"
 )
 
 // RouteInfo describes a model route the router can choose from.
@@ -22,14 +23,19 @@ type AIOrchestrator struct {
 	routerProvider llm.Provider
 	routes         []RouteInfo
 	models         []string
+	logger         *zap.Logger
 }
 
-func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string) *AIOrchestrator {
+func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string, logger *zap.Logger) *AIOrchestrator {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &AIOrchestrator{
 		provider:       provider,
 		routerProvider: routerProvider,
 		routes:         routes,
 		models:         models,
+		logger:         logger,
 	}
 }
 
@@ -40,7 +46,7 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 
 	routesJSON, err := json.Marshal(o.routes)
 	if err != nil {
-		log.Printf("auto: failed to marshal routes: %v, falling back to %s", err, o.models[0])
+		o.logger.Warn("auto route fallback: failed to marshal routes", zap.Error(err), zap.String("fallback_model", o.models[0]))
 		return o.models[0]
 	}
 
@@ -57,7 +63,7 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 
 	conversationJSON, err := json.Marshal(conversation)
 	if err != nil {
-		log.Printf("auto: failed to marshal conversation: %v, falling back to %s", err, o.models[0])
+		o.logger.Warn("auto route fallback: failed to marshal conversation", zap.Error(err), zap.String("fallback_model", o.models[0]))
 		return o.models[0]
 	}
 
@@ -73,7 +79,7 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 
 	response, err := o.routerProvider.Chat(ctx, routerMessages, "")
 	if err != nil {
-		log.Printf("auto: router call failed: %v, falling back to %s", err, o.models[0])
+		o.logger.Warn("auto route fallback: router call failed", zap.Error(err), zap.String("fallback_model", o.models[0]))
 		return o.models[0]
 	}
 
@@ -87,7 +93,7 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 		// never corrupted.
 		normalized := strings.ReplaceAll(trimmed, "'", "\"")
 		if err := json.Unmarshal([]byte(normalized), &routeResp); err != nil {
-			log.Printf("auto: router returned non-JSON %q, falling back to %s", response, o.models[0])
+			o.logger.Warn("auto route fallback: router returned non-json", zap.String("response", response), zap.String("fallback_model", o.models[0]))
 			return o.models[0]
 		}
 	}
@@ -95,12 +101,12 @@ func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) stri
 	chosen := routeResp.Route
 	for _, m := range o.models {
 		if m == chosen {
-			log.Printf("auto: routed to %s", chosen)
+			o.logger.Info("auto routed", zap.String("model", chosen))
 			return chosen
 		}
 	}
 
-	log.Printf("auto: router returned unknown route %q, falling back to %s", chosen, o.models[0])
+	o.logger.Warn("auto route fallback: router returned unknown route", zap.String("route", chosen), zap.String("fallback_model", o.models[0]))
 	return o.models[0]
 }
 

@@ -31,9 +31,9 @@ func TestGetPRDiff_AssemblesPatches(t *testing.T) {
 		}
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/files"):
-			json.NewEncoder(w).Encode([]map[string]string{{"name": "main.go"}})
+			_ = json.NewEncoder(w).Encode([]map[string]string{{"name": "main.go"}})
 		case strings.Contains(r.URL.Path, "/diff/"):
-			json.NewEncoder(w).Encode([]map[string]interface{}{
+			_ = json.NewEncoder(w).Encode([]map[string]interface{}{
 				{"file_path": "main.go", "patch": patch, "is_binary": false},
 			})
 		default:
@@ -55,7 +55,7 @@ func TestGetPRDiff_AssemblesPatches(t *testing.T) {
 func TestGetRawFile_Found(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("# AGENTS.md content"))
+		_, _ = w.Write([]byte("# AGENTS.md content"))
 	}))
 	defer srv.Close()
 
@@ -96,7 +96,7 @@ func TestPostPRComment_Created(t *testing.T) {
 			return
 		}
 		var payload map[string]string
-		json.NewDecoder(r.Body).Decode(&payload)
+		_ = json.NewDecoder(r.Body).Decode(&payload)
 		gotBody = payload["body"]
 		w.WriteHeader(http.StatusCreated)
 	}))
@@ -127,12 +127,52 @@ func TestPostPRComment_AuthHeader(t *testing.T) {
 	}
 }
 
+func TestRemoveRequestedReviewer_Success(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := gitflame.NewClient(srv.URL, "tok")
+	err := c.RemoveRequestedReviewer(context.Background(), domain.PRRef{Owner: "o", Repo: "r", Index: 7}, "innoagent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("expected DELETE, got %s", gotMethod)
+	}
+	if !strings.Contains(gotPath, "/pulls/7/requested_reviewers") {
+		t.Fatalf("unexpected path: %q", gotPath)
+	}
+	if len(gotBody["reviewers"]) != 1 || gotBody["reviewers"][0] != "innoagent" {
+		t.Fatalf("unexpected body: %v", gotBody)
+	}
+}
+
+func TestRemoveRequestedReviewer_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := gitflame.NewClient(srv.URL, "tok")
+	err := c.RemoveRequestedReviewer(context.Background(), domain.PRRef{Owner: "o", Repo: "r", Index: 1}, "innoagent")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestGetRawFile_NestedPathPreservesSlashes(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("content"))
+		_, _ = w.Write([]byte("content"))
 	}))
 	defer srv.Close()
 

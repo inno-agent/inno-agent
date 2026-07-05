@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 type contextKey string
@@ -23,7 +24,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get("Authorization")
-			if len(token) > 7 && token[:7] == "Bearer " {
+			if len(token) > 7 && strings.EqualFold(token[:7], "Bearer ") {
 				token = token[7:]
 			} else {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -37,6 +38,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
+			SetCorrelationIDHeader(r.Context(), req)
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil || resp.StatusCode != http.StatusOK {

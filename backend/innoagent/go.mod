@@ -2,9 +2,10 @@ module innoagent
 
 go 1.26.0
 
-require github.com/inno-agent/inno-agent/backend/pkg/telemetry v0.0.0
-
-replace github.com/inno-agent/inno-agent/backend/pkg/telemetry => ../pkg/telemetry
+require (
+	github.com/inno-agent/inno-agent/backend/pkg/telemetry v0.0.0
+	go.uber.org/zap v1.28.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -40,6 +41,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
@@ -47,3 +49,5 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/inno-agent/inno-agent/backend/pkg/telemetry => ../pkg/telemetry

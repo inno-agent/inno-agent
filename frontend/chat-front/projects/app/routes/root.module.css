@@ -4,7 +4,60 @@
     height: 100vh;
 }
 
+@media (max-width: 1200px) {
+    .layout {
+        grid-template-columns: 240px 1fr;
+    }
+}
+
+@media (max-width: 1024px) {
+    .layout {
+        grid-template-columns: 220px 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .main {
     overflow-y: auto;
     background: var(--background);
+}
+
+.menuButton {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 998;
+    display: none;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    border: none;
+    border-radius: 8px;
+    background: var(--color-bg-main);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: background 0.2s ease;
+}
+
+.menuButton:hover {
+    background: var(--color-bg-elevated);
+}
+
+.menuButton svg {
+    width: 24px;
+    height: 24px;
+}
+
+@media (max-width: 900px) {
+    .menuButton {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 }

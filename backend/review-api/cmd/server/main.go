@@ -17,9 +17,9 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/handler"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/identityclient"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/installation"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/llm"
-	"github.com/inno-agent/inno-agent/backend/review-api/internal/secretbox"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/service"
 )
 
@@ -37,42 +37,35 @@ func main() {
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 
-	reviewService := service.NewReviewService(gitFlameClient, llmClient, logger)
-	reviewHandler := handler.NewReviewHandler(reviewService, logger)
+	reviewService := service.NewReviewService(gitFlameClient, llmClient)
+	reviewHandler := handler.NewReviewHandler(reviewService)
 
-	// Onboarding (installations) is enabled only when a review DB and an
-	// encryption key are configured.
+	// Onboarding (installations) and invite acceptance both need the review DB —
+	// invite acceptance looks up the caller's own linked gitflame_username there,
+	// so the repo owner can never be spoofed via the request body.
 	var installHandler *handler.InstallationHandler
-	if cfg.ReviewDatabaseDSN != "" && cfg.ReviewRefreshEncKey != "" {
-		if err := db.EnsureDatabase(ctx, cfg.ReviewDatabaseDSN); err != nil {
-			logger.Fatal("ensure review db", zap.Error(err))
-		}
-		if err := db.Migrate(cfg.ReviewDatabaseDSN); err != nil {
-			logger.Fatal("migrate review db", zap.Error(err))
-		}
+	var inviteHandler *handler.InviteHandler
+	if cfg.ReviewDatabaseDSN != "" {
 		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
 			logger.Fatal("review db pool", zap.Error(err))
 		}
 		defer pool.Close()
 
-		sb, err := secretbox.NewFromBase64Key(cfg.ReviewRefreshEncKey)
-		if err != nil {
-			logger.Fatal("secretbox", zap.Error(err))
-		}
-
 		installRepo := installation.NewRepository(pool)
-		installHandler = handler.NewInstallationHandler(installRepo, sb, logger)
+		identityClient := identityclient.New(cfg.AuthServiceURL)
+		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, logger)
+		inviteHandler = handler.NewInviteHandler(installRepo, gitFlameClient, logger)
 		logger.Info("onboarding enabled (installations)")
 	} else {
-		logger.Warn("REVIEW_DATABASE_DSN or REVIEW_REFRESH_ENC_KEY unset; /installations disabled")
+		logger.Warn("REVIEW_DATABASE_DSN unset; /installations and /invitations/accept disabled")
 	}
 
 	telemetry.Init("review-api")
 
 	router := chi.NewRouter()
 	router.Use(telemetry.ChiMiddleware("review-api"))
-	handler.RegisterRoutes(router, reviewHandler, installHandler, cfg.AuthServiceURL)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, inviteHandler, cfg.AuthServiceURL, logger)
 	router.Handle("/metrics", telemetry.Handler())
 
 	server := &http.Server{

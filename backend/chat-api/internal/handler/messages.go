@@ -15,12 +15,11 @@ import (
 // MessageHandler handles HTTP requests for chat message history.
 type MessageHandler struct {
 	service domain.ChatService
-	logger  *zap.Logger
 }
 
-// NewMessageHandler creates a MessageHandler with the given service and logger.
-func NewMessageHandler(service domain.ChatService, logger *zap.Logger) *MessageHandler {
-	return &MessageHandler{service: service, logger: logger}
+// NewMessageHandler creates a MessageHandler with the given service.
+func NewMessageHandler(service domain.ChatService) *MessageHandler {
+	return &MessageHandler{service: service}
 }
 
 // ListByChat returns paginated message history for the given chat.
@@ -29,7 +28,7 @@ func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
 
 	chatID, err := uuid.Parse(chi.URLParam(r, "chat_id"))
 	if err != nil {
-		h.logger.Error("invalid chat_id", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("invalid chat_id", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid chat_id")
 		return
 	}
@@ -51,7 +50,7 @@ func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
 
 	messages, total, err := h.service.GetHistory(ctx, userID, chatID, limit, offset)
 	if err != nil {
-		h.logger.Error("failed to get history", zap.Error(err))
+		middleware.LoggerFromContext(ctx).Error("failed to get history", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to get history")
 		return
 	}

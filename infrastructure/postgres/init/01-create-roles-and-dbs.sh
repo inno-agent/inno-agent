@@ -15,3 +15,8 @@ psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<-EOSQL
 	CREATE DATABASE llm_chat    OWNER chat;
 	CREATE DATABASE inno_review OWNER review;
 EOSQL
+
+# pgcrypto is required by identity migrations (bcrypt for service_clients).
+psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "inno_auth" <<-EOSQL
+	CREATE EXTENSION IF NOT EXISTS pgcrypto;
+EOSQL

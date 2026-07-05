@@ -17,9 +17,6 @@ func getTestPool(t *testing.T) *db.Pool {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_DSN not set — skipping integration test")
 	}
-	err := db.Migrate(dsn)
-	require.NoError(t, err)
-
 	pool, err := db.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() {

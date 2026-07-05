@@ -16,6 +16,7 @@ interface RunMessageStreamParams {
     pendingNavigationChatIdRef: MutableRefObject<string | null>
     setMessages: Dispatch<SetStateAction<readonly ThreadMessageLike[]>>
     navigateToChat: (chatId: string) => void | Promise<void>
+    signal?: AbortSignal
 }
 
 export async function runMessageStream({
@@ -26,11 +27,16 @@ export async function runMessageStream({
     pendingNavigationChatIdRef,
     setMessages,
     navigateToChat,
+    signal,
 }: RunMessageStreamParams) {
-    const stream = await streamMessage(chatIdRef.current, prompt, model)
+    const stream = await streamMessage(chatIdRef.current, prompt, model, signal)
     let textContent = ''
 
     for await (const event of stream) {
+        if (signal?.aborted) {
+            break
+        }
+
         switch (event.type) {
             case 'status':
                 handleStatusEvent(event, {

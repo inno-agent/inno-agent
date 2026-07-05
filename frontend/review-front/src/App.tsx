@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getToken, handleCallback, login } from '@/auth/auth'
 import OnboardingPage from '@/OnboardingPage'
 import ReviewPage from '@/ReviewPage'
+import styles from '@/styles/App.module.scss'
 
 type Tab = 'review' | 'onboarding'
 
@@ -28,46 +29,16 @@ export default function App() {
 
     return (
         <>
-            <nav
-                style={{
-                    display: 'flex',
-                    gap: '16px',
-                    padding: '16px 20px 0',
-                    maxWidth: '750px',
-                    margin: '0 auto',
-                }}
-            >
+            <nav className={styles.nav}>
                 <button
                     onClick={() => setTab('review')}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: '4px 0',
-                        marginTop: 0,
-                        color: tab === 'review' ? '#f2f2f2' : '#7a7a7a',
-                        fontSize: '13px',
-                        fontWeight: tab === 'review' ? 600 : 400,
-                        borderBottom: tab === 'review' ? '2px solid #ececec' : '2px solid transparent',
-                        borderRadius: 0,
-                        cursor: 'pointer',
-                    }}
+                    className={`${styles['nav-button']} ${tab === 'review' ? styles['nav-button--active'] : styles['nav-button--inactive']}`}
                 >
                     PR Review
                 </button>
                 <button
                     onClick={() => setTab('onboarding')}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: '4px 0',
-                        marginTop: 0,
-                        color: tab === 'onboarding' ? '#f2f2f2' : '#7a7a7a',
-                        fontSize: '13px',
-                        fontWeight: tab === 'onboarding' ? 600 : 400,
-                        borderBottom: tab === 'onboarding' ? '2px solid #ececec' : '2px solid transparent',
-                        borderRadius: 0,
-                        cursor: 'pointer',
-                    }}
+                    className={`${styles['nav-button']} ${tab === 'onboarding' ? styles['nav-button--active'] : styles['nav-button--inactive']}`}
                 >
                     Link account
                 </button>

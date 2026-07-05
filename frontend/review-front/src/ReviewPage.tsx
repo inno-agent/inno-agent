@@ -3,6 +3,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { requestReview } from '@/api/review'
 import { listModels, type ModelOption } from '@/api/models'
+import styles from '@/styles/ReviewPage.module.scss'
 
 export default function ReviewPage() {
     const [prId, setPrId] = useState('')
@@ -62,11 +63,11 @@ export default function ReviewPage() {
             </div>
 
             {models.length > 0 && (
-                <div className="model-picker">
+                <div className={styles['model-picker']}>
                     <label htmlFor="model">Model</label>
                     <select
                         id="model"
-                        className="model-select"
+                        className={styles['model-select']}
                         value={model}
                         onChange={(e) => setModel(e.target.value)}
                     >

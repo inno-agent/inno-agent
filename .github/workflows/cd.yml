@@ -25,21 +25,29 @@ jobs:
       matrix:
         service:
           - name: identity
-            context: backend/identity
+            context: backend
+            dockerfile: backend/identity/Dockerfile
           - name: chat-api
-            context: backend/chat-api
+            context: backend
+            dockerfile: backend/chat-api/Dockerfile
           - name: review-api
-            context: backend/review-api
+            context: backend
+            dockerfile: backend/review-api/Dockerfile
           - name: innoagent
-            context: backend/innoagent
+            context: backend
+            dockerfile: backend/innoagent/Dockerfile
           - name: review-consumer
-            context: backend/review-consumer
+            context: backend
+            dockerfile: backend/review-consumer/Dockerfile
           - name: review-webhook
-            context: backend/review-webhook
+            context: backend
+            dockerfile: backend/review-webhook/Dockerfile
           - name: chat-front
             context: frontend/chat-front
+            dockerfile: frontend/chat-front/Dockerfile
           - name: review-front
             context: frontend/review-front
+            dockerfile: frontend/review-front/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -61,6 +69,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.service.context }}
+          file: ${{ matrix.service.dockerfile }}
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}:latest

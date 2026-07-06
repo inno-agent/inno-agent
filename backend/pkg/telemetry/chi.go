@@ -17,6 +17,15 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Flush delegates to the wrapped ResponseWriter so SSE / streaming handlers
+// can type-assert http.Flusher. Without this, embedding the http.ResponseWriter
+// interface hides the underlying Flush method.
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // ChiMiddleware records HTTP metrics for chi routers.
 func ChiMiddleware(serviceName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

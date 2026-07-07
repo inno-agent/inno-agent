@@ -418,6 +418,41 @@ services:
       identity:
         condition: service_started
 
+  # ─── Issue Consumer (webhook-driven issue code generator) ────────────────
+  issue-consumer:
+    build:
+      context: ./backend
+      dockerfile: issue-consumer/Dockerfile
+    image: ghcr.io/inno-agent/issue-consumer:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      METRICS_ENV: local
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: gitflame.events
+      KAFKA_GROUP: issue-consumer
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
+      CODEGEN_MODEL: ${CODEGEN_MODEL:-qwen2.5-coder:1.5b}
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      IDENTITY_URL: http://identity:8081
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
+      ONBOARDING_URL: ${ONBOARDING_URL:-}
+    networks:
+      - innoagent
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_started
+      identity:
+        condition: service_started
+
   # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
   review-webhook:
     build:

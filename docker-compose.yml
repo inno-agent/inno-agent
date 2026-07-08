@@ -403,6 +403,7 @@ services:
       REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
+      REVIEW_AGENT_URL: ${REVIEW_AGENT_URL:-}
     networks:
       - innoagent
     depends_on:
@@ -413,6 +414,27 @@ services:
       orchestrator:
         condition: service_started
       identity:
+        condition: service_started
+
+  # ─── Review Agent (Mastra agent service) ─────────────────────────────────
+  review-agent:
+    build:
+      context: ./packages/review-agent
+      dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-agent:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "4100:4100"
+    environment:
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder-32b}
+      SERVER_PORT: "4100"
+    networks:
+      - innoagent
+    depends_on:
+      orchestrator:
         condition: service_started
 
   # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────

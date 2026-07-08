@@ -12,6 +12,10 @@ type Config struct {
 	GitFlameBaseURL   string
 	GitFlameToken     string
 
+	// ReviewAgentURL is the URL of the Mastra review agent service.
+	// If empty, falls back to single-shot LLM via OrchestratorURL.
+	ReviewAgentURL string
+
 	// Delegated-auth via identity service.
 	BotGitFlameUsername string
 	IdentityURL         string
@@ -36,6 +40,8 @@ func Load() *Config {
 		ReviewModel:       getEnv("REVIEW_MODEL", "qwen2.5-coder:1.5b"),
 		GitFlameBaseURL:   getEnv("GITFLAME_BASE_URL", ""),
 		GitFlameToken:     getEnv("GITFLAME_TOKEN", ""),
+
+		ReviewAgentURL: getEnv("REVIEW_AGENT_URL", ""),
 
 		BotGitFlameUsername: getEnv("BOT_GITFLAME_USERNAME", ""),
 		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),

@@ -486,7 +486,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     ports:
-      - "9093:9093"
+     - "127.0.0.1:9093:9093"
     volumes:
       - ./infrastructure/monitoring/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager/data
@@ -501,7 +501,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./infrastructure/monitoring/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus

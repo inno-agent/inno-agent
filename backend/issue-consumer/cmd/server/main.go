@@ -69,7 +69,7 @@ func main() {
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	genService := generator.NewService(gitFlameClient, gitFlameClient, llmClient, tokenSrc, cfg.CodegenModel, logger)
-	proc := processor.New(genService, gitFlameClient, gitFlameClient, logger,
+	proc := processor.New(genService, gitFlameClient, gitFlameClient, gitFlameClient, logger,
 		cfg.BotGitFlameUsername, cfg.OnboardingURL)
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)
 

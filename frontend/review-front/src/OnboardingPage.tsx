@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { acceptGitFlameInvite, getLinkedGitFlameUsername, linkGitFlameUsername } from '@/api/consent'
+import styles from '@/styles/OnboardingPage.module.scss'
 
 type Status = 'checking' | 'idle' | 'loading' | 'linked' | 'taken' | 'error'
 type InviteStatus = 'idle' | 'loading' | 'accepted' | 'error'
 
 export default function OnboardingPage() {
     const [username, setUsername] = useState('')
-    const [status, setStatus] = useState<Status>('checking')
+    const [status, setStatus] = useState<Status>('idle')
 
     const [repoName, setRepoName] = useState('')
     const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle')
@@ -66,7 +67,7 @@ export default function OnboardingPage() {
         <div className="page">
             <h1>Link GitFlame account</h1>
 
-            <p style={{ color: '#9a9a9a', fontSize: '14px', marginBottom: '24px' }}>
+            <p className={styles['onboarding-description']}>
                 Enter your GitFlame username to allow the review bot to act on your behalf
                 when you assign it as a reviewer.
             </p>
@@ -92,7 +93,7 @@ export default function OnboardingPage() {
             )}
 
             {status === 'linked' && (
-                <div className="result" style={{ marginTop: '16px' }}>
+                <div className={`result ${styles['onboarding-result']}`}>
                     Account linked. The bot can now review PRs on your behalf.
                 </div>
             )}
@@ -107,9 +108,9 @@ export default function OnboardingPage() {
                 <div className="error">Something went wrong. Please try again.</div>
             )}
 
-            <h1 style={{ marginTop: '40px' }}>Accept pending invite</h1>
+            <h1 className={styles['onboarding-section-title']}>Accept pending invite</h1>
 
-            <p style={{ color: '#9a9a9a', fontSize: '14px', marginBottom: '24px' }}>
+            <p className={styles['onboarding-description']}>
                 Invited the bot as a collaborator on a repo? Confirm it here instead of
                 logging into the bot's GitFlame account by hand.
                 {status !== 'linked' && ' Link your GitFlame account above first.'}
@@ -134,7 +135,7 @@ export default function OnboardingPage() {
             </button>
 
             {inviteStatus === 'accepted' && (
-                <div className="result" style={{ marginTop: '16px' }}>
+                <div className={`result ${styles['onboarding-result']}`}>
                     Invite accepted. The bot can now be assigned as a reviewer on this repo.
                 </div>
             )}

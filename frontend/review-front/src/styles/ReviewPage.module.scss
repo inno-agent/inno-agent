@@ -1,0 +1,37 @@
+.model-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 16px;
+
+    label {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+}
+
+.model-select {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--text-primary);
+    }
+
+    &:focus {
+        outline: none;
+        color: var(--text-primary);
+    }
+
+    option {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+}

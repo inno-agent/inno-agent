@@ -1,0 +1,140 @@
+:root {
+    --bg-primary: #262626;
+    --bg-secondary: #303030;
+    --bg-tertiary: #333333;
+    --bg-code: #232323;
+
+    --border-primary: #4a4a4a;
+    --border-secondary: #6e6e6e;
+
+    --text-primary: #e6e6e6;
+    --text-secondary: #f2f2f2;
+    --text-tertiary: #9a9a9a;
+    --text-muted: #7a7a7a;
+    --text-dark: #1a1a1a;
+
+    --button-bg: #ececec;
+    --button-bg-hover: #ffffff;
+    --button-bg-disabled: #4a4a4a;
+
+    --error: #f85149;
+
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+
+    color-scheme: dark;
+    background: var(--bg-primary);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.page {
+    max-width: 750px;
+    margin: 0 auto;
+    padding: 80px 20px 60px;
+}
+
+h1 {
+    color: var(--text-secondary);
+    font-size: 28px;
+    font-weight: 600;
+    margin: 0 0 32px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--text-tertiary);
+    font-size: 14px;
+}
+
+input {
+    width: 100%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-primary);
+    padding: 12px 18px;
+    border-radius: var(--radius-lg);
+    font-family: inherit;
+    font-size: 14px;
+
+    &::placeholder {
+        color: var(--text-muted);
+    }
+
+    &:focus {
+        outline: none;
+        border-color: var(--border-secondary);
+    }
+}
+
+.field {
+    margin-bottom: 16px;
+}
+
+button {
+    margin-top: 24px;
+    padding: 10px 28px;
+    background: var(--button-bg);
+    color: var(--text-dark);
+    border: none;
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+
+    &:hover {
+        background: var(--button-bg-hover);
+    }
+
+    &:disabled {
+        background: var(--button-bg-disabled);
+        color: var(--text-tertiary);
+        cursor: default;
+    }
+}
+
+.error {
+    color: var(--error);
+    margin-top: 16px;
+    font-size: 14px;
+}
+
+.result {
+    margin-top: 32px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    line-height: 1.6;
+    font-size: 14px;
+
+    pre {
+        background: var(--bg-code);
+        padding: 12px;
+        border-radius: var(--radius-sm);
+        overflow-x: auto;
+    }
+
+    :first-child {
+        margin-top: 0;
+    }
+}
+
+.center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}

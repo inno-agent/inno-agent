@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	_ domain.IssueSource   = (*Client)(nil)
-	_ domain.CodePusher    = (*Client)(nil)
-	_ domain.CommentPoster = (*Client)(nil)
+	_ domain.IssueSource        = (*Client)(nil)
+	_ domain.CodePusher         = (*Client)(nil)
+	_ domain.PullRequestCreator = (*Client)(nil)
+	_ domain.CommentPoster      = (*Client)(nil)
 )
 
 type Client struct {
@@ -40,40 +41,6 @@ func NewClient(baseURL, token string) *Client {
 type issueResponse struct {
 	Title string          `json:"title"`
 	Body  json.RawMessage `json:"body"`
-}
-
-func parseIssueBody(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
-		return ""
-	}
-
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		return text
-	}
-
-	// GitFlame may return rich-text blocks as a JSON array/object.
-	var blocks []struct {
-		Type    string `json:"type"`
-		Content string `json:"content"`
-		Text    string `json:"text"`
-	}
-	if err := json.Unmarshal(raw, &blocks); err == nil {
-		var parts []string
-		for _, b := range blocks {
-			switch {
-			case b.Content != "":
-				parts = append(parts, b.Content)
-			case b.Text != "":
-				parts = append(parts, b.Text)
-			}
-		}
-		if len(parts) > 0 {
-			return strings.Join(parts, "\n")
-		}
-	}
-
-	return string(raw)
 }
 
 func (c *Client) GetIssue(ctx context.Context, ref domain.IssueRef) (string, string, error) {
@@ -114,7 +81,86 @@ func (c *Client) GetIssue(ctx context.Context, ref domain.IssueRef) (string, str
 	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
 		return "", "", fmt.Errorf("gitflame: parse issue response: %w", err)
 	}
-	return issue.Title, parseIssueBody(issue.Body), nil
+	return issue.Title, ParseIssueBody(issue.Body), nil
+}
+
+type createPullRequestRequest struct {
+	Title     string   `json:"title"`
+	Head      string   `json:"head"`
+	Base      string   `json:"base"`
+	Body      string   `json:"body"`
+	Reviewers []string `json:"reviewers,omitempty"`
+}
+
+type createPullRequestResponse struct {
+	Number int64 `json:"number"`
+	Index  int64 `json:"index"`
+}
+
+func (c *Client) CreatePullRequest(
+	ctx context.Context,
+	ref domain.IssueRef,
+	headBranch, title, body string,
+	reviewers []string,
+) (int64, error) {
+	if c.baseURL == "" || c.token == "" {
+		return 0, fmt.Errorf("gitflame: not configured")
+	}
+
+	baseBranch := ref.DefaultBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	reqBody := createPullRequestRequest{
+		Title:     title,
+		Head:      headBranch,
+		Base:      baseBranch,
+		Body:      body,
+		Reviewers: reviewers,
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return 0, fmt.Errorf("gitflame: marshal pull request: %w", err)
+	}
+
+	prURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/pulls",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, prURL, bytes.NewReader(payload))
+	if err != nil {
+		return 0, fmt.Errorf("gitflame: build pull request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("gitflame: create pull request failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusCreated {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := fmt.Sprintf("gitflame: create pull request returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return 0, fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+		return 0, fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+	}
+
+	var pr createPullRequestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		return 0, fmt.Errorf("gitflame: parse pull request response: %w", err)
+	}
+	if pr.Number != 0 {
+		return pr.Number, nil
+	}
+	return pr.Index, nil
 }
 
 func escapePathSegments(path string) string {
@@ -172,10 +218,61 @@ func (c *Client) GetRawFile(ctx context.Context, ref domain.IssueRef, path strin
 }
 
 type createFileRequest struct {
-	Message       string `json:"message"`
-	Content       string `json:"content"`
-	Branch        string `json:"branch"`
-	NewBranchName string `json:"new_branch_name,omitempty"`
+	Message   string `json:"message"`
+	Content   string `json:"content"`
+	Branch    string `json:"branch"`
+	NewBranch string `json:"new_branch,omitempty"`
+}
+
+type createBranchRequest struct {
+	NewBranchName string `json:"new_branch_name"`
+	OldBranchName string `json:"old_branch_name"`
+}
+
+func (c *Client) ensureBranch(ctx context.Context, ref domain.IssueRef, branch, baseBranch string) error {
+	payload, err := json.Marshal(createBranchRequest{
+		NewBranchName: branch,
+		OldBranchName: baseBranch,
+	})
+	if err != nil {
+		return fmt.Errorf("gitflame: marshal branch request: %w", err)
+	}
+
+	branchURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/branches",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, branchURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("gitflame: build branch request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitflame: create branch failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	msg := fmt.Sprintf("gitflame: create branch %s returned %d: %s", branch, resp.StatusCode, strings.TrimSpace(string(body)))
+
+	// Branch already exists — safe to push more commits to it.
+	if resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity {
+		return nil
+	}
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+	}
+	return fmt.Errorf("%s: %w", msg, domain.ErrTransient)
 }
 
 func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch string, files []domain.GeneratedFile, message string) error {
@@ -188,6 +285,10 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 		baseBranch = "main"
 	}
 
+	if err := c.ensureBranch(ctx, ref, branch, baseBranch); err != nil {
+		return err
+	}
+
 	repoBase := fmt.Sprintf(
 		"%s/api/v1/repos/%s/%s",
 		strings.TrimRight(c.baseURL, "/"),
@@ -195,16 +296,11 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 		url.PathEscape(ref.Repo),
 	)
 
-	for i, f := range files {
+	for _, f := range files {
 		reqBody := createFileRequest{
 			Message: message,
 			Content: base64.StdEncoding.EncodeToString([]byte(f.Content)),
-			Branch:  baseBranch,
-		}
-		if i == 0 {
-			reqBody.NewBranchName = branch
-		} else {
-			reqBody.Branch = branch
+			Branch:  branch,
 		}
 
 		payload, err := json.Marshal(reqBody)

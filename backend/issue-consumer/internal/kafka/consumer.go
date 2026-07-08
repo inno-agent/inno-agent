@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -66,6 +67,8 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 		backoff := retryInitial
 		for {
+			c.logIncomingMessage(msg)
+
 			result := c.processor.Process(ctx, msg.Value)
 			if result != processor.Transient {
 				if err := c.reader.CommitMessages(ctx, msg); err != nil {
@@ -93,4 +96,25 @@ func (c *Consumer) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Consumer) logIncomingMessage(msg kafka.Message) {
+	var envelope struct {
+		EventType  string `json:"event_type"`
+		DeliveryID string `json:"delivery_id"`
+	}
+	if err := json.Unmarshal(msg.Value, &envelope); err != nil {
+		c.logger.Info(
+			"message received",
+			zap.Int64("offset", msg.Offset),
+			zap.Error(err),
+		)
+		return
+	}
+	c.logger.Info(
+		"message received",
+		zap.String("event_type", envelope.EventType),
+		zap.String("delivery_id", envelope.DeliveryID),
+		zap.Int64("offset", msg.Offset),
+	)
 }

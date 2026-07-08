@@ -50,6 +50,10 @@ type CodePusher interface {
 	PushFiles(ctx context.Context, ref IssueRef, branch string, files []GeneratedFile, message string) error
 }
 
+type PullRequestCreator interface {
+	CreatePullRequest(ctx context.Context, ref IssueRef, headBranch, title, body string, reviewers []string) (int64, error)
+}
+
 type CommentPoster interface {
 	PostIssueComment(ctx context.Context, ref IssueRef, body string) error
 }

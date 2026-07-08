@@ -3,6 +3,7 @@ package telemetry
 import (
 	"log"
 	"net/http"
+	"time"
 )
 
 // ListenAndServe starts a dedicated metrics HTTP server (for workers without a public API).
@@ -16,7 +17,12 @@ func ListenAndServe(addr, serviceName string) {
 
 	go func() {
 		log.Printf("metrics listening on %s", addr)
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		server := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		if err := server.ListenAndServe(); err != nil {
 			log.Printf("metrics server error: %v", err)
 		}
 	}()

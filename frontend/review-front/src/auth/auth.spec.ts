@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { UserManager } from 'oidc-client-ts'
 import { createUserManager } from '@/auth/authClient'
 import { getToken, getRefreshToken, logout, handleCallback } from '@/auth/auth'
 
@@ -75,11 +76,11 @@ describe('auth', () => {
         it('stores the access token, user id, and refresh token on success', async () => {
             vi.mocked(createUserManager).mockResolvedValue({
                 signinRedirectCallback: vi.fn().mockResolvedValue({ id_token: 'header.payload.sig' }),
-            } as any)
+            } as unknown as UserManager)
             vi.mocked(fetch).mockResolvedValue({
                 ok: true,
                 json: vi.fn().mockResolvedValue({ access_token: 'a.b.c', refresh_token: 'refresh-1' }),
-            } as any)
+            } as unknown as Response)
 
             await handleCallback()
 
@@ -92,12 +93,12 @@ describe('auth', () => {
         it('still redirects to / when the token exchange fails', async () => {
             vi.mocked(createUserManager).mockResolvedValue({
                 signinRedirectCallback: vi.fn().mockResolvedValue({ id_token: 'header.payload.sig' }),
-            } as any)
+            } as unknown as UserManager)
             vi.mocked(fetch).mockResolvedValue({
                 ok: false,
                 status: 500,
                 json: vi.fn(),
-            } as any)
+            } as unknown as Response)
 
             await handleCallback()
 

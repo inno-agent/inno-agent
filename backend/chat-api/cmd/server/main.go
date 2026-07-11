@@ -18,6 +18,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/llm"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/repository"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/service"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 )
 
@@ -26,11 +27,11 @@ func main() {
 
 	cfg := config.Load()
 
-	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	log := logger.New("chat-api")
+	defer func() { _ = log.Sync() }()
 
 	if cfg.DatabaseURL == "" {
-		logger.Fatal("DATABASE_URL is required")
+		log.Fatal("DATABASE_URL is required")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -38,12 +39,12 @@ func main() {
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		logger.Fatal("failed to create db pool", zap.Error(err))
+		log.Fatal("failed to create db pool", zap.Error(err))
 	}
 	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
-		logger.Fatal("database not reachable", zap.Error(err))
+		log.Fatal("database not reachable", zap.Error(err))
 	}
 
 	chatRepo := repository.NewChatRepo(pool)
@@ -59,8 +60,11 @@ func main() {
 	telemetry.Init("chat-api")
 
 	router := chi.NewRouter()
+	router.Use(logger.CorrelationID)
+	router.Use(logger.InjectLogger(log))
+	router.Use(logger.RequestLogger())
 	router.Use(telemetry.ChiMiddleware("chat-api"))
-	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL, logger)
+	handler.RegisterRoutes(router, chatHandler, messageHandler, streamHandler, cfg.AuthServiceURL)
 	router.Handle("/metrics", telemetry.Handler())
 
 	server := &http.Server{
@@ -72,18 +76,18 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("server starting", zap.String("port", cfg.ServerPort))
+		log.Info("server starting", zap.String("port", cfg.ServerPort))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("server error", zap.Error(err))
+			log.Fatal("server error", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	logger.Info("shutting down")
+	log.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown error", zap.Error(err))
+		log.Error("shutdown error", zap.Error(err))
 	}
 }

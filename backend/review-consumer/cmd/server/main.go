@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
@@ -27,8 +28,8 @@ func main() {
 
 	cfg := config.Load()
 
-	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	log := logger.New("review-consumer")
+	defer func() { _ = log.Sync() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -37,30 +38,30 @@ func main() {
 	if cfg.ReviewDatabaseDSN != "" {
 		pool, err := pgxpool.New(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
-			logger.Fatal("review db pool", zap.Error(err))
+			log.Fatal("review db pool", zap.Error(err))
 		}
 		defer pool.Close()
 
 		if err := pool.Ping(ctx); err != nil {
-			logger.Fatal("review db ping", zap.Error(err))
+			log.Fatal("review db ping", zap.Error(err))
 		}
 
 		if cfg.ReviewServiceClientSecret == "" {
-			logger.Fatal("REVIEW_SERVICE_CLIENT_SECRET is required when REVIEW_DATABASE_DSN is set")
+			log.Fatal("REVIEW_SERVICE_CLIENT_SECRET is required when REVIEW_DATABASE_DSN is set")
 		}
 
 		store := installation.NewRepository(pool)
 		tokenSrc = tokensource.NewService(store, cfg.IdentityURL,
 			cfg.ReviewServiceClientID, cfg.ReviewServiceClientSecret)
 
-		logger.Info(
+		log.Info(
 			"using service token source",
 			zap.String("identity_url", cfg.IdentityURL),
 			zap.String("client_id", cfg.ReviewServiceClientID),
 		)
 	} else {
 		if cfg.OrchestratorToken == "" {
-			logger.Warn("ORCHESTRATOR_TOKEN is empty and REVIEW_DATABASE_DSN is not set; LLM calls will be unauthenticated")
+			log.Warn("ORCHESTRATOR_TOKEN is empty and REVIEW_DATABASE_DSN is not set; LLM calls will be unauthenticated")
 		}
 		tokenSrc = tokensource.NewStatic(cfg.OrchestratorToken)
 	}
@@ -72,18 +73,18 @@ func main() {
 	var reviewer domain.Reviewer
 	if cfg.ReviewAgentURL != "" {
 		mastraClient := mastra.NewClient(cfg.ReviewAgentURL, cfg.ReviewAgentToken)
-		reviewer = review.NewMastraReviewer(mastraClient, logger)
-		logger.Info("using Mastra review agent", zap.String("url", cfg.ReviewAgentURL))
+		reviewer = review.NewMastraReviewer(mastraClient, log)
+		log.Info("using Mastra review agent", zap.String("url", cfg.ReviewAgentURL))
 	} else {
 		llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
-		reviewer = review.NewService(gitFlameClient, llmClient, tokenSrc, cfg.ReviewModel, logger)
-		logger.Info("using single-shot LLM review", zap.String("orchestrator", cfg.OrchestratorURL))
+		reviewer = review.NewService(gitFlameClient, llmClient, tokenSrc, cfg.ReviewModel, log)
+		log.Info("using single-shot LLM review", zap.String("orchestrator", cfg.OrchestratorURL))
 	}
 
-	proc := processor.New(reviewer, gitFlameClient, logger, cfg.BotGitFlameUsername, cfg.OnboardingURL)
-	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)
+	proc := processor.New(reviewer, gitFlameClient, log, cfg.BotGitFlameUsername, cfg.OnboardingURL)
+	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, log)
 
 	if err := consumer.Run(ctx); err != nil {
-		logger.Fatal("consumer error", zap.Error(err))
+		log.Fatal("consumer error", zap.Error(err))
 	}
 }

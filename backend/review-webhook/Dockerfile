@@ -2,9 +2,14 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY pkg/telemetry ./pkg/telemetry
+COPY pkg/logger ./pkg/logger
 
 WORKDIR /app/pkg/telemetry
 COPY pkg/telemetry/go.mod pkg/telemetry/go.sum ./
+RUN go mod download
+
+WORKDIR /app/pkg/logger
+COPY pkg/logger/go.mod pkg/logger/go.sum ./
 RUN go mod download
 
 WORKDIR /app/review-webhook

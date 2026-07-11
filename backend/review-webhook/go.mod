@@ -4,11 +4,14 @@ go 1.26.0
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/inno-agent/inno-agent/backend/pkg/logger v0.0.0
 	github.com/inno-agent/inno-agent/backend/pkg/telemetry v0.0.0
 	github.com/joho/godotenv v1.5.1
 	github.com/segmentio/kafka-go v0.4.47
 	go.uber.org/zap v1.28.0
 )
+
+replace github.com/inno-agent/inno-agent/backend/pkg/logger => ../pkg/logger
 
 replace github.com/inno-agent/inno-agent/backend/pkg/telemetry => ../pkg/telemetry
 
@@ -27,6 +30,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

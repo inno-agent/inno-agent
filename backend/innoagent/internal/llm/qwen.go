@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"innoagent/internal/correlation"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 const (
@@ -137,7 +137,7 @@ func (p *QwenProvider) Chat(
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	correlation.SetHeader(ctx, httpReq)
+	logger.SetCorrelationIDHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -219,7 +219,7 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	correlation.SetHeader(ctx, httpReq)
+	logger.SetCorrelationIDHeader(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {

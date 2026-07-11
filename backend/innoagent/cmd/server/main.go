@@ -14,10 +14,10 @@ import (
 	"innoagent/internal/auth"
 	"innoagent/internal/catalog"
 	"innoagent/internal/config"
-	"innoagent/internal/correlation"
 	"innoagent/internal/llm"
 	"innoagent/internal/orchestrator"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 	"go.uber.org/zap"
 )
@@ -41,10 +41,10 @@ type HealthResponse struct {
 func main() {
 	cfg := config.Load()
 
-	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	log := logger.New("orchestrator")
+	defer func() { _ = log.Sync() }()
 
-	logger.Info(
+	log.Info(
 		"starting InnoAgent orchestrator",
 		zap.String("ollama_base_url", cfg.BaseURL),
 		zap.String("model", cfg.Model),
@@ -53,7 +53,7 @@ func main() {
 
 	cat, err := catalog.Load(cfg.Models)
 	if err != nil {
-		logger.Fatal("failed to load catalog", zap.Error(err))
+		log.Fatal("failed to load catalog", zap.Error(err))
 	}
 
 	provider := llm.NewQwenProvider(
@@ -77,7 +77,7 @@ func main() {
 		}
 	}
 
-	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, logger)
+	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, log)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	telemetry.Init("orchestrator")
@@ -155,7 +155,7 @@ func main() {
 			if err != nil {
 				data, _ := json.Marshal(map[string]string{"error": err.Error()})
 				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-					logger.Error("failed to write error response", zap.Error(err))
+					log.Error("failed to write error response", zap.Error(err))
 				}
 				flusher.Flush()
 				return
@@ -164,12 +164,12 @@ func main() {
 			for chunk := range ch {
 				data, _ := json.Marshal(map[string]string{"answer": chunk})
 				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-					logger.Error("failed to write chunk", zap.Error(err))
+					log.Error("failed to write chunk", zap.Error(err))
 				}
 				flusher.Flush()
 			}
 			if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
-				logger.Error("failed to write DONE signal", zap.Error(err))
+				log.Error("failed to write DONE signal", zap.Error(err))
 			}
 			flusher.Flush()
 			return
@@ -178,7 +178,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		answer, err := orch.Ask(ctx, req.Messages, req.ModelName)
 		if err != nil {
-			logger.Error("orchestrator error", zap.Error(err))
+			log.Error("orchestrator error", zap.Error(err))
 			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)
 			return
 		}
@@ -189,8 +189,14 @@ func main() {
 	mux.Handle("/metrics", telemetry.Handler())
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.ServerPort,
-		Handler:      correlation.Middleware(logger)(telemetry.StdMiddleware("orchestrator", mux)),
+		Addr: ":" + cfg.ServerPort,
+		Handler: logger.CorrelationID(
+			logger.InjectLogger(log)(
+				logger.RequestLogger()(
+					telemetry.StdMiddleware("orchestrator", mux),
+				),
+			),
+		),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 200 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -200,21 +206,21 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		logger.Info("server listening", zap.String("port", cfg.ServerPort))
+		log.Info("server listening", zap.String("port", cfg.ServerPort))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("server error", zap.Error(err))
+			log.Fatal("server error", zap.Error(err))
 		}
 	}()
 
 	<-quit
-	logger.Info("shutting down server")
+	log.Info("shutting down server")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatal("forced shutdown", zap.Error(err))
+		log.Fatal("forced shutdown", zap.Error(err))
 	}
 
-	logger.Info("server stopped")
+	log.Info("server stopped")
 }

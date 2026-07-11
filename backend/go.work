@@ -5,6 +5,7 @@ use (
 	./identity
 	./innoagent
 	./issue-consumer
+	./pkg/logger
 	./pkg/telemetry
 	./review-api
 	./review-consumer

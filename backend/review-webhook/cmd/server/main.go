@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/config"
 	internalkafka "github.com/inno-agent/inno-agent/backend/review-webhook/internal/kafka"
@@ -24,8 +24,8 @@ func main() {
 
 	cfg := config.Load()
 
-	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	log := logger.New("review-webhook")
+	defer func() { _ = log.Sync() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -33,12 +33,14 @@ func main() {
 	publisher := internalkafka.NewPublisher(cfg.KafkaBrokers, cfg.KafkaTopic)
 	defer func() { _ = publisher.Close() }()
 
-	webhookHandler := webhook.New(cfg, publisher, logger)
+	webhookHandler := webhook.New(cfg, publisher, log)
 
 	telemetry.Init("review-webhook")
 
 	router := chi.NewRouter()
-	router.Use(chimw.Logger)
+	router.Use(logger.CorrelationID)
+	router.Use(logger.InjectLogger(log))
+	router.Use(logger.RequestLogger())
 	router.Use(telemetry.ChiMiddleware("review-webhook"))
 
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -56,18 +58,18 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("server starting", zap.String("port", cfg.ServerPort))
+		log.Info("server starting", zap.String("port", cfg.ServerPort))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("server error", zap.Error(err))
+			log.Fatal("server error", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	logger.Info("shutting down")
+	log.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown error", zap.Error(err))
+		log.Error("shutdown error", zap.Error(err))
 	}
 }

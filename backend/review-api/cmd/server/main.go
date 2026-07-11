@@ -14,6 +14,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
@@ -34,6 +35,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	tracingCleanup, err := tracing.Setup(ctx, "review-api")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
@@ -65,6 +72,7 @@ func main() {
 	telemetry.Init("review-api")
 
 	router := chi.NewRouter()
+	router.Use(tracing.ChiMiddleware("review-api"))
 	router.Use(logger.CorrelationID)
 	router.Use(logger.InjectLogger(log))
 	router.Use(logger.RequestLogger())

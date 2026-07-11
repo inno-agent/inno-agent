@@ -36,7 +36,7 @@ func (c *Client) Validate(ctx context.Context, token string) (string, error) {
 		return "", fmt.Errorf("auth: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	logger.SetCorrelationIDHeader(ctx, req)
+	logger.PropagateHeaders(ctx, req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

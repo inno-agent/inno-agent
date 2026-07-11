@@ -22,6 +22,7 @@ import (
 	"github.com/inno-agent/identity/internal/user"
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 func main() {
@@ -35,6 +36,12 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	tracingCleanup, err := tracing.Setup(ctx, "identity")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	pool, err := db.NewPool(ctx, cfg.DatabaseDSN)
 	if err != nil {
@@ -76,6 +83,11 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(tracing.GinMiddleware("identity"))
+	r.Use(func(c *gin.Context) {
+		c.Set("request_logger", log.With(logger.TraceFields(c.Request.Context())...))
+		c.Next()
+	})
 	r.Use(telemetry.GinMiddleware("identity"))
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,

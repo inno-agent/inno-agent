@@ -11,13 +11,19 @@ type contextKey string
 
 const loggerKey contextKey = "logger"
 
-// InjectLogger attaches a correlation-enriched logger to the request context.
+// InjectLogger attaches request-scoped fields to the logger in context.
 func InjectLogger(base *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			enriched := base
 			if id := CorrelationIDFromContext(r.Context()); id != "" {
-				enriched = base.With(zap.String("correlation_id", id))
+				enriched = enriched.With(zap.String("correlation_id", id))
+			}
+			if traceID, spanID := TraceFromContext(r.Context()); traceID != "" {
+				enriched = enriched.With(
+					zap.String("trace_id", traceID),
+					zap.String("span_id", spanID),
+				)
 			}
 			ctx := context.WithValue(r.Context(), loggerKey, enriched)
 			next.ServeHTTP(w, r.WithContext(ctx))

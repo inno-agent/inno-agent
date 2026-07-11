@@ -14,6 +14,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/config"
 	internalkafka "github.com/inno-agent/inno-agent/backend/review-webhook/internal/kafka"
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/webhook"
@@ -30,6 +31,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	tracingCleanup, err := tracing.Setup(ctx, "review-webhook")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
+
 	publisher := internalkafka.NewPublisher(cfg.KafkaBrokers, cfg.KafkaTopic)
 	defer func() { _ = publisher.Close() }()
 
@@ -38,6 +45,7 @@ func main() {
 	telemetry.Init("review-webhook")
 
 	router := chi.NewRouter()
+	router.Use(tracing.ChiMiddleware("review-webhook"))
 	router.Use(logger.CorrelationID)
 	router.Use(logger.InjectLogger(log))
 	router.Use(logger.RequestLogger())

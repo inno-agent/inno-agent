@@ -19,6 +19,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"go.uber.org/zap"
 )
 
@@ -81,6 +82,15 @@ func main() {
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	telemetry.Init("orchestrator")
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	tracingCleanup, err := tracing.Setup(ctx, "orchestrator")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	mux := http.NewServeMux()
 
@@ -190,10 +200,12 @@ func main() {
 
 	srv := &http.Server{
 		Addr: ":" + cfg.ServerPort,
-		Handler: logger.CorrelationID(
-			logger.InjectLogger(log)(
-				logger.RequestLogger()(
-					telemetry.StdMiddleware("orchestrator", mux),
+		Handler: tracing.HTTPMiddleware("orchestrator",
+			logger.CorrelationID(
+				logger.InjectLogger(log)(
+					logger.RequestLogger()(
+						telemetry.StdMiddleware("orchestrator", mux),
+					),
 				),
 			),
 		),

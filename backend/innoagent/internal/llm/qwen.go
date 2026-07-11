@@ -137,7 +137,7 @@ func (p *QwenProvider) Chat(
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	logger.SetCorrelationIDHeader(ctx, httpReq)
+	logger.PropagateHeaders(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -219,7 +219,7 @@ func (p *QwenProvider) Stream(ctx context.Context, messages []Message, modelName
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
-	logger.SetCorrelationIDHeader(ctx, httpReq)
+	logger.PropagateHeaders(ctx, httpReq)
 
 	httpResp, err := p.httpClient.Do(httpReq)
 	if err != nil {

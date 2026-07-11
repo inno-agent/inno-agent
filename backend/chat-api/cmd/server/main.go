@@ -20,6 +20,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/service"
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 func main() {
@@ -36,6 +37,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	tracingCleanup, err := tracing.Setup(ctx, "chat-api")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -60,6 +67,7 @@ func main() {
 	telemetry.Init("chat-api")
 
 	router := chi.NewRouter()
+	router.Use(tracing.ChiMiddleware("chat-api"))
 	router.Use(logger.CorrelationID)
 	router.Use(logger.InjectLogger(log))
 	router.Use(logger.RequestLogger())

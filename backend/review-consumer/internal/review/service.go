@@ -16,15 +16,15 @@ Review the provided diff.
 
 Return markdown report with sections:
 
-# Summary
+( 1. ) Summary
 
-# Potential Bugs
+( 2. ) Potential Bugs
 
-# Security Issues
+( 3. ) Security Issues
 
-# Performance Issues
+( 4. ) Performance Issues
 
-# Suggested Improvements
+( 5. ) Suggested Improvements
 
 Provide concise and actionable feedback.`
 

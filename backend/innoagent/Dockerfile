@@ -15,8 +15,8 @@ RUN go mod download
 WORKDIR /app/innoagent
 RUN apk add --no-cache git ca-certificates tzdata
 
-COPY innoagent/go.mod .
-RUN go mod download || true
+COPY innoagent/go.mod innoagent/go.sum ./
+RUN go mod download
 
 COPY innoagent/ .
 

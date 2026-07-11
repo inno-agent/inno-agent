@@ -10,7 +10,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
-	"github.com/inno-agent/inno-agent/backend/pkg/logger"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 type OrchestratorClient struct {
@@ -43,7 +43,7 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []Message, model
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	logger.PropagateHeaders(ctx, req)
+	tracing.PropagateOutbound(ctx, req)
 	if tok := middleware.TokenFromContext(ctx); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

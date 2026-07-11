@@ -564,7 +564,7 @@ services:
 
   # ─── Jaeger (Distributed Tracing) ─────────────────────────────────────────
   jaeger:
-    image: jaegertracing/all-in-one:1.64
+    image: jaegertracing/all-in-one:1.76.0
     restart: unless-stopped
     environment:
       COLLECTOR_OTLP_ENABLED: "true"

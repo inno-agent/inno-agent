@@ -18,12 +18,16 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 // Init configures OpenTelemetry trace export (Jaeger via OTLP).
 // If OTEL_EXPORTER_OTLP_ENDPOINT is unset, tracing stays disabled (noop).
 func Init(ctx context.Context, service string) (func(context.Context) error, error) {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
 	if endpoint == "" {
 		otel.SetTextMapPropagator(propagation.TraceContext{})
 		return func(context.Context) error { return nil }, nil
@@ -93,6 +97,12 @@ func GinMiddleware(service string) gin.HandlerFunc {
 // Propagate injects trace context into outbound HTTP request headers.
 func Propagate(ctx context.Context, req *http.Request) {
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+}
+
+// PropagateOutbound forwards correlation ID and trace context on outbound HTTP calls.
+func PropagateOutbound(ctx context.Context, req *http.Request) {
+	logger.PropagateHeaders(ctx, req)
+	Propagate(ctx, req)
 }
 
 // TraceIDs returns trace_id and span_id from the active span, if any.

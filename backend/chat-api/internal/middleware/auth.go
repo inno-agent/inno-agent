@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/inno-agent/inno-agent/backend/pkg/logger"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 type contextKey string
@@ -40,7 +40,7 @@ func Auth(authServiceURL string) func(http.Handler) http.Handler {
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
-			logger.PropagateHeaders(r.Context(), req)
+			tracing.PropagateOutbound(r.Context(), req)
 
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil || resp.StatusCode != http.StatusOK {

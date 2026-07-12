@@ -29,25 +29,53 @@ const fetchContextStep = createStep({
     const { owner, repo, pullNumber, headSha } = inputData
     const client = getGitFlameClient()
 
-    const files = await client.listPRFiles(owner, repo, pullNumber)
+    let files: string[] = []
+    try {
+      files = await client.listPRFiles(owner, repo, pullNumber)
+    } catch (error) {
+      console.error("Failed to list PR files:", error)
+      // Continue with empty file list
+    }
 
     const diffs: string[] = []
     for (const file of files) {
-      const diff = await client.getFileDiff(owner, repo, pullNumber, file)
-      if (diff) {
-        diffs.push(`diff --git a/${file} b/${file}\n${diff}`)
+      try {
+        const diff = await client.getFileDiff(owner, repo, pullNumber, file)
+        if (diff) {
+          diffs.push(`diff --git a/${file} b/${file}\n${diff}`)
+        }
+      } catch (error) {
+        // Skip failed files, continue with others
+        console.warn(`Failed to fetch diff for ${file}:`, error)
       }
     }
     const fullDiff = diffs.join("\n")
 
-    const agentsMdResult = await client.getRawFile(owner, repo, "AGENTS.md", headSha)
-    const readmeMdResult = await client.getRawFile(owner, repo, "README.md", headSha)
+    let agentsMd = "(absent)"
+    try {
+      const agentsMdResult = await client.getRawFile(owner, repo, "AGENTS.md", headSha)
+      if (agentsMdResult.found) {
+        agentsMd = agentsMdResult.content
+      }
+    } catch (error) {
+      console.warn("Failed to fetch AGENTS.md:", error)
+    }
+
+    let readmeMd = "(absent)"
+    try {
+      const readmeMdResult = await client.getRawFile(owner, repo, "README.md", headSha)
+      if (readmeMdResult.found) {
+        readmeMd = readmeMdResult.content
+      }
+    } catch (error) {
+      console.warn("Failed to fetch README.md:", error)
+    }
 
     return {
       files,
       fullDiff,
-      agentsMd: agentsMdResult.found ? agentsMdResult.content : "(absent)",
-      readmeMd: readmeMdResult.found ? readmeMdResult.content : "(absent)",
+      agentsMd,
+      readmeMd,
       owner,
       repo,
       pullNumber,
@@ -68,7 +96,7 @@ const analyzeStep = createStep({
   }),
   outputSchema: ReviewOutputSchema,
   execute: async ({ inputData, mastra }) => {
-    const agent = mastra.getAgent("code-reviewer")
+    const agent = mastra.getAgent("codeReviewerAgent")
 
     const prompt = `Review PR ${inputData.owner}/${inputData.repo}#${inputData.pullNumber}
 

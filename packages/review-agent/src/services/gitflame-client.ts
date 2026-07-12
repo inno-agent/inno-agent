@@ -21,46 +21,90 @@ interface PRComment {
 export class GitFlameClient {
   private baseUrl: string
   private token: string
+  private timeout: number
+  private maxRetries: number
 
   constructor(config: GitFlameConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "")
     this.token = config.token
+    this.timeout = 30000 // 30 seconds
+    this.maxRetries = 3
+  }
+
+  private async requestWithRetry<T>(path: string, retries = this.maxRetries): Promise<T> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await this.request<T>(path)
+      } catch (error: any) {
+        const isLastAttempt = attempt === retries
+        const isRetryable = error.message?.includes("429") || 
+                           error.message?.includes("500") ||
+                           error.message?.includes("502") ||
+                           error.message?.includes("503")
+
+        if (isLastAttempt || !isRetryable) {
+          throw error
+        }
+
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000)
+        console.warn(`GitFlame request failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    throw new Error("Max retries exceeded")
   }
 
   private async request<T>(path: string): Promise<T> {
     const url = `${this.baseUrl}${path}`
-    const resp = await fetch(url, {
-      headers: { Authorization: `token ${this.token}` },
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "")
-      throw new Error(`GitFlame API error: ${resp.status} ${text}`)
+    try {
+      const resp = await fetch(url, {
+        headers: { Authorization: `token ${this.token}` },
+        signal: controller.signal,
+      })
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "")
+        throw new Error(`GitFlame API error: ${resp.status} ${text}`)
+      }
+
+      return resp.json() as Promise<T>
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    return resp.json() as Promise<T>
   }
 
   private async requestRaw(path: string): Promise<string> {
     const url = `${this.baseUrl}${path}`
-    const resp = await fetch(url, {
-      headers: { Authorization: `token ${this.token}` },
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
-    if (resp.status === 404) {
-      return ""
+    try {
+      const resp = await fetch(url, {
+        headers: { Authorization: `token ${this.token}` },
+        signal: controller.signal,
+      })
+
+      if (resp.status === 404) {
+        return ""
+      }
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "")
+        throw new Error(`GitFlame API error: ${resp.status} ${text}`)
+      }
+
+      return resp.text()
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "")
-      throw new Error(`GitFlame API error: ${resp.status} ${text}`)
-    }
-
-    return resp.text()
   }
 
   async listPRFiles(owner: string, repo: string, pullNumber: number): Promise<string[]> {
-    const files = await this.request<PRFile[]>(
+    const files = await this.requestWithRetry<PRFile[]>(
       `/api/v1/repos/${owner}/${repo}/pulls/${pullNumber}/files`
     )
     return files.map((f) => f.name)
@@ -72,7 +116,7 @@ export class GitFlameClient {
     pullNumber: number,
     filename: string
   ): Promise<string> {
-    const diffs = await this.request<FileDiff[]>(
+    const diffs = await this.requestWithRetry<FileDiff[]>(
       `/api/v1/repos/${owner}/${repo}/pulls/${pullNumber}/diff/${encodeURIComponent(filename)}`
     )
 
@@ -108,7 +152,7 @@ export class GitFlameClient {
     pullNumber: number
   ): Promise<Array<{ body: string; author: string }>> {
     try {
-      const comments = await this.request<PRComment[]>(
+      const comments = await this.requestWithRetry<PRComment[]>(
         `/api/v1/repos/${owner}/${repo}/issues/${pullNumber}/comments`
       )
       return comments.map((c) => ({

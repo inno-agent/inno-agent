@@ -423,8 +423,6 @@ services:
       dockerfile: Dockerfile
     image: ghcr.io/inno-agent/review-agent:${TAG:-latest}
     restart: unless-stopped
-    ports:
-      - "4100:4100"
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
@@ -433,6 +431,12 @@ services:
       SERVER_PORT: "4100"
     networks:
       - innoagent
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     depends_on:
       orchestrator:
         condition: service_started

@@ -69,6 +69,8 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Correlation-ID $correlation_id;
+        # SSE chat stream: chat-api → orchestrator can run up to ~200s.
+        include /etc/nginx/templates/snippets/sse-proxy.conf;
         proxy_pass http://$upstream;
     }
 
@@ -82,6 +84,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
+        include /etc/nginx/templates/snippets/sse-proxy.conf;
         proxy_pass http://$upstream;
     }
 
@@ -190,6 +193,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Correlation-ID $correlation_id;
         proxy_set_header Authorization $http_authorization;
+        include /etc/nginx/templates/snippets/sse-proxy.conf;
         proxy_pass http://$upstream;
     }
 

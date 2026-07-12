@@ -5,15 +5,137 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/ci-backend.yml"
   push:
     branches: [main]
     paths:
       - "backend/**"
+      - "docker-compose.yml"
+      - ".github/workflows/ci-backend.yml"
+
+concurrency:
+  group: ci-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION_FILE: backend/go.work
 
 jobs:
-  ci-backend:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.matrix.outputs.modules }}
+      docker_matrix: ${{ steps.matrix.outputs.docker_matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
+      - name: Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'backend/go.work'
+              - 'backend/go.work.sum'
+              - 'backend/.golangci.yml'
+              - 'backend/pkg/telemetry/**'
+            workflow:
+              - '.github/workflows/ci-backend.yml'
+            docker-compose:
+              - 'docker-compose.yml'
+            chat-api:
+              - 'backend/chat-api/**'
+            identity:
+              - 'backend/identity/**'
+            innoagent:
+              - 'backend/innoagent/**'
+            review-api:
+              - 'backend/review-api/**'
+            review-consumer:
+              - 'backend/review-consumer/**'
+            review-webhook:
+              - 'backend/review-webhook/**'
+
+      - name: Resolve test and docker matrices
+        id: matrix
+        env:
+          EVENT: ${{ github.event_name }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          WORKFLOW: ${{ steps.filter.outputs.workflow }}
+          DOCKER_COMPOSE: ${{ steps.filter.outputs.docker-compose }}
+          CHAT_API: ${{ steps.filter.outputs.chat-api }}
+          IDENTITY: ${{ steps.filter.outputs.identity }}
+          INNOAGENT: ${{ steps.filter.outputs.innoagent }}
+          REVIEW_API: ${{ steps.filter.outputs.review-api }}
+          REVIEW_CONSUMER: ${{ steps.filter.outputs.review-consumer }}
+          REVIEW_WEBHOOK: ${{ steps.filter.outputs.review-webhook }}
+        run: |
+          all_modules='["chat-api","identity","innoagent","review-api","review-consumer","review-webhook","pkg/telemetry"]'
+          all_services=(identity chat-api review-api innoagent review-consumer review-webhook)
+
+          to_docker_matrix() {
+            printf '%s\n' "$@" | jq -R . | jq -s -c 'map(select(length > 0)) | map({service: ., dockerfile: ("backend/" + . + "/Dockerfile")})'
+          }
+
+          if [ "$EVENT" = "push" ] || [ "$SHARED" = "true" ] || [ "$WORKFLOW" = "true" ]; then
+            echo "modules=$all_modules" >> "$GITHUB_OUTPUT"
+            # docker-smoke only runs on pull_request; skip building the matrix on push.
+            if [ "$EVENT" = "push" ]; then
+              echo "docker_matrix=[]" >> "$GITHUB_OUTPUT"
+            else
+              echo "docker_matrix=$(to_docker_matrix "${all_services[@]}")" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          modules=()
+          [ "$CHAT_API" = "true" ] && modules+=("chat-api")
+          [ "$IDENTITY" = "true" ] && modules+=("identity")
+          [ "$INNOAGENT" = "true" ] && modules+=("innoagent")
+          [ "$REVIEW_API" = "true" ] && modules+=("review-api")
+          [ "$REVIEW_CONSUMER" = "true" ] && modules+=("review-consumer")
+          [ "$REVIEW_WEBHOOK" = "true" ] && modules+=("review-webhook")
+
+          docker=()
+          [ "$IDENTITY" = "true" ] && docker+=("identity")
+          [ "$CHAT_API" = "true" ] && docker+=("chat-api")
+          [ "$REVIEW_API" = "true" ] && docker+=("review-api")
+          [ "$INNOAGENT" = "true" ] && docker+=("innoagent")
+          [ "$REVIEW_CONSUMER" = "true" ] && docker+=("review-consumer")
+          [ "$REVIEW_WEBHOOK" = "true" ] && docker+=("review-webhook")
+
+          if [ "$DOCKER_COMPOSE" = "true" ]; then
+            docker=("${all_services[@]}")
+          fi
+
+          if [ ${#modules[@]} -eq 0 ]; then
+            modules_json='[]'
+          else
+            modules_json=$(printf '%s\n' "${modules[@]}" | jq -R . | jq -s -c .)
+          fi
+
+          if [ ${#docker[@]} -eq 0 ]; then
+            docker_matrix='[]'
+          else
+            docker_matrix=$(to_docker_matrix "${docker[@]}")
+          fi
+
+          echo "modules=$modules_json" >> "$GITHUB_OUTPUT"
+          echo "docker_matrix=$docker_matrix" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.modules) }}
+    defaults:
+      run:
+        working-directory: backend/${{ matrix.module }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -21,34 +143,66 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
-          cache-dependency-path: "backend/**/go.mod"
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: |
+            backend/go.work.sum
+            backend/**/go.sum
 
-      # later will be separated into different CIs on each service
-      - name: Find and test services
+      - name: Sync workspace
+        working-directory: backend
+        run: go work sync
+
+      - name: Test and build
         run: |
-          for dir in backend/*/; do
-            if [ -f "$dir/go.mod" ]; then
-              echo "Testing $dir"
-              cd $dir
-              go mod download
-              go test -race ./...
-              go build ./...
-              cd -
-            fi
-          done
+          go mod download
+          go test -race ./...
+          go build ./...
 
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+  lint:
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.modules) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-      # later will be separated into different CIs on each service
-      - name: Lint services
-        run: |
-          for dir in backend/*/; do
-            if [ -f "${dir}go.mod" ]; then
-              echo "Linting $dir"
-              cd "$dir"
-              golangci-lint run ./...
-              cd -
-            fi
-          done
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: |
+            backend/go.work.sum
+            backend/**/go.sum
+
+      - name: Sync workspace
+        working-directory: backend
+        run: go work sync
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: backend/${{ matrix.module }}
+
+  docker-smoke:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.docker_matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.docker_matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: ${{ matrix.dockerfile }}
+          push: false

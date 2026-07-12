@@ -16,6 +16,7 @@ type IssueRef struct {
 	Repo          string
 	Index         int64
 	Assigner      string
+	Creator       string
 	Title         string
 	Body          string
 	IssueType     string

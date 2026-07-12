@@ -126,23 +126,30 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	}
 
 	if !isAssignedToBot(issueEv, p.botUsername) {
+		msg := "issue is not assigned to the bot; skipping"
+		if issueEv.Action == actionOpened && len(issueAssigneeLogins(issueEv)) == 0 {
+			msg = "issue opened without bot assignee; skipping until assignment webhook"
+		}
 		p.logger.Info(
-			"issue is not assigned to the bot; skipping",
+			msg,
 			zap.String("action", issueEv.Action),
 			zap.String("bot_username", p.botUsername),
 			zap.String("assignee", issueEv.Assignee.Name()),
 			zap.String("issue_assignee", issueEv.Issue.Assignee.Name()),
+			zap.Strings("issue_assignees", issueAssigneeLogins(issueEv)),
 			zap.String("delivery_id", env.DeliveryID),
 		)
 		return Skip
 	}
 
 	assigner := issueEv.Sender.Name()
+	creator := issueEv.IssueCreator()
 	ref := domain.IssueRef{
 		Owner:         issueEv.RepoOwner(),
 		Repo:          issueEv.RepoName(),
 		Index:         issueEv.IssueIndex(),
 		Assigner:      assigner,
+		Creator:       creator,
 		Title:         issueEv.Issue.Title,
 		Body:          issueEv.IssueBody(),
 		IssueType:     inferIssueType(issueEv.Issue.Labels),
@@ -231,9 +238,14 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		prBody = fmt.Sprintf("%s\n\n%s", prBody, result.Summary)
 	}
 
+	reviewer := ref.Creator
+	if reviewer == "" {
+		reviewer = assigner
+	}
+
 	var prIndex int64
 	if p.prCreator != nil {
-		prIndex, err = p.prCreator.CreatePullRequest(ctx, ref, branch, prTitle, prBody, []string{assigner})
+		prIndex, err = p.prCreator.CreatePullRequest(ctx, ref, branch, prTitle, prBody, []string{reviewer})
 		if err != nil {
 			if errors.Is(err, domain.ErrPermanent) {
 				p.logger.Warn("pull request creation permanently failed; continuing with branch only",
@@ -245,7 +257,7 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		}
 	}
 
-	comment := buildSuccessComment(branch, prIndex, assigner, result)
+	comment := buildSuccessComment(branch, prIndex, reviewer, result)
 	if err := p.poster.PostIssueComment(ctx, ref, comment); err != nil {
 		if errors.Is(err, domain.ErrPermanent) {
 			p.logger.Error("post comment permanently failed; skipping message",
@@ -285,6 +297,16 @@ func isAssignedToBot(ev event.IssueEvent, botUsername string) bool {
 		}
 	}
 	return false
+}
+
+func issueAssigneeLogins(ev event.IssueEvent) []string {
+	out := make([]string, 0, len(ev.Issue.Assignees))
+	for _, a := range ev.Issue.Assignees {
+		if name := a.Name(); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func inferIssueType(labels []event.Label) string {

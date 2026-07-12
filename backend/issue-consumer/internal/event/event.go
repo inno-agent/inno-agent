@@ -41,6 +41,14 @@ func (e IssueEvent) IssueBody() string {
 	return gitflame.ParseIssueBody(e.Issue.Body)
 }
 
+// IssueCreator returns the GitFlame login of whoever opened the issue.
+func (e IssueEvent) IssueCreator() string {
+	if name := e.Issue.User.Name(); name != "" {
+		return name
+	}
+	return e.Sender.Name()
+}
+
 func (e IssueEvent) RepoOwner() string {
 	if login := e.Repository.Owner.Login; login != "" {
 		return login
@@ -74,6 +82,7 @@ type issueDetails struct {
 	Index     int64           `json:"index"`
 	Title     string          `json:"title"`
 	Body      json.RawMessage `json:"body"`
+	User      userLogin       `json:"user"`
 	Assignee  userLogin       `json:"assignee"`
 	Assignees []userLogin     `json:"assignees"`
 	Labels    []Label         `json:"labels"`

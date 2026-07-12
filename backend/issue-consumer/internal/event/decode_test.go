@@ -98,6 +98,42 @@ func TestIssueEvent_RepoOwnerFromFullName(t *testing.T) {
 	}
 }
 
+func TestIssueEvent_IssueCreatorPrefersIssueUser(t *testing.T) {
+	raw := []byte(`{
+		"action": "assigned",
+		"issue": {"index": 11, "title": "Task", "body": "details", "user": {"login": "creator"}},
+		"repository": {"full_name": "org/repo"},
+		"assignee": {"login": "bot"},
+		"sender": {"login": "someone-else"}
+	}`)
+
+	var issueEv IssueEvent
+	if err := json.Unmarshal(raw, &issueEv); err != nil {
+		t.Fatal(err)
+	}
+	if issueEv.IssueCreator() != "creator" {
+		t.Fatalf("creator = %q", issueEv.IssueCreator())
+	}
+}
+
+func TestIssueEvent_IssueCreatorFallsBackToSender(t *testing.T) {
+	raw := []byte(`{
+		"action": "assigned",
+		"issue": {"index": 11, "title": "Task", "body": "details"},
+		"repository": {"full_name": "org/repo"},
+		"assignee": {"login": "bot"},
+		"sender": {"login": "sender"}
+	}`)
+
+	var issueEv IssueEvent
+	if err := json.Unmarshal(raw, &issueEv); err != nil {
+		t.Fatal(err)
+	}
+	if issueEv.IssueCreator() != "sender" {
+		t.Fatalf("creator = %q", issueEv.IssueCreator())
+	}
+}
+
 func TestIssueEvent_IssueIndexUsesNestedIndexField(t *testing.T) {
 	raw := []byte(`{
 		"action": "assigned",

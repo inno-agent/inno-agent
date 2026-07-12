@@ -7,6 +7,34 @@ import { randomUUID } from "crypto"
 
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
+const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
+
+// Simple in-memory cache for PR reviews
+interface CacheEntry {
+  markdown: string
+  createdAt: number
+}
+
+const reviewCache = new Map<string, CacheEntry>()
+
+function getCachedReview(key: string): string | null {
+  const entry = reviewCache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.createdAt > CACHE_TTL_MS) {
+    reviewCache.delete(key)
+    return null
+  }
+  return entry.markdown
+}
+
+function setCachedReview(key: string, markdown: string): void {
+  // Evict oldest entries if cache is too large (max 100 entries)
+  if (reviewCache.size > 100) {
+    const oldestKey = reviewCache.keys().next().value
+    if (oldestKey) reviewCache.delete(oldestKey)
+  }
+  reviewCache.set(key, { markdown, createdAt: Date.now() })
+}
 
 const ReviewRequestSchema = z.object({
   owner: z.string(),
@@ -71,6 +99,14 @@ app.post("/review", async (c) => {
 
   const { owner, repo, pullNumber, headSha } = parsed.data
 
+  // Check cache first
+  const cacheKey = `${owner}/${repo}#${pullNumber}@${headSha}`
+  const cached = getCachedReview(cacheKey)
+  if (cached) {
+    console.log(`[${requestId}] Cache hit for ${owner}/${repo}#${pullNumber}`)
+    return c.json({ review_markdown: cached })
+  }
+
   console.log(`[${requestId}] Starting review for ${owner}/${repo}#${pullNumber}`)
 
   try {
@@ -89,8 +125,10 @@ app.post("/review", async (c) => {
     const result = await Promise.race([resultPromise, timeoutPromise]) as any
 
     if (result.status === "success") {
+      const reviewMarkdown = result.result.reviewMarkdown
       console.log(`[${requestId}] Review completed successfully`)
-      return c.json({ review_markdown: result.result.reviewMarkdown })
+      setCachedReview(cacheKey, reviewMarkdown)
+      return c.json({ review_markdown: reviewMarkdown })
     }
 
     console.error(`[${requestId}] Review failed with status: ${result.status}`)

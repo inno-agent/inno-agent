@@ -426,8 +426,12 @@ services:
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      # Direct Ollama bypasses orchestrator + arch-router (~200-500ms saved per review).
+      # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       ORCHESTRATOR_URL: http://orchestrator:8080
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder-32b}
+      REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
       SERVER_PORT: "4100"
     networks:
       - innoagent

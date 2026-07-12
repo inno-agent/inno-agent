@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 )
 
@@ -46,6 +47,7 @@ func (c *Client) Review(ctx context.Context, ref domain.PRRef, token string) (st
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", uuid.New().String())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

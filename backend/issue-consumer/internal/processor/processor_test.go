@@ -83,6 +83,7 @@ func makeEnvelope(action, deliveryID string) []byte {
 	issue.Issue.Title = "Add health endpoint"
 	issue.Issue.Body = json.RawMessage(`"Please add GET /health"`)
 	issue.Issue.Assignee.Login = testBotUsername
+	issue.Issue.User.Login = "alice"
 	issue.Repository.Name = "myrepo"
 	issue.Repository.Owner.Login = "myorg"
 	issue.Repository.DefaultBranch = "main"
@@ -158,6 +159,36 @@ func TestProcess_Assigned_Done(t *testing.T) {
 	}
 	if len(pusher.reviewers) != 1 || pusher.reviewers[0] != "alice" {
 		t.Fatalf("expected alice as reviewer, got %v", pusher.reviewers)
+	}
+}
+
+func TestProcess_Assigned_ReviewerIsIssueCreatorNotSender(t *testing.T) {
+	issue := event.IssueEvent{Action: "assigned", Number: 8}
+	issue.Issue.Number = 8
+	issue.Issue.Title = "Task"
+	issue.Issue.Body = json.RawMessage(`"body"`)
+	issue.Issue.User.Login = "creator"
+	issue.Issue.Assignee.Login = testBotUsername
+	issue.Repository.Owner.Login = "myorg"
+	issue.Repository.Name = "myrepo"
+	issue.Repository.DefaultBranch = "main"
+	issue.Sender.Login = "someone-else"
+
+	payload, _ := json.Marshal(issue)
+	env := event.Envelope{DeliveryID: "del-creator", EventType: "issues", Payload: payload}
+	data, _ := json.Marshal(env)
+
+	pusher := &fakePusher{}
+	gen := &fakeGenerator{result: &domain.GenerationResult{
+		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+	}}
+	p := newProc(gen, pusher, &fakePoster{})
+
+	if result := p.Process(context.Background(), data); result != processor.Done {
+		t.Fatalf("expected Done, got %v", result)
+	}
+	if len(pusher.reviewers) != 1 || pusher.reviewers[0] != "creator" {
+		t.Fatalf("expected creator as reviewer, got %v", pusher.reviewers)
 	}
 }
 

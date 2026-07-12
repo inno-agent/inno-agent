@@ -1,6 +1,8 @@
 package generator
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"strings"
 	"testing"
@@ -116,5 +118,53 @@ func TestParseLLMOutput_ProseOnlyFails(t *testing.T) {
 	_, err := parseLLMOutput("yes, here is a python script that adds numbers...")
 	if err == nil {
 		t.Fatal("expected parse error for prose-only response")
+	}
+}
+
+func TestParseLLMOutput_JSONFenceWithGzipBase64(t *testing.T) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	_, _ = gw.Write([]byte("# readme\n"))
+	_ = gw.Close()
+	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+	raw := "```json\n{\"summary\":\"ok\",\"files\":[{\"path\":\"README.md\",\"content_base64\":\"" + encoded + "\"}]}\n```"
+	result, err := parseLLMOutput(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Files[0].Path != "README.md" || !strings.Contains(result.Files[0].Content, "# readme") {
+		t.Fatalf("unexpected: %+v", result.Files[0])
+	}
+}
+
+func TestParseLLMOutput_JSONFenceInvalidBase64FailsClearly(t *testing.T) {
+	raw := "```json\n{\"summary\":\"ok\",\"files\":[{\"path\":\"README.md\",\"content_base64\":\"H4sIAAAAAAAAAAAAD2Rlc3QgAAAAA\"}]}\n```"
+	_, err := parseLLMOutput(raw)
+	if err == nil {
+		t.Fatal("expected parse error for invalid file payload")
+	}
+	if !strings.Contains(err.Error(), "invalid base64") && !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseLLMOutput_JSONWithLineComments(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("# readme\n"))
+	raw := "```json\n{\n  \"summary\": \"read markdown file\",\n  \"files\": [\n    {\n      \"path\": \"README.md\",\n      \"content_base64\": \"" + encoded + "\" // base64 of readme\n    }\n  ]\n}\n```"
+	result, err := parseLLMOutput(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Files[0].Path != "README.md" || !strings.Contains(result.Files[0].Content, "# readme") {
+		t.Fatalf("unexpected: %+v", result.Files[0])
+	}
+}
+
+func TestStripJSONComments_PreservesSlashesInStrings(t *testing.T) {
+	in := `{"url":"http://example.com","note":"keep // this"}`
+	out := stripJSONComments(in)
+	if out != in {
+		t.Fatalf("got %q", out)
 	}
 }

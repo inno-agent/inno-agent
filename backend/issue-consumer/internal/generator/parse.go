@@ -1,9 +1,12 @@
 package generator
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -21,17 +24,19 @@ Example for a Python script in main.py:
 {"summary":"add two numbers","files":[{"path":"main.py","content_base64":"YSA9IGludChpbnB1dCgpCmIgPSBpbnQoaW5wdXQoKSkKcHJpbnQoYSArIGIp"}]}
 
 Rules:
-- content_base64 must be standard base64 of the full file (one line, no spaces).
+- content_base64 must be standard base64 of the full UTF-8 file (one line, no spaces). Do not gzip or compress.
 - Include complete files, not diffs.
 - Minimal changes only.`
 
 const codegenRepairPrompt = `Your reply was not usable. Return ONLY one JSON object.
-Do not use markdown fences. Every file must have path and content_base64.
+Do not use markdown fences or comments. Every file must have path and content_base64.
+content_base64 must be valid standard base64 of raw UTF-8 file bytes (not gzip).
 Example: {"summary":"done","files":[{"path":"main.py","content_base64":"cHJpbnQoMSk="}]}`
 
 var (
-	jsonFenceRE = regexp.MustCompile("(?s)```(?:json)?\\s*([\\s\\S]*?)```")
-	anyFenceRE  = regexp.MustCompile("(?s)```([a-zA-Z0-9._-]*)\\s*\\n([\\s\\S]*?)```")
+	jsonFenceRE     = regexp.MustCompile("(?s)```(?:json)?\\s*([\\s\\S]*?)```")
+	anyFenceRE      = regexp.MustCompile("(?s)```([a-zA-Z0-9._-]*)\\s*\\n([\\s\\S]*?)```")
+	trailingCommaRE = regexp.MustCompile(`,(\s*[}\]])`)
 )
 
 type llmOutput struct {
@@ -71,10 +76,15 @@ func parseLLMOutput(raw string) (*domain.GenerationResult, error) {
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no parseable output found")
 	}
+	if strings.Contains(lastErr.Error(), "no code in markdown fences") {
+		lastErr = fmt.Errorf("json found but file contents were missing or invalid base64")
+	}
 	return nil, fmt.Errorf("invalid json: %w", lastErr)
 }
 
 func parseJSONObject(jsonText, raw string) (*domain.GenerationResult, error) {
+	jsonText = sanitizeJSONObject(jsonText)
+
 	var out llmOutput
 	if err := json.Unmarshal([]byte(jsonText), &out); err != nil {
 		return nil, err
@@ -108,6 +118,13 @@ func jsonCandidates(raw string) []string {
 		}
 		seen[s] = struct{}{}
 		ordered = append(ordered, s)
+
+		if cleaned := sanitizeJSONObject(s); cleaned != s {
+			if _, ok := seen[cleaned]; !ok && cleaned != "" {
+				seen[cleaned] = struct{}{}
+				ordered = append(ordered, cleaned)
+			}
+		}
 	}
 
 	add(trimmed)
@@ -145,6 +162,73 @@ func extractJSONObject(s string) string {
 		return ""
 	}
 	return s[start : end+1]
+}
+
+func sanitizeJSONObject(s string) string {
+	s = stripJSONComments(s)
+	s = trailingCommaRE.ReplaceAllString(s, "$1")
+	return strings.TrimSpace(s)
+}
+
+func stripJSONComments(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	inString := false
+	escaped := false
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+
+		if inString {
+			b.WriteByte(c)
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		if c == '"' {
+			inString = true
+			b.WriteByte(c)
+			continue
+		}
+
+		if c == '/' && i+1 < len(s) {
+			switch s[i+1] {
+			case '/':
+				i += 2
+				for i < len(s) && s[i] != '\n' {
+					i++
+				}
+				if i < len(s) {
+					b.WriteByte('\n')
+				}
+				continue
+			case '*':
+				i += 2
+				for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+					i++
+				}
+				if i+1 < len(s) {
+					i++
+				}
+				continue
+			}
+		}
+
+		b.WriteByte(c)
+	}
+
+	return b.String()
 }
 
 func filesFromOutput(out llmOutput, raw string) ([]domain.GeneratedFile, error) {
@@ -185,13 +269,31 @@ func filesFromOutput(out llmOutput, raw string) ([]domain.GeneratedFile, error) 
 func decodeFileContent(f llmFile) (string, error) {
 	if enc := strings.TrimSpace(f.ContentBase64); enc != "" {
 		if decoded, err := decodeBase64Lenient(enc); err == nil {
-			return string(decoded), nil
+			if text, err := decodeFileBytes(decoded); err == nil && text != "" {
+				return text, nil
+			}
 		}
 	}
 	if content := strings.TrimSpace(f.Content); content != "" {
 		return content, nil
 	}
 	return "", fmt.Errorf("file %s has no content", f.Path)
+}
+
+func decodeFileBytes(raw []byte) (string, error) {
+	if len(raw) >= 2 && raw[0] == 0x1f && raw[1] == 0x8b {
+		gr, err := gzip.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return "", err
+		}
+		defer gr.Close()
+		decompressed, err := io.ReadAll(gr)
+		if err != nil {
+			return "", err
+		}
+		raw = decompressed
+	}
+	return string(raw), nil
 }
 
 func decodeBase64Lenient(enc string) ([]byte, error) {
@@ -201,18 +303,20 @@ func decodeBase64Lenient(enc string) ([]byte, error) {
 		}
 		return r
 	}, enc)
-
-	switch len(enc) % 4 {
-	case 2:
-		enc += "=="
-	case 3:
-		enc += "="
+	if enc == "" {
+		return nil, fmt.Errorf("empty base64")
 	}
 
-	if decoded, err := base64.StdEncoding.DecodeString(enc); err == nil {
+	for pad := 0; pad < 4; pad++ {
+		candidate := enc + strings.Repeat("=", pad)
+		if decoded, err := base64.StdEncoding.DecodeString(candidate); err == nil {
+			return decoded, nil
+		}
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(enc); err == nil {
 		return decoded, nil
 	}
-	return base64.RawStdEncoding.DecodeString(enc)
+	return nil, fmt.Errorf("invalid base64")
 }
 
 func parseFromMarkdownFences(raw string) (*domain.GenerationResult, error) {

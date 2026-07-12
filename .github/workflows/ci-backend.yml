@@ -81,7 +81,12 @@ jobs:
 
           if [ "$EVENT" = "push" ] || [ "$SHARED" = "true" ] || [ "$WORKFLOW" = "true" ]; then
             echo "modules=$all_modules" >> "$GITHUB_OUTPUT"
-            echo "docker_matrix=$(to_docker_matrix "${all_services[@]}")" >> "$GITHUB_OUTPUT"
+            # docker-smoke only runs on pull_request; skip building the matrix on push.
+            if [ "$EVENT" = "push" ]; then
+              echo "docker_matrix=[]" >> "$GITHUB_OUTPUT"
+            else
+              echo "docker_matrix=$(to_docker_matrix "${all_services[@]}")" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 

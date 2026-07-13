@@ -5,6 +5,14 @@ import { mastra } from "./mastra/index"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 
+// ─── Hono typed context ─────────────────────────────────────────────────────
+
+type AppEnv = {
+  Variables: {
+    requestId: string
+  }
+}
+
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
@@ -72,7 +80,7 @@ const ReviewRequestSchema = z.object({
   headSha: z.string(),
 })
 
-const app = new Hono()
+const app = new Hono<AppEnv>()
 
 // CORS middleware
 app.use("*", async (c, next) => {
@@ -81,7 +89,7 @@ app.use("*", async (c, next) => {
   c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
 
   if (c.req.method === "OPTIONS") {
-    return c.text("", 204)
+    return new Response(null, { status: 204 })
   }
 
   await next()
@@ -118,7 +126,7 @@ const server = new MastraServer({ app, mastra })
 await server.init()
 
 app.post("/review", async (c) => {
-  const requestId = c.get("requestId") as string
+  const requestId = c.get("requestId")
   const body = await c.req.json()
   const parsed = ReviewRequestSchema.safeParse(body)
 

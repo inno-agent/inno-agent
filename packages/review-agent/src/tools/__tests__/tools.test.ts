@@ -33,13 +33,17 @@ vi.mock("../../services/gitflame-singleton", () => ({
   }),
 }))
 
+// Empty context for tool execution — execute is optional in Mastra types,
+// but all our tools define it. Use non-null assertion.
+const ctx = {} as any
+
 describe("listChangedFiles", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it("should return list of changed files", async () => {
-    const result = await listChangedFiles.execute({ owner: "test", repo: "repo", pullNumber: 1 }, { toolCallId: "test" }) as { files: string[] }
+    const result = await listChangedFiles.execute!({ owner: "test", repo: "repo", pullNumber: 1 }, ctx) as { files: string[] }
     expect(result.files).toEqual(["src/main.ts", "README.md", "package.json"])
   })
 })
@@ -50,13 +54,13 @@ describe("getPrDiff", () => {
   })
 
   it("should return diff for a file", async () => {
-    const result = await getPrDiff.execute({ owner: "test", repo: "repo", pullNumber: 1, filePath: "src/main.ts" }, { toolCallId: "test" }) as { diff: string }
+    const result = await getPrDiff.execute!({ owner: "test", repo: "repo", pullNumber: 1, filePath: "src/main.ts" }, ctx) as { diff: string }
     expect(result.diff).toContain("processOrder")
     expect(result.diff).toContain("validateOrder")
   })
 
   it("should return empty diff for unknown file", async () => {
-    const result = await getPrDiff.execute({ owner: "test", repo: "repo", pullNumber: 1, filePath: "unknown.ts" }, { toolCallId: "test" }) as { diff: string }
+    const result = await getPrDiff.execute!({ owner: "test", repo: "repo", pullNumber: 1, filePath: "unknown.ts" }, ctx) as { diff: string }
     expect(result.diff).toBe("")
   })
 })
@@ -67,19 +71,19 @@ describe("readRepositoryFile", () => {
   })
 
   it("should return file content when found", async () => {
-    const result = await readRepositoryFile.execute({ owner: "test", repo: "repo", filePath: "AGENTS.md", ref: "abc123" }, { toolCallId: "test" }) as { found: boolean; content: string }
+    const result = await readRepositoryFile.execute!({ owner: "test", repo: "repo", filePath: "AGENTS.md", ref: "abc123" }, ctx) as { found: boolean; content: string }
     expect(result.found).toBe(true)
     expect(result.content).toContain("AGENTS.md")
   })
 
   it("should return not found for missing file", async () => {
-    const result = await readRepositoryFile.execute({ owner: "test", repo: "repo", filePath: "nonexistent.txt", ref: "abc123" }, { toolCallId: "test" }) as { found: boolean; content: string }
+    const result = await readRepositoryFile.execute!({ owner: "test", repo: "repo", filePath: "nonexistent.txt", ref: "abc123" }, ctx) as { found: boolean; content: string }
     expect(result.found).toBe(false)
     expect(result.content).toBe("")
   })
 
   it("should block non-allowed paths", async () => {
-    const result = await readRepositoryFile.execute({ owner: "test", repo: "repo", filePath: "secrets.env", ref: "abc123" }, { toolCallId: "test" }) as { found: boolean; content: string }
+    const result = await readRepositoryFile.execute!({ owner: "test", repo: "repo", filePath: "secrets.env", ref: "abc123" }, ctx) as { found: boolean; content: string }
     expect(result.found).toBe(false)
   })
 })
@@ -90,7 +94,7 @@ describe("getPrComments", () => {
   })
 
   it("should return comments", async () => {
-    const result = await getPrComments.execute({ owner: "test", repo: "repo", pullNumber: 1 }, { toolCallId: "test" }) as { comments: Array<{ body: string; author: string }> }
+    const result = await getPrComments.execute!({ owner: "test", repo: "repo", pullNumber: 1 }, ctx) as { comments: Array<{ body: string; author: string }> }
     expect(result.comments).toHaveLength(2)
     expect(result.comments[0].author).toBe("reviewer1")
   })

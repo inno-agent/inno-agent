@@ -61,9 +61,26 @@ func (c *Client) Review(ctx context.Context, ref domain.PRRef, token string) (st
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		msg := fmt.Sprintf("mastra: status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+
+		// 4xx = permanent (bad request, auth, etc.)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			return "", fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
 		}
+
+		// 504 Gateway Timeout = transient (retry)
+		if resp.StatusCode == 504 {
+			return "", fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+		}
+
+		// 500 with specific error patterns = permanent (model not found, invalid config)
+		bodyLower := strings.ToLower(string(snippet))
+		if strings.Contains(bodyLower, "model not found") ||
+			strings.Contains(bodyLower, "invalid") ||
+			strings.Contains(bodyLower, "not configured") {
+			return "", fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+
+		// Other 5xx = transient (retry)
 		return "", fmt.Errorf("%s: %w", msg, domain.ErrTransient)
 	}
 

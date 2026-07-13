@@ -8,6 +8,31 @@ import { randomUUID } from "crypto"
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
+const MAX_CONCURRENT_REVIEWS = parseInt(process.env.MAX_CONCURRENT_REVIEWS || "4")
+
+// ─── Rate limiting ──────────────────────────────────────────────────────────
+
+class Semaphore {
+  private queue: (() => void)[] = []
+  private running = 0
+  constructor(private max: number) {}
+  async acquire() {
+    if (this.running < this.max) {
+      this.running++
+      return
+    }
+    return new Promise<void>((resolve) => this.queue.push(resolve))
+  }
+  release() {
+    this.running--
+    if (this.queue.length > 0) {
+      this.running++
+      this.queue.shift()!()
+    }
+  }
+}
+
+const reviewSemaphore = new Semaphore(MAX_CONCURRENT_REVIEWS)
 
 // Simple in-memory cache for PR reviews
 interface CacheEntry {
@@ -16,6 +41,10 @@ interface CacheEntry {
 }
 
 const reviewCache = new Map<string, CacheEntry>()
+
+// Fix 11: Cache metrics
+let cacheHits = 0
+let cacheMisses = 0
 
 function getCachedReview(key: string): string | null {
   const entry = reviewCache.get(key)
@@ -103,17 +132,20 @@ app.post("/review", async (c) => {
   const cacheKey = `${owner}/${repo}#${pullNumber}@${headSha}`
   const cached = getCachedReview(cacheKey)
   if (cached) {
-    console.log(`[${requestId}] Cache hit for ${owner}/${repo}#${pullNumber}`)
+    cacheHits++
+    console.log(`[${requestId}] Cache hit for ${owner}/${repo}#${pullNumber} (hits: ${cacheHits}/${cacheHits + cacheMisses})`)
     return c.json({ review_markdown: cached })
   }
+  cacheMisses++
 
   console.log(`[${requestId}] Starting review for ${owner}/${repo}#${pullNumber}`)
 
+  // Fix 7: Rate limiting
+  await reviewSemaphore.acquire()
   try {
     const workflow = mastra.getWorkflow("reviewPipeline")
     const run = await workflow.createRun()
-    
-    // Add timeout
+
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error("Review timeout")), REVIEW_TIMEOUT_MS)
     })
@@ -139,6 +171,8 @@ app.post("/review", async (c) => {
       return c.json({ error: "Review timeout" }, 504)
     }
     return c.json({ error: "Internal server error" }, 500)
+  } finally {
+    reviewSemaphore.release()
   }
 })
 

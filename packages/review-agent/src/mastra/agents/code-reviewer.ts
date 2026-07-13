@@ -1,8 +1,4 @@
 import { Agent } from "@mastra/core/agent"
-import { listChangedFiles } from "../../tools/list-changed-files"
-import { getPrDiff } from "../../tools/get-pr-diff"
-import { readRepositoryFile } from "../../tools/read-repository-file"
-import { getPrComments } from "../../tools/get-pr-comments"
 import { buildReviewPrompt } from "../../prompt/builder"
 
 // Direct Ollama access bypasses the orchestrator and its arch-router,
@@ -14,13 +10,16 @@ const modelUrl = ollamaUrl
   ? `${ollamaUrl.replace(/\/$/, "")}/v1`
   : `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8080"}/v1`
 
+// Pure text-generation agent — no tools registered.
+// Workflow steps (createPlan, investigate, verify) call agent.generate()
+// with self-contained prompts. Tools are unused in this flow and would
+// cause conflicting instructions if registered.
 export const codeReviewerAgent = new Agent({
   id: "code-reviewer",
   name: "Code Review Agent",
   instructions: buildReviewPrompt(),
   model: {
-    id: reviewModel,
+    id: `custom/${reviewModel}`,
     url: modelUrl,
   },
-  tools: { listChangedFiles, getPrDiff, readRepositoryFile, getPrComments },
 })

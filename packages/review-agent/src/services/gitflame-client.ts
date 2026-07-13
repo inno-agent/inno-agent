@@ -18,6 +18,10 @@ interface PRComment {
   user: { login: string }
 }
 
+interface PRDetails {
+  body: string
+}
+
 export class GitFlameClient {
   private baseUrl: string
   private token: string
@@ -161,6 +165,21 @@ export class GitFlameClient {
       }))
     } catch {
       return []
+    }
+  }
+
+  async getPRDescription(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<string> {
+    try {
+      const pr = await this.requestWithRetry<PRDetails>(
+        `/api/v1/repos/${owner}/${repo}/pulls/${pullNumber}`
+      )
+      return pr.body || ""
+    } catch {
+      return ""
     }
   }
 }

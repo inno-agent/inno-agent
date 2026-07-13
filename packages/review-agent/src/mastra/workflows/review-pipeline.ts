@@ -158,6 +158,7 @@ function buildInvestigatePrompt(
   owner: string,
   repo: string,
   pullNumber: number,
+  description: string,
   agentsMd: string,
   readmeMd: string,
 ): string {
@@ -166,6 +167,9 @@ function buildInvestigatePrompt(
   }).join("\n\n")
 
   return `Review PR ${owner}/${repo}#${pullNumber}
+
+PR Description:
+${description || "(no description)"}
 
 Context:
 === AGENTS.md ===
@@ -199,6 +203,7 @@ const fetchContextStep = createStep({
   outputSchema: z.object({
     files: z.array(z.string()),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),
@@ -209,6 +214,13 @@ const fetchContextStep = createStep({
     const { owner, repo, pullNumber, headSha } = inputData
     const client = getGitFlameClient()
     const start = Date.now()
+
+    let description = ""
+    try {
+      description = await client.getPRDescription(owner, repo, pullNumber)
+    } catch (error) {
+      console.warn("Failed to fetch PR description:", error)
+    }
 
     let files: string[] = []
     try {
@@ -263,7 +275,7 @@ const fetchContextStep = createStep({
 
     console.log(`fetchContext completed in ${Date.now() - start}ms: ${Object.keys(diffs).length} files, ${totalDiffSize} bytes`)
 
-    return { files, diffs, agentsMd, readmeMd, owner, repo, pullNumber }
+    return { files, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber }
   },
 })
 
@@ -274,6 +286,7 @@ const createPlanStep = createStep({
   inputSchema: z.object({
     files: z.array(z.string()),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),
@@ -284,6 +297,7 @@ const createPlanStep = createStep({
     plan: z.array(PlanItemSchema),
     files: z.array(z.string()),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),
@@ -291,7 +305,7 @@ const createPlanStep = createStep({
     pullNumber: z.number(),
   }),
   execute: async ({ inputData, mastra }) => {
-    const { files, diffs, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
+    const { files, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
 
     // Fix 10: Trivial PR — only skip for truly tiny changes
     const totalLines = Object.values(diffs).reduce((sum, d) => {
@@ -304,7 +318,7 @@ const createPlanStep = createStep({
         priority: "high" as const,
         focus: "Full review",
       }))
-      return { plan, files, diffs, agentsMd, readmeMd, owner, repo, pullNumber }
+      return { plan, files, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber }
     }
 
     const agent = mastra.getAgent("codeReviewerAgent")
@@ -317,6 +331,9 @@ const createPlanStep = createStep({
     }).join("\n")
 
     const prompt = `You are planning a code review for a pull request.
+
+PR Description:
+${description || "(no description)"}
 
 Changed files (${files.length} files, ~${totalLines} lines changed):
 ${fileSummary}
@@ -345,7 +362,7 @@ Output ONLY valid JSON: { "plan": [{ "file": "...", "priority": "...", "focus": 
       }))
     }
 
-    return { plan, files, diffs, agentsMd, readmeMd, owner, repo, pullNumber }
+    return { plan, files, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber }
   },
 })
 
@@ -357,6 +374,7 @@ const investigateStep = createStep({
     plan: z.array(PlanItemSchema),
     files: z.array(z.string()),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),
@@ -366,6 +384,7 @@ const investigateStep = createStep({
   outputSchema: z.object({
     findings: z.array(FindingSchema),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),
@@ -373,7 +392,7 @@ const investigateStep = createStep({
     pullNumber: z.number(),
   }),
   execute: async ({ inputData, mastra }) => {
-    const { plan, diffs, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
+    const { plan, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
     const agent = mastra.getAgent("codeReviewerAgent")
 
     // Fix 5: Increased token budget
@@ -387,7 +406,7 @@ const investigateStep = createStep({
       const batch = chunks.slice(i, i + CONCURRENT_CHUNKS)
       const batchResults = await Promise.all(
         batch.map(async (chunk) => {
-          const prompt = buildInvestigatePrompt(chunk, owner, repo, pullNumber, agentsMd, readmeMd)
+          const prompt = buildInvestigatePrompt(chunk, owner, repo, pullNumber, description, agentsMd, readmeMd)
           const response = await agent.generate(prompt)
           return parseFindings(response.text)
         })
@@ -401,7 +420,7 @@ const investigateStep = createStep({
     console.log(`investigate completed in ${Date.now() - start}ms: ${allFindings.length} total findings`)
 
     // Fix 12: Pass diffs through to verify step
-    return { findings: allFindings, diffs, agentsMd, readmeMd, owner, repo, pullNumber }
+    return { findings: allFindings, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber }
   },
 })
 
@@ -412,6 +431,7 @@ const verifyStep = createStep({
   inputSchema: z.object({
     findings: z.array(FindingSchema),
     diffs: z.record(z.string()),
+    description: z.string(),
     agentsMd: z.string(),
     readmeMd: z.string(),
     owner: z.string(),

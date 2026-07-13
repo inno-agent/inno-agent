@@ -84,13 +84,18 @@
 | GET | `/v1/models` | List available models |
 | GET | `/metrics` | Prometheus metrics |
 
-### Models (default)
+### Models
+
+`LLM_MODELS` — единственный источник истины. Определяет: какие модели пуллятся, какая используется по умолчанию (первая в списке), что возвращает `GET /v1/models`.
+
+`internal/catalog/models.json` — только метаданные для UI (name, description). Не влияет на доступность.
+
 | Model | Size | Purpose |
 |-------|------|---------|
 | `qwen2.5:0.5b` | 0.5B | Fast (default) |
 | `llama3.2:1b` | 1B | General |
 | `qwen2.5-coder:1.5b` | 1.5B | Code |
-| `fauxpaslife/arch-router:1.5b` | 1.5B | Auto-routing |
+| `fauxpaslife/arch-router:1.5b` | 1.5B | Auto-routing (router model) |
 
 ### Dependencies
 - Ollama (LLM backend)

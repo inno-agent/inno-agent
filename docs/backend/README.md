@@ -4,40 +4,62 @@ AI-powered platform with LLM chat and automated PR review capabilities.
 
 ## Architecture Overview
 
+### Chat Pipeline
+
 ```
-                    ┌─────────────────┐
-                    │    GitFlame      │ (External Git Forge)
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-              ▼              ▼              ▼
-    ┌─────────────┐  ┌──────────────┐  ┌─────────────┐
-    │review-webhook│  │review-consumer│  │  review-api  │
-    │    :8002     │  │   :9090      │  │    :8001     │
-    └──────┬──────┘  └──────┬───────┘  └──────┬──────┘
-           │                │                  │
-           ▼                │                  │
-    ┌─────────────┐         │                  │
-    │  Redpanda   │         │                  │
-    │  (Kafka)    │         │                  │
-    │   :9092     │         │                  │
-    └─────────────┘         │                  │
-                            │                  │
-              ┌─────────────┴──────────────────┘
-              │              │
-              ▼              ▼
-    ┌─────────────────────────────┐
-    │     orchestrator :8080      │
-    │   (LLM Router + Inference)  │
-    └──────────────┬──────────────┘
-                   │
-                   ▼
-    ┌─────────────────────────────┐
-    │      Ollama :11434          │
-    │   (qwen2.5, llama3.2,      │
-    │    qwen2.5-coder)           │
-    └─────────────────────────────┘
+┌──────────┐    HTTPS     ┌──────────┐   POST /v1/chat    ┌────────────┐   OpenAI API    ┌────────┐
+│ chat-fe  │──── :9443 ──▶│ chat-api │──── (SSE) ────────▶│orchestrator│──── /v1/chat ──▶│ Ollama │
+│ React    │              │  :8000   │                     │   :8080    │  /completions   │:11434  │
+└──────────┘              └──────────┘                     └─────┬──────┘                 └────────┘
+                                │                                 │
+                                │ validate JWT                    │ validate JWT
+                                ▼                                 ▼
+                          ┌──────────┐                    ┌────────────┐
+                          │identity  │◀────── OIDC ──────│ Authentik  │
+                          │  :8081   │       JWKS         │   :443     │
+                          └──────────┘                    └────────────┘
+```
+
+### Review Pipeline
+
+```
+┌─────────┐  webhook  ┌─────────────┐  publish  ┌───────────┐  consume  ┌─────────────────┐
+│ GitFlame │─────────▶│review-webhook│─────────▶│  Redpanda │─────────▶│review-consumer   │
+│ (forge)  │          │    :8002    │           │  (Kafka)  │           │  :9090 (metrics) │
+└────┬─────┘          └─────────────┘           │  :9092    │           └────────┬────────┘
+     │                                          └───────────┘                    │
+     │                                                                   ┌──────┴──────┐
+     │                                                         primary   │             │
+     │                                                         (planned) │      fallback│
+     │                                                                   ▼             ▼
+     │                                                         ┌──────────────┐  ┌────────────┐
+     │                                                         │review-agent  │  │orchestrator│
+     │                                                         │  (Mastra)    │  │   :8080    │
+     │                                                         │ tool calling │  └─────┬──────┘
+     │                                                         │ [WIP]        │        │
+     │                                                         └──────┬───────┘        │
+     │                                                                │                │
+     │                                                                ▼                ▼
+     │                                                          POST /v1/chat    ┌──────────┐
+     │                                                              ─────────────▶│  Ollama  │
+     │                                                                           │  :11434  │
+     │                                                                           └──────────┘
+     │
+     └── review-consumer ──GET diff/comment──▶ GitFlame (outbound API)
+     └── review-consumer ──service-token─────▶ identity (RFC 8693 token exchange)
+```
+
+### Data Layer
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     PostgreSQL :5432                          │
+│  ┌──────────┐ ┌──────────┐ ┌─────────┐ ┌──────────────────┐  │
+│  │authentik │ │inno_auth │ │llm_chat │ │   inno_review    │  │
+│  │  (IdP)   │ │(identity)│ │(chat-api│ │ (review-api +    │  │
+│  │          │ │          │ │         │ │  review-consumer) │  │
+│  └──────────┘ └──────────┘ └─────────┘ └──────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## Services

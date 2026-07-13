@@ -2,6 +2,13 @@ import { createWorkflow, createStep } from "@mastra/core/workflows"
 import { z } from "zod"
 import { getGitFlameClient } from "../../services/gitflame-singleton"
 
+// ─── Future: Deep Analysis Step ─────────────────────────────────────────────
+// Tools for deep analysis (listChangedFiles, getPrDiff, readRepositoryFile,
+// getPrComments) were removed from the agent to avoid conflicting instructions.
+// They can be re-added as a separate "deep-analysis" workflow step that uses
+// agent.generate() with tool-calling enabled, for per-file investigation
+// with real-time context fetching. See git history for the original implementations.
+
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const ReviewInputSchema = z.object({
@@ -36,9 +43,9 @@ const PlanItemSchema = z.object({
 
 const MAX_DIFF_SIZE = 100 * 1024 // 100KB per file
 const MAX_TOTAL_DIFF = 500 * 1024 // 500KB total
-const CHUNK_TOKEN_BUDGET = 12000 // tokens per chunk (was 3000)
+const CHUNK_TOKEN_BUDGET = parseInt(process.env.CHUNK_TOKEN_BUDGET || "12000")
 const SYSTEM_PROMPT_OVERHEAD = 500 // review.md + instructions overhead
-const CONCURRENT_CHUNKS = 3 // parallel LLM calls per batch
+const CONCURRENT_CHUNKS = parseInt(process.env.CONCURRENT_CHUNKS || "3")
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

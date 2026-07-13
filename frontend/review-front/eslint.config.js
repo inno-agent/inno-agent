@@ -22,4 +22,10 @@ export default tseslint.config(
             'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
         },
     },
+    {
+        files: ['projects/review-front-pw/**/*.{ts,tsx}', 'libs/playwright/**/*.{ts,tsx}'],
+        languageOptions: {
+            globals: globals.node,
+        },
+    },
 )

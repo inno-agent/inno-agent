@@ -61,14 +61,3 @@ groups:
           summary: "High HTTP latency on {{ $labels.service }}"
           description: "p95 request latency exceeded 5s for 10 minutes (env={{ $labels.env }})."
 
-  - name: watchdog
-    rules:
-      - alert: Watchdog
-        expr: vector(1)
-        for: 0s
-        labels:
-          severity: info
-        annotations:
-          summary: "Watchdog тестовый алерт"
-          description: "Если вы видите это сообщение, весь пайплайн работает!"
-

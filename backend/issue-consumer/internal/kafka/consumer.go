@@ -11,6 +11,7 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/processor"
+	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 )
 
 const (
@@ -57,6 +58,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 				return nil
 			}
 			c.logger.Error("fetch message failed", zap.Error(err))
+			telemetry.IncConsumerKafkaFetchError()
 			select {
 			case <-ctx.Done():
 				return nil
@@ -76,10 +78,12 @@ func (c *Consumer) Run(ctx context.Context) error {
 						return nil
 					}
 					c.logger.Error("commit failed", zap.Error(err))
+					telemetry.IncConsumerKafkaCommitError()
 				}
 				break
 			}
 
+			telemetry.IncConsumerKafkaRetry()
 			c.logger.Info(
 				"transient result; retrying message",
 				zap.Duration("backoff", backoff),

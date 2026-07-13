@@ -61,6 +61,51 @@ groups:
           summary: "High HTTP latency on {{ $labels.service }}"
           description: "p95 request latency exceeded 5s for 10 minutes (env={{ $labels.env }})."
 
+  - name: issue-consumer
+    rules:
+      - alert: IssueConsumerStalled
+        expr: |
+          rate(issue_messages_total{result="done"}[15m]) == 0
+          and
+          rate(issue_messages_total{result=~"skip|transient"}[15m]) == 0
+          and
+          up{job="backend-metrics", service="issue-consumer"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Issue consumer appears stalled"
+          description: "No messages processed in 30 minutes while issue-consumer metrics target is up (env={{ $labels.env }})."
+
+      - alert: IssueConsumerHighTransientRate
+        expr: |
+          (
+            sum(rate(issue_messages_total{result="transient"}[5m]))
+            /
+            sum(rate(issue_messages_total[5m]))
+          ) > 0.2
+          and
+          sum(rate(issue_messages_total[5m])) > 0.01
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High transient failure rate in issue-consumer"
+          description: "More than 20% of messages are retrying due to transient errors (env={{ $labels.env }})."
+
+      - alert: IssueConsumerSlowProcessing
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (env, le) (rate(issue_processing_duration_seconds_bucket{result="done"}[5m]))
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow issue processing in issue-consumer"
+          description: "p95 successful issue processing exceeded 5 minutes (env={{ $labels.env }})."
+
   - name: watchdog
     rules:
       - alert: Watchdog

@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/llm"
+	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 )
 
 var _ domain.Generator = (*Service)(nil)
@@ -71,8 +73,10 @@ func (s *Service) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Ge
 	}
 	ctx = llm.ContextWithToken(ctx, tok)
 
+	llmStart := time.Now()
 	raw, err := s.llmProvider.Chat(ctx, messages, s.model)
 	if err != nil {
+		telemetry.ObserveConsumerLLM("error", time.Since(llmStart))
 		s.logger.Error(
 			"llm chat failed",
 			zap.String("issue", fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)),
@@ -80,6 +84,7 @@ func (s *Service) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Ge
 		)
 		return nil, fmt.Errorf("generator: llm chat: %w", err)
 	}
+	telemetry.ObserveConsumerLLM("success", time.Since(llmStart))
 
 	result, err := parseLLMOutput(raw)
 	for attempt := 0; err != nil && attempt < 2; attempt++ {
@@ -96,10 +101,14 @@ func (s *Service) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Ge
 			domain.LLMMessage{Role: "assistant", Content: raw},
 			domain.LLMMessage{Role: "user", Content: codegenRepairPrompt},
 		)
+		telemetry.ObserveConsumerLLM("repair", 0)
+		repairStart := time.Now()
 		raw, err = s.llmProvider.Chat(ctx, repairMessages, s.model)
 		if err != nil {
+			telemetry.ObserveConsumerLLM("error", time.Since(repairStart))
 			return nil, fmt.Errorf("generator: llm repair chat: %w", err)
 		}
+		telemetry.ObserveConsumerLLM("success", time.Since(repairStart))
 		result, err = parseLLMOutput(raw)
 	}
 

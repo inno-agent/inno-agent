@@ -28,6 +28,7 @@ var (
 	aliasHTTPRequests *prometheus.CounterVec
 	aliasHTTPDuration *prometheus.HistogramVec
 	aliasHTTPInFlight *prometheus.GaugeVec
+	aliasErrors       *prometheus.CounterVec
 )
 
 // Init registers collectors for a service. Call once at startup.
@@ -87,9 +88,15 @@ func Init(serviceName string) {
 				Help: "In-flight HTTP requests for " + serviceName + ".",
 			}, []string{"env"})
 			registry.MustRegister(aliasHTTPRequests, aliasHTTPDuration, aliasHTTPInFlight)
+			aliasErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: prefix + "_errors_total",
+				Help: "Application errors for " + serviceName + ".",
+			}, []string{"type", "env"})
+			registry.MustRegister(aliasErrors)
 		}
 
 		registerRuntimeAliases(serviceName, env)
+		registerConsumerMetrics(serviceName, aliasPrefix(serviceName))
 	})
 
 	serviceUp.WithLabelValues(serviceName, env).Set(1)
@@ -106,6 +113,8 @@ func aliasPrefix(serviceName string) string {
 		return "webhook"
 	case "review-consumer":
 		return "consumer"
+	case "issue-consumer":
+		return "issue"
 	case "orchestrator":
 		return "orchestrator"
 	case "identity":
@@ -167,5 +176,11 @@ func trackInFlight(service string, delta float64) {
 
 // IncError increments service_errors_total for non-HTTP failures.
 func IncError(service, errType string) {
+	if errorTotal == nil {
+		return
+	}
 	errorTotal.WithLabelValues(service, errType, env).Inc()
+	if aliasErrors != nil && service == currentService {
+		aliasErrors.WithLabelValues(errType, env).Inc()
+	}
 }

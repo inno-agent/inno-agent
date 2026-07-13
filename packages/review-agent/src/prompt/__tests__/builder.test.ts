@@ -19,9 +19,10 @@ describe("review.md prompt", () => {
     expect(content).toContain("confidence")
   })
 
-  it("should NOT reference tools (pure text gen workflow)", () => {
+  it("should mention available tools", () => {
     const content = readFileSync(join(__dirname, "..", "review.md"), "utf-8")
-    expect(content).not.toContain("read-repository-file")
-    expect(content).not.toContain("get-pr-comments")
+    expect(content).toContain("read-repository-file")
+    expect(content).toContain("get-pr-comments")
+    expect(content).toContain("available_tools")
   })
 })

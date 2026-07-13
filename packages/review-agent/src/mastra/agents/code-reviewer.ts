@@ -1,5 +1,7 @@
 import { Agent } from "@mastra/core/agent"
 import { buildReviewPrompt } from "../../prompt/builder"
+import { readRepositoryFile } from "../../tools/read-repository-file"
+import { getPrComments } from "../../tools/get-pr-comments"
 
 // Direct Ollama access bypasses the orchestrator and its arch-router,
 // saving ~200-500ms per review and ensuring the coder model is used.
@@ -10,10 +12,10 @@ const modelUrl = ollamaUrl
   ? `${ollamaUrl.replace(/\/$/, "")}/v1`
   : `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8080"}/v1`
 
-// Pure text-generation agent — no tools registered.
-// Workflow steps (createPlan, investigate, verify) call agent.generate()
-// with self-contained prompts. Tools are unused in this flow and would
-// cause conflicting instructions if registered.
+// Agent with optional tools for deep analysis.
+// Tools are available but not forced — model decides when to use them.
+// readRepositoryFile: read types, imports, related code for context
+// getPrComments: check existing discussion to avoid duplicate comments
 export const codeReviewerAgent = new Agent({
   id: "code-reviewer",
   name: "Code Review Agent",
@@ -22,4 +24,5 @@ export const codeReviewerAgent = new Agent({
     id: `custom/${reviewModel}`,
     url: modelUrl,
   },
+  tools: { readRepositoryFile, getPrComments },
 })

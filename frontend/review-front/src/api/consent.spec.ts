@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { linkGitFlameUsername, getLinkedGitFlameUsername, acceptGitFlameInvite } from '@/api/consent'
 import { apiClient } from '@/api/client'
-import { logout, login } from '@/auth/auth'
 
 vi.mock('@/api/client', () => ({
     apiClient: {

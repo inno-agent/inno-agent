@@ -56,10 +56,11 @@ func (s *Service) Review(ctx context.Context, ref domain.PRRef) (string, error) 
 
 	agentsMD := s.fetchOptional(ctx, ref, "AGENTS.md")
 	readmeMD := s.fetchOptional(ctx, ref, "README.md")
+	description := s.fetchDescription(ctx, ref)
 
 	userMsg := fmt.Sprintf(
-		"Repo context files (if present):\n\n=== AGENTS.md ===\n%s\n\n=== README.md ===\n%s\n\nReview pull request %s/%s#%d.\n\nDiff:\n%s",
-		agentsMD, readmeMD, ref.Owner, ref.Repo, ref.Index, diff,
+		"PR Description:\n%s\n\nRepo context files (if present):\n\n=== AGENTS.md ===\n%s\n\n=== README.md ===\n%s\n\nReview pull request %s/%s#%d.\n\nDiff:\n%s",
+		description, agentsMD, readmeMD, ref.Owner, ref.Repo, ref.Index, diff,
 	)
 
 	messages := []domain.LLMMessage{
@@ -91,4 +92,16 @@ func (s *Service) fetchOptional(ctx context.Context, ref domain.PRRef, path stri
 		return "(absent)"
 	}
 	return content
+}
+
+func (s *Service) fetchDescription(ctx context.Context, ref domain.PRRef) string {
+	desc, err := s.source.GetPRDescription(ctx, ref)
+	if err != nil {
+		s.logger.Warn("failed to fetch PR description", zap.Error(err))
+		return "(no description)"
+	}
+	if desc == "" {
+		return "(no description)"
+	}
+	return desc
 }

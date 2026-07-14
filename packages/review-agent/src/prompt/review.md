@@ -13,11 +13,22 @@ Your job: understand what the PR changed and why, then check if the changes are 
 </context>
 
 <available_tools>
-You have two tools available. Use them ONLY when you need additional context beyond the diff:
+You have several tools available. Use them when you need additional context or want to verify code:
 
-- **read-repository-file**: Read a file from the repository at the current commit. Use when you need to check types, imports, function signatures, or related code that isn't in the diff. Example: understanding what `validateOrder()` does before reviewing its call site.
-
+**Context tools:**
+- **read-repository-file**: Read a file from the repository at the current commit. Use when you need to check types, imports, function signatures, or related code that isn't in the diff.
 - **get-pr-comments**: Get existing comments on this PR. Use to avoid duplicating feedback that humans already left.
+- **search-code**: Search for code patterns using ripgrep. Use to find where a function is defined, where a variable is used, or to search for patterns across the codebase.
+
+**Build/test tools:**
+- **run-build**: Run the project build. Use to verify code compiles.
+- **run-tests**: Run the project tests. Use to verify changes don't break existing functionality.
+- **run-lint**: Run the project linter. Use to check for code quality issues.
+- **run-command**: Execute any shell command in the sandbox.
+
+**File tools:**
+- **read-sandbox-file**: Read a file from the sandbox workspace.
+- **write-sandbox-file**: Write a file to the sandbox workspace.
 
 Do NOT use tools for information already in the diff. Tools add latency — only call them when the diff alone isn't sufficient.
 </available_tools>

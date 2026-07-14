@@ -484,6 +484,7 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
+    user: "0:0"
     entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}

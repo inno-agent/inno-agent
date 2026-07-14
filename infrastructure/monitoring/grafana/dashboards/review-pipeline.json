@@ -1,0 +1,149 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "icon": "dashboard", "keepTime": true, "title": "Service Overview", "type": "link", "url": "/d/inno-service-overview" },
+    { "icon": "dashboard", "keepTime": true, "title": "Review API", "type": "link", "url": "/d/inno-review-api" },
+    { "icon": "dashboard", "keepTime": true, "title": "Kafka Health", "type": "link", "url": "/d/inno-kafka-health" }
+  ],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "probe_success{service=\"review-api\", env=~\"$env\"}", "legendFormat": "review-api", "refId": "A" }],
+      "title": "Review API",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "probe_success{service=\"review-webhook\", env=~\"$env\"}", "legendFormat": "webhook", "refId": "A" }],
+      "title": "Review Webhook",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "probe_success{service=\"review-consumer\", env=~\"$env\"}", "legendFormat": "consumer", "refId": "A" }],
+      "title": "Review Consumer",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "sum(rate(webhook_http_requests_total{env=~\"$env\"}[5m])) by (path, status)", "legendFormat": "{{status}} {{path}}", "refId": "A" }],
+      "title": "Webhook requests by path",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(webhook_http_request_duration_seconds_bucket{env=~\"$env\"}[5m])) by (le, path))", "legendFormat": "{{path}}", "refId": "A" }],
+      "title": "Webhook latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "redpanda_kafka_consumer_group_committed_offset{env=~\"$env\", redpanda_group=~\"review-consumer|issue-consumer\", redpanda_topic!~\"__consumer_offsets|controller\"}", "legendFormat": "{{redpanda_group}} @ {{redpanda_topic}}", "refId": "A" },
+        { "expr": "redpanda_kafka_max_offset{env=~\"$env\", redpanda_topic!~\"__consumer_offsets|controller\"}", "legendFormat": "end {{redpanda_topic}}", "refId": "B" }
+      ],
+      "title": "Consumer offset vs topic end",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum(rate(service_consumer_messages_total{env=~\"$env\"}[5m]))", "legendFormat": "messages", "refId": "A" },
+        { "expr": "sum(rate(service_consumer_outcomes_total{env=~\"$env\"}[5m])) by (outcome)", "legendFormat": "{{outcome}}", "refId": "B" },
+        { "expr": "sum(rate(issue_messages_total{env=~\"$env\"}[5m]))", "legendFormat": "issue messages", "refId": "C" }
+      ],
+      "title": "Consumer throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum(rate(service_consumer_kafka_fetch_errors_total{env=~\"$env\"}[5m]))", "legendFormat": "consumer fetch errors", "refId": "A" },
+        { "expr": "sum(rate(service_consumer_kafka_commit_errors_total{env=~\"$env\"}[5m]))", "legendFormat": "consumer commit errors", "refId": "B" },
+        { "expr": "sum(rate(service_consumer_kafka_retries_total{env=~\"$env\"}[5m]))", "legendFormat": "consumer retries", "refId": "C" },
+        { "expr": "sum(rate(issue_kafka_fetch_errors_total{env=~\"$env\"}[5m]))", "legendFormat": "issue fetch errors", "refId": "D" },
+        { "expr": "sum(rate(issue_kafka_commit_errors_total{env=~\"$env\"}[5m]))", "legendFormat": "issue commit errors", "refId": "E" }
+      ],
+      "title": "Kafka consumer errors",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 40,
+  "tags": ["review", "pipeline", "kafka"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "env",
+        "multi": true,
+        "name": "env",
+        "query": { "query": "label_values(probe_success, env)", "refId": "A" },
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "Review Pipeline",
+  "uid": "inno-review-pipeline",
+  "version": 1
+}

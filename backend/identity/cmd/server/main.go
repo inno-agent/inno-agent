@@ -15,6 +15,7 @@ import (
 	"github.com/inno-agent/identity/internal/db"
 	"github.com/inno-agent/identity/internal/delegation"
 	"github.com/inno-agent/identity/internal/issuer"
+	"github.com/inno-agent/identity/internal/middleware"
 	"github.com/inno-agent/identity/internal/provider"
 	"github.com/inno-agent/identity/internal/refresh"
 	"github.com/inno-agent/identity/internal/serviceclient"
@@ -84,10 +85,9 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(tracing.GinMiddleware("identity"))
-	r.Use(func(c *gin.Context) {
-		c.Set("request_logger", log.With(logger.TraceFields(c.Request.Context())...))
-		c.Next()
-	})
+	r.Use(middleware.Adapt(logger.CorrelationID))
+	r.Use(middleware.Adapt(logger.InjectLogger(log)))
+	r.Use(middleware.Adapt(logger.RequestLogger()))
 	r.Use(telemetry.GinMiddleware("identity"))
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,

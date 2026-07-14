@@ -409,6 +409,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: review-consumer
@@ -437,6 +438,8 @@ services:
       orchestrator:
         condition: service_started
       identity:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Issue Consumer (webhook-driven issue code generator) ────────────────

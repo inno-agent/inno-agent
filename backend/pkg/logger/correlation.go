@@ -31,6 +31,14 @@ func CorrelationIDFromContext(ctx context.Context) string {
 	return v
 }
 
+// ContextWithCorrelationID attaches a correlation ID to ctx.
+func ContextWithCorrelationID(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, correlationIDKey, id)
+}
+
 // SetCorrelationIDHeader propagates the correlation ID to outbound HTTP requests.
 func SetCorrelationIDHeader(ctx context.Context, req *http.Request) {
 	if id := CorrelationIDFromContext(ctx); id != "" {

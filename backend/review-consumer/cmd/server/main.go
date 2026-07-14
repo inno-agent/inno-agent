@@ -11,6 +11,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/gitflame"
@@ -33,6 +34,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	tracingCleanup, err := tracing.Setup(ctx, "review-consumer")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	var tokenSrc domain.TokenSource
 	if cfg.ReviewDatabaseDSN != "" {

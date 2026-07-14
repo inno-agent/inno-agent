@@ -121,3 +121,33 @@ func StartSpan(ctx context.Context, tracerName, spanName string) (context.Contex
 
 // ShutdownTimeout is the default graceful shutdown window for the tracer provider.
 const ShutdownTimeout = 5 * time.Second
+
+// KafkaHeader is a key/value pair for Kafka message propagation.
+type KafkaHeader struct {
+	Key   string
+	Value string
+}
+
+// KafkaHeadersFromContext builds Kafka headers carrying trace and correlation context.
+func KafkaHeadersFromContext(ctx context.Context) []KafkaHeader {
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	if id := logger.CorrelationIDFromContext(ctx); id != "" {
+		carrier[logger.Header] = id
+	}
+	headers := make([]KafkaHeader, 0, len(carrier))
+	for k, v := range carrier {
+		headers = append(headers, KafkaHeader{Key: k, Value: v})
+	}
+	return headers
+}
+
+// ContextFromKafkaHeaders restores trace and correlation context from Kafka headers.
+func ContextFromKafkaHeaders(ctx context.Context, headers []KafkaHeader) context.Context {
+	carrier := propagation.MapCarrier{}
+	for _, h := range headers {
+		carrier[h.Key] = h.Value
+	}
+	ctx = otel.GetTextMapPropagator().Extract(ctx, carrier)
+	return logger.ContextWithCorrelationID(ctx, carrier[logger.Header])
+}

@@ -5,10 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	kafka "github.com/segmentio/kafka-go"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
 )
 
@@ -74,7 +77,21 @@ func (c *Consumer) Run(ctx context.Context) error {
 		// capped attempts) so the failed offset is never leapfrogged — until it
 		// looks like poison, at which point we skip to keep the partition live.
 		if c.processWithRetry(ctx, msg.Offset, msg.Partition,
-			func() processor.Result { return c.processor.Process(ctx, msg.Value) },
+			func() processor.Result {
+				msgCtx := tracing.ContextFromKafkaHeaders(ctx, kafkaHeaders(msg.Headers))
+				msgCtx, span := tracing.StartSpan(msgCtx, "review-consumer", "kafka.process")
+				defer span.End()
+				span.SetAttributes(
+					attribute.Int64("kafka.offset", msg.Offset),
+					attribute.Int("kafka.partition", msg.Partition),
+				)
+
+				result := c.processor.Process(msgCtx, msg.Value)
+				if result == processor.Transient {
+					span.SetStatus(codes.Error, "transient")
+				}
+				return result
+			},
 			func() bool { return c.commit(ctx, msg) },
 		) {
 			return nil
@@ -141,4 +158,12 @@ func (c *Consumer) processWithRetry(
 			backoff = retryCap
 		}
 	}
+}
+
+func kafkaHeaders(headers []kafka.Header) []tracing.KafkaHeader {
+	out := make([]tracing.KafkaHeader, len(headers))
+	for i, h := range headers {
+		out[i] = tracing.KafkaHeader{Key: h.Key, Value: string(h.Value)}
+	}
+	return out
 }

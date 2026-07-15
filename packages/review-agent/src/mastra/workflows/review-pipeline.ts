@@ -255,11 +255,16 @@ const fetchContextStep = createStep({
       console.warn("Failed to fetch PR description:", error)
     }
 
-    let files: string[] = []
+    // Listing PR files is a hard dependency: without it there is nothing to
+    // review. Fail loudly (so the run is marked failed and NOT cached) instead
+    // of producing an empty "no issues" review when gitflame is unreachable.
+    let files: string[]
     try {
       files = await client.listPRFiles(owner, repo, pullNumber)
     } catch (error) {
-      console.error("Failed to list PR files:", error)
+      throw new Error(
+        `fetch-context: cannot list PR files for ${owner}/${repo}#${pullNumber}: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
 
     const diffs: Record<string, string> = {}

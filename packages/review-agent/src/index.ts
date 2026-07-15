@@ -163,7 +163,11 @@ app.post("/review", async (c) => {
     if (result.status === "success") {
       const reviewMarkdown = result.result.reviewMarkdown
       console.log(`[${requestId}] Review completed successfully`)
-      setCachedReview(cacheKey, reviewMarkdown)
+      // Only cache non-empty reviews, so a blank/degraded result isn't pinned
+      // for the full TTL and served on every subsequent request for this commit.
+      if (typeof reviewMarkdown === "string" && reviewMarkdown.trim()) {
+        setCachedReview(cacheKey, reviewMarkdown)
+      }
       return c.json({ review_markdown: reviewMarkdown })
     }
 

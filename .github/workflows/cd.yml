@@ -42,6 +42,16 @@ jobs:
           - name: review-webhook
             context: backend
             dockerfile: backend/review-webhook/Dockerfile
+          - name: issue-consumer
+            context: backend
+            dockerfile: backend/issue-consumer/Dockerfile
+          - name: review-agent
+            context: packages/review-agent
+            dockerfile: packages/review-agent/Dockerfile
+          # Image name must be review-sandbox to match docker-compose.yml.
+          - name: review-sandbox
+            context: sandbox
+            dockerfile: sandbox/Dockerfile
           - name: chat-front
             context: frontend/chat-front
             dockerfile: frontend/chat-front/Dockerfile

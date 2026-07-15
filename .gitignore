@@ -16,6 +16,3 @@ infrastructure/nginx/certs/*.pem
 
 # Локальные модели ollama (bind-mount, переживают down -v)
 .ollama/
-
-# MiMoCode
-.mimocode/

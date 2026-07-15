@@ -1,6 +1,5 @@
 import { serve } from "@hono/node-server"
 import { Hono } from "hono"
-import { MastraServer } from "@mastra/hono"
 import { mastra } from "./mastra/index"
 import { z } from "zod"
 import { randomUUID } from "crypto"
@@ -121,9 +120,6 @@ app.use("/review", async (c, next) => {
 
   await next()
 })
-
-const server = new MastraServer({ app, mastra })
-await server.init()
 
 app.post("/review", async (c) => {
   const requestId = c.get("requestId")

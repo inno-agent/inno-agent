@@ -4,6 +4,11 @@ name: inno-agent
 networks:
   innoagent:
     name: innoagent
+  # Isolated network for the exec sandbox. Deliberately separate from innoagent
+  # so the sandbox cannot reach postgres/identity/orchestrator/gitflame. Only
+  # review-agent bridges both networks.
+  sandbox-net:
+    name: sandbox-net
 
 # ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
@@ -404,6 +409,8 @@ services:
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
       REVIEW_AGENT_URL: ${REVIEW_AGENT_URL:-}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in the review-agent service.
+      REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
     networks:
       - innoagent
     depends_on:
@@ -430,11 +437,14 @@ services:
       # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       ORCHESTRATOR_URL: http://orchestrator:8080
-      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder-32b}
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
+      SANDBOX_URL: http://sandbox:8080
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
       SERVER_PORT: "4100"
     networks:
       - innoagent
+      - sandbox-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4100/health"]
       interval: 30s
@@ -444,6 +454,30 @@ services:
     depends_on:
       orchestrator:
         condition: service_started
+      sandbox:
+        condition: service_started
+
+  # ─── Review Sandbox (isolated command execution for the review agent) ─────
+  # Runs build/test/lint commands the review agent decides to invoke. Kept OFF
+  # the innoagent network so a prompt-injected command cannot reach internal
+  # services. Requires SANDBOX_TOKEN (bearer) for every /exec /write /read call.
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-sandbox:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+      SANDBOX_PORT: "8080"
+    networks:
+      - sandbox-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 256
 
   # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
   review-webhook:

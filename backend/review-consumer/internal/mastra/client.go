@@ -16,19 +16,21 @@ import (
 
 type Client struct {
 	baseURL    string
+	authToken  string
 	httpClient *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL, authToken string) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL:   strings.TrimRight(baseURL, "/"),
+		authToken: authToken,
 		httpClient: &http.Client{
 			Timeout: 300 * time.Second,
 		},
 	}
 }
 
-func (c *Client) Review(ctx context.Context, ref domain.PRRef, token string) (string, error) {
+func (c *Client) Review(ctx context.Context, ref domain.PRRef) (string, error) {
 	payload := map[string]interface{}{
 		"owner":      ref.Owner,
 		"repo":       ref.Repo,
@@ -48,8 +50,8 @@ func (c *Client) Review(ctx context.Context, ref domain.PRRef, token string) (st
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", uuid.New().String())
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 
 	resp, err := c.httpClient.Do(req)

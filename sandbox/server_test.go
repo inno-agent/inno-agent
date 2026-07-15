@@ -69,6 +69,31 @@ func TestPopulate_ExtractsStrippingRoot(t *testing.T) {
 	}
 }
 
+func TestPopulate_ClearsStaleFilesKeepingDir(t *testing.T) {
+	sandboxToken = "s3cret"
+	workspaceDir = t.TempDir()
+	// A leftover file from a previous review must be gone after populate, and
+	// the workspace dir itself must survive (non-root can't recreate it).
+	stale := filepath.Join(workspaceDir, "stale.txt")
+	if err := os.WriteFile(stale, []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	tgz := makeTarGz(t, map[string]string{"repo-x/new.go": "package x"})
+	req := httptest.NewRequest(http.MethodPost, "/populate", bytes.NewReader(tgz))
+	req.Header.Set("Authorization", "Bearer s3cret")
+	rec := httptest.NewRecorder()
+	handlePopulate(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("populate: code = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale file not cleared: err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "new.go")); err != nil {
+		t.Fatalf("new file missing: %v", err)
+	}
+}
+
 func TestPopulate_RejectsZipSlip(t *testing.T) {
 	sandboxToken = "s3cret"
 	workspaceDir = t.TempDir()

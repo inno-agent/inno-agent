@@ -275,12 +275,10 @@ func handlePopulate(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = gz.Close() }()
 
 	// Reset the workspace so stale files from a previous review don't linger.
-	if err := os.RemoveAll(workspaceDir); err != nil {
+	// Clear the CONTENTS, not the dir itself: the server runs non-root and cannot
+	// recreate /workspace (its parent is root-owned).
+	if err := clearDir(workspaceDir); err != nil {
 		jsonError(w, fmt.Sprintf("reset workspace: %v", err), http.StatusInternalServerError)
-		return
-	}
-	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
-		jsonError(w, fmt.Sprintf("create workspace: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -347,6 +345,24 @@ func handlePopulate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]int{"files": count})
+}
+
+// clearDir removes everything inside dir without removing dir itself, so a
+// non-root process that owns dir (but not its parent) can reset it.
+func clearDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.MkdirAll(dir, 0755)
+		}
+		return err
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stripFirstComponent removes the leading path segment (e.g. "repo-sha/") and

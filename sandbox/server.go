@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,6 +13,12 @@ import (
 	"strings"
 	"time"
 )
+
+var sandboxToken string
+
+// workspaceDir is the root for exec cwd and file read/write. Overridable via
+// SANDBOX_WORKDIR (defaults to /workspace, which the container image creates).
+var workspaceDir = "/workspace"
 
 type ExecRequest struct {
 	Command string `json:"command"`
@@ -59,6 +66,14 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	sandboxToken = os.Getenv("SANDBOX_TOKEN")
+	if sandboxToken == "" {
+		log.Fatal("SANDBOX_TOKEN is required")
+	}
+	if wd := os.Getenv("SANDBOX_WORKDIR"); wd != "" {
+		workspaceDir = wd
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/exec", handleExec)
@@ -75,6 +90,12 @@ func main() {
 	http.ListenAndServe(":"+port, corsMiddleware(mux))
 }
 
+func authorized(r *http.Request) bool {
+	const p = "Bearer "
+	h := r.Header.Get("Authorization")
+	return strings.HasPrefix(h, p) && subtle.ConstantTimeCompare([]byte(h[len(p):]), []byte(sandboxToken)) == 1
+}
+
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
@@ -82,6 +103,11 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 func handleExec(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !authorized(r) {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -110,7 +136,7 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", req.Command)
-	cmd.Dir = "/workspace"
+	cmd.Dir = workspaceDir
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -142,6 +168,11 @@ func handleWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !authorized(r) {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req WriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -160,7 +191,7 @@ func handleWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filepath.Join("/workspace", cleanPath)
+	fullPath := filepath.Join(workspaceDir, cleanPath)
 
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -182,6 +213,11 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !authorized(r) {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		jsonError(w, "path is required", http.StatusBadRequest)
@@ -194,7 +230,7 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filepath.Join("/workspace", cleanPath)
+	fullPath := filepath.Join(workspaceDir, cleanPath)
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
@@ -213,6 +249,3 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(Error{Error: msg})
 }
-
-// Unused but available for future use
-var _ = io.Copy

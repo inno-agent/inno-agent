@@ -160,7 +160,9 @@ export class GitFlameClient {
         `/api/v1/repos/${owner}/${repo}/issues/${pullNumber}/comments`
       )
       return comments.map((c) => ({
-        body: c.body,
+        // Same GitFlame quirk as PR body: an empty comment body comes back as
+        // [] (truthy array), not "". Coerce non-strings to "".
+        body: typeof c.body === "string" ? c.body : "",
         author: c.user?.login ?? "unknown",
       }))
     } catch {
@@ -177,7 +179,10 @@ export class GitFlameClient {
       const pr = await this.requestWithRetry<PRDetails>(
         `/api/v1/repos/${owner}/${repo}/pulls/${pullNumber}`
       )
-      return pr.body || ""
+      // GitFlame returns an empty PR body as [] (an array), not "". Since [] is
+      // truthy in JS, `pr.body || ""` would leak the array downstream and break
+      // the pipeline's string schema — coerce anything non-string to "".
+      return typeof pr.body === "string" ? pr.body : ""
     } catch {
       return ""
     }

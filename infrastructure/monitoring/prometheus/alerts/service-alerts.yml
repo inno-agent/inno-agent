@@ -116,4 +116,3 @@ groups:
         annotations:
           summary: "Watchdog тестовый алерт"
           description: "Если вы видите это сообщение, весь пайплайн работает!"
-

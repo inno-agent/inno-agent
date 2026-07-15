@@ -12,10 +12,15 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
 )
 
-const (
+// Tunables (vars, not consts, so tests can shrink the backoffs).
+var (
 	retryInitial = time.Second
 	retryCap     = 30 * time.Second
 	fetchErrWait = time.Second
+	// maxTransientRetries caps in-place retries of one message. Beyond it the
+	// message is treated as poison: logged loudly and skipped (committed) so it
+	// can't wedge the partition forever. Trades at-least-once for liveness.
+	maxTransientRetries = 10
 )
 
 type Consumer struct {
@@ -65,38 +70,75 @@ func (c *Consumer) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Retry the SAME message payload in place on Transient results with
-		// capped exponential backoff. This ensures the failed offset is never
-		// leapfrogged by a later commit (at-least-once guarantee).
-		backoff := retryInitial
-		for {
-			result := c.processor.Process(ctx, msg.Value)
-			if result != processor.Transient {
-				// Done or Skip: commit this offset and move on.
-				if err := c.reader.CommitMessages(ctx, msg); err != nil {
-					if ctx.Err() != nil {
-						return nil
-					}
-					c.logger.Error("commit failed", zap.Error(err))
-				}
-				break
-			}
+		// Retry the SAME message in place on Transient results (capped backoff,
+		// capped attempts) so the failed offset is never leapfrogged — until it
+		// looks like poison, at which point we skip to keep the partition live.
+		if c.processWithRetry(ctx, msg.Offset, msg.Partition,
+			func() processor.Result { return c.processor.Process(ctx, msg.Value) },
+			func() bool { return c.commit(ctx, msg) },
+		) {
+			return nil
+		}
+	}
+}
 
-			// Transient: sleep then retry the same message.
-			c.logger.Info(
-				"transient result; retrying message",
-				zap.Duration("backoff", backoff),
-				zap.Int64("offset", msg.Offset),
+// commit commits the message's offset. Returns true if the context was
+// cancelled (caller should stop).
+func (c *Consumer) commit(ctx context.Context, msg kafka.Message) (cancelled bool) {
+	if err := c.reader.CommitMessages(ctx, msg); err != nil {
+		if ctx.Err() != nil {
+			return true
+		}
+		c.logger.Error("commit failed", zap.Error(err))
+	}
+	return false
+}
+
+// processWithRetry runs process(), retrying Transient results with capped
+// exponential backoff. On a non-transient result, or after maxTransientRetries
+// (poison message), it commits via commit(). Returns true if the context was
+// cancelled. process/commit are injected so this is unit-testable without Kafka.
+func (c *Consumer) processWithRetry(
+	ctx context.Context,
+	offset int64,
+	partition int,
+	process func() processor.Result,
+	commit func() bool,
+) (cancelled bool) {
+	backoff := retryInitial
+	attempts := 0
+	for {
+		if process() != processor.Transient {
+			return commit()
+		}
+
+		attempts++
+		if attempts >= maxTransientRetries {
+			c.logger.Error(
+				"poison message: giving up after max transient retries; skipping to unblock partition",
+				zap.Int("attempts", attempts),
+				zap.Int("max", maxTransientRetries),
+				zap.Int64("offset", offset),
+				zap.Int("partition", partition),
 			)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(backoff):
-			}
-			backoff *= 2
-			if backoff > retryCap {
-				backoff = retryCap
-			}
+			return commit()
+		}
+
+		c.logger.Info(
+			"transient result; retrying message",
+			zap.Int("attempt", attempts),
+			zap.Int("max", maxTransientRetries),
+			zap.Duration("backoff", backoff),
+			zap.Int64("offset", offset),
+		)
+		select {
+		case <-ctx.Done():
+			return true
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > retryCap {
+			backoff = retryCap
 		}
 	}
 }

@@ -209,13 +209,22 @@ const populateSandboxStep = createStep({
   inputSchema: ReviewInputSchema,
   outputSchema: ReviewInputSchema,
   execute: async ({ inputData }) => {
-    const { owner, repo, headSha } = inputData
+    const { owner, repo, pullNumber } = inputData
     try {
-      const archive = await getGitFlameClient().getRepoArchive(owner, repo, headSha)
+      // Archive by head branch, not headSha: the gitflame archive endpoint
+      // resolves ref names but rejects raw commit SHAs (500). head.repo may be
+      // a fork, so archive that repo/ref, not the base.
+      const client = getGitFlameClient()
+      const { headOwner, headRepo, headRef } = await client.getPRHead(owner, repo, pullNumber)
+      if (!headRef) {
+        console.warn(`[populate-sandbox] no head ref for ${owner}/${repo}#${pullNumber}; skipping`)
+        return inputData
+      }
+      const archive = await client.getRepoArchive(headOwner, headRepo, headRef)
       const res = await getSandboxClient().populate(archive)
-      console.log(`[populate-sandbox] ${owner}/${repo}@${headSha}: ${res.files} files into workspace`)
+      console.log(`[populate-sandbox] ${headOwner}/${headRepo}@${headRef}: ${res.files} files into workspace`)
     } catch (err) {
-      console.error(`[populate-sandbox] failed for ${owner}/${repo}@${headSha}:`, err)
+      console.error(`[populate-sandbox] failed for ${owner}/${repo}#${pullNumber}:`, err)
     }
     return inputData
   },

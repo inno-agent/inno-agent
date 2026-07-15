@@ -188,6 +188,26 @@ export class GitFlameClient {
     }
   }
 
+  // getPRHead returns the head repo + branch of a PR. The archive endpoint
+  // resolves branch/tag names but NOT raw commit SHAs (returns 500), so populate
+  // must archive by head.ref. head.repo differs from the base repo for fork PRs;
+  // fall back to the base repo when head.repo is absent (e.g. deleted fork).
+  async getPRHead(
+    owner: string,
+    repo: string,
+    pullNumber: number
+  ): Promise<{ headOwner: string; headRepo: string; headRef: string }> {
+    const pr = await this.requestWithRetry<{
+      head?: { ref?: string; repo?: { name?: string; owner?: { login?: string } } }
+    }>(`/api/v1/repos/${owner}/${repo}/pulls/${pullNumber}`)
+    const head = pr.head ?? {}
+    return {
+      headOwner: head.repo?.owner?.login ?? owner,
+      headRepo: head.repo?.name ?? repo,
+      headRef: typeof head.ref === "string" ? head.ref : "",
+    }
+  }
+
   async getRepoArchive(owner: string, repo: string, ref: string): Promise<Uint8Array> {
     const url = `${this.baseUrl}/api/v1/repos/${owner}/${repo}/archive/${encodeURIComponent(ref)}.tar.gz`
     const resp = await fetch(url, {

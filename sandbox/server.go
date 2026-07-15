@@ -1,10 +1,13 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +22,10 @@ var sandboxToken string
 // workspaceDir is the root for exec cwd and file read/write. Overridable via
 // SANDBOX_WORKDIR (defaults to /workspace, which the container image creates).
 var workspaceDir = "/workspace"
+
+// maxArchiveBytes caps the total decompressed size accepted by /populate,
+// guarding against decompression bombs.
+const maxArchiveBytes = 512 << 20 // 512 MiB
 
 type ExecRequest struct {
 	Command string `json:"command"`
@@ -79,6 +86,7 @@ func main() {
 	mux.HandleFunc("/exec", handleExec)
 	mux.HandleFunc("/write", handleWrite)
 	mux.HandleFunc("/read", handleRead)
+	mux.HandleFunc("/populate", handlePopulate)
 	mux.HandleFunc("/health", handleHealth)
 
 	port := os.Getenv("SANDBOX_PORT")
@@ -243,6 +251,113 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(ReadResponse{Content: string(data), Exists: true})
+}
+
+// handlePopulate resets the workspace and extracts a gzip tarball (POST body)
+// into it. Gitea/gitflame archives nest everything under a single top-level
+// directory, which is stripped so files land at the workspace root.
+func handlePopulate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !authorized(r) {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	gz, err := gzip.NewReader(r.Body)
+	if err != nil {
+		jsonError(w, "invalid gzip", http.StatusBadRequest)
+		return
+	}
+	defer func() { _ = gz.Close() }()
+
+	// Reset the workspace so stale files from a previous review don't linger.
+	if err := os.RemoveAll(workspaceDir); err != nil {
+		jsonError(w, fmt.Sprintf("reset workspace: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		jsonError(w, fmt.Sprintf("create workspace: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	root := filepath.Clean(workspaceDir)
+	tr := tar.NewReader(gz)
+	var written int64
+	var count int
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			jsonError(w, fmt.Sprintf("read tar: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		// Strip the leading path component (archive root dir).
+		rel := stripFirstComponent(hdr.Name)
+		if rel == "" {
+			continue
+		}
+
+		// Zip-slip guard: the resolved path must stay within the workspace.
+		target := filepath.Join(root, rel)
+		if target != root && !strings.HasPrefix(target, root+string(os.PathSeparator)) {
+			jsonError(w, "path traversal in archive", http.StatusBadRequest)
+			return
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0755); err != nil {
+				jsonError(w, fmt.Sprintf("mkdir: %v", err), http.StatusInternalServerError)
+				return
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				jsonError(w, fmt.Sprintf("mkdir: %v", err), http.StatusInternalServerError)
+				return
+			}
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+			if err != nil {
+				jsonError(w, fmt.Sprintf("create file: %v", err), http.StatusInternalServerError)
+				return
+			}
+			n, err := io.Copy(f, io.LimitReader(tr, maxArchiveBytes-written+1))
+			_ = f.Close()
+			if err != nil {
+				jsonError(w, fmt.Sprintf("write file: %v", err), http.StatusInternalServerError)
+				return
+			}
+			written += n
+			if written > maxArchiveBytes {
+				jsonError(w, "archive too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			count++
+		default:
+			// Skip symlinks, devices, etc. — never materialize them in the sandbox.
+			continue
+		}
+	}
+
+	json.NewEncoder(w).Encode(map[string]int{"files": count})
+}
+
+// stripFirstComponent removes the leading path segment (e.g. "repo-sha/") and
+// returns the remainder, cleaned. Returns "" if nothing remains.
+func stripFirstComponent(name string) string {
+	name = strings.TrimPrefix(filepath.ToSlash(name), "/")
+	i := strings.IndexByte(name, '/')
+	if i < 0 {
+		return ""
+	}
+	return filepath.Clean(name[i+1:])
 }
 
 func jsonError(w http.ResponseWriter, msg string, code int) {

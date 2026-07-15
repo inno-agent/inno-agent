@@ -182,4 +182,17 @@ export class GitFlameClient {
       return ""
     }
   }
+
+  async getRepoArchive(owner: string, repo: string, ref: string): Promise<Uint8Array> {
+    const url = `${this.baseUrl}/api/v1/repos/${owner}/${repo}/archive/${encodeURIComponent(ref)}.tar.gz`
+    const resp = await fetch(url, {
+      headers: { Authorization: `token ${this.token}` },
+    })
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "")
+      throw new Error(`GitFlame archive error: ${resp.status} ${text}`)
+    }
+    const buf = await resp.arrayBuffer()
+    return new Uint8Array(buf)
+  }
 }

@@ -96,6 +96,19 @@ export class SandboxClient {
       return false
     }
   }
+
+  async populate(archive: Uint8Array): Promise<{ files: number }> {
+    const resp = await fetch(`${this.baseUrl}/populate`, {
+      method: "POST",
+      headers: this.authHeaders({ "Content-Type": "application/gzip" }),
+      body: archive,
+    })
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "")
+      throw new Error(`Sandbox populate failed: ${resp.status} ${text}`)
+    }
+    return resp.json() as Promise<{ files: number }>
+  }
 }
 
 // Singleton

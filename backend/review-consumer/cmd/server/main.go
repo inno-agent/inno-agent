@@ -16,6 +16,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/installation"
 	konsumer "github.com/inno-agent/inno-agent/backend/review-consumer/internal/kafka"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/llm"
+	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/mastra"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/review"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/tokensource"
@@ -67,9 +68,19 @@ func main() {
 	telemetry.ListenAndServe(":9090", "review-consumer")
 
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
-	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
-	reviewService := review.NewService(gitFlameClient, llmClient, tokenSrc, cfg.ReviewModel, logger)
-	proc := processor.New(reviewService, gitFlameClient, logger, cfg.BotGitFlameUsername, cfg.OnboardingURL)
+
+	var reviewer domain.Reviewer
+	if cfg.ReviewAgentURL != "" {
+		mastraClient := mastra.NewClient(cfg.ReviewAgentURL, cfg.ReviewAgentToken)
+		reviewer = review.NewMastraReviewer(mastraClient, logger)
+		logger.Info("using Mastra review agent", zap.String("url", cfg.ReviewAgentURL))
+	} else {
+		llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
+		reviewer = review.NewService(gitFlameClient, llmClient, tokenSrc, cfg.ReviewModel, logger)
+		logger.Info("using single-shot LLM review", zap.String("orchestrator", cfg.OrchestratorURL))
+	}
+
+	proc := processor.New(reviewer, gitFlameClient, logger, cfg.BotGitFlameUsername, cfg.OnboardingURL)
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)
 
 	if err := consumer.Run(ctx); err != nil {

@@ -112,6 +112,23 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		return nil, fmt.Errorf("llm client: invalid content-type %s", contentType)
 	}
 
+	scanner := bufio.NewScanner(resp.Body)
+
+	// Peek the first SSE data event synchronously. The orchestrator emits a
+	// generation failure as `data: {"error": ...}` before any content, so
+	// surface it as a Stream error (the handler turns it into an SSE error
+	// event) instead of silently swallowing it into an empty, "done" stream.
+	firstData, hasFirst := nextDataEvent(scanner)
+	if hasFirst && firstData != "[DONE]" {
+		var probe struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(firstData), &probe); err == nil && probe.Error != "" {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("llm client: orchestrator stream error: %s", probe.Error)
+		}
+	}
+
 	ch := make(chan string, 4)
 	go func() {
 		defer func() {
@@ -119,29 +136,38 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 		}()
 		defer close(ch)
 
-		scanner := bufio.NewScanner(resp.Body)
+		// emit parses one data payload and forwards a non-empty answer.
+		// Returns false to stop (on [DONE] or context cancellation).
+		emit := func(data string) bool {
+			if data == "[DONE]" {
+				return false
+			}
+			var chunk struct {
+				Answer string `json:"answer"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				return true
+			}
+			if chunk.Answer != "" {
+				select {
+				case <-ctx.Done():
+					return false
+				case ch <- chunk.Answer:
+				}
+			}
+			return true
+		}
+
+		if hasFirst && !emit(firstData) {
+			return
+		}
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
-			data := strings.TrimPrefix(line, "data: ")
-			if data == "[DONE]" {
+			if !emit(strings.TrimPrefix(line, "data: ")) {
 				return
-			}
-
-			var chunk struct {
-				Answer string `json:"answer"`
-			}
-			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				continue
-			}
-			if chunk.Answer != "" {
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- chunk.Answer:
-				}
 			}
 		}
 
@@ -149,4 +175,16 @@ func (c *OrchestratorClient) Stream(ctx context.Context, messages []Message, mod
 	}()
 
 	return ch, nil
+}
+
+// nextDataEvent advances the scanner to the next "data: " line and returns its
+// payload. Returns ("", false) at end of stream.
+func nextDataEvent(scanner *bufio.Scanner) (string, bool) {
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			return strings.TrimPrefix(line, "data: "), true
+		}
+	}
+	return "", false
 }

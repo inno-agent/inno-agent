@@ -62,6 +62,12 @@ scrape_configs:
           layer: backend
           env: local
       - targets:
+          - http://issue-consumer:9090/healthz
+        labels:
+          service: issue-consumer
+          layer: backend
+          env: local
+      - targets:
           - http://ollama:11434/api/tags
         labels:
           service: ollama
@@ -118,6 +124,11 @@ scrape_configs:
       - targets: ["review-consumer:9090"]
         labels:
           service: review-consumer
+          layer: backend
+          env: local
+      - targets: ["issue-consumer:9090"]
+        labels:
+          service: issue-consumer
           layer: backend
           env: local
 

@@ -480,23 +480,27 @@ const verifyStep = createStep({
   execute: async ({ inputData, mastra }) => {
     const { findings, diffs, owner, repo, pullNumber } = inputData
 
-    if (findings.length === 0) {
-      return { reviewMarkdown: "## Review Summary\n\nNo significant issues found in this PR." }
-    }
+    // Deterministic syntax/build check on the changed files (already populated
+    // in the sandbox). These are ground truth — a weak model that eyeballs a
+    // diff routinely misses broken syntax; a real compiler/parser does not.
+    // Not sent through LLM verification.
+    const lintFindings = await lintChangedFiles(Object.keys(diffs))
 
-    const agent = mastra.getAgent("codeReviewerAgent")
+    // LLM-verify the model's own findings (only when it produced any).
+    let verified: Finding[] = []
+    if (findings.length > 0) {
+      const agent = mastra.getAgent("codeReviewerAgent")
 
-    // Fix 2: Include relevant diffs for verification
-    const relevantDiffs = findings.map(f => {
-      const diff = diffs[f.file] || ""
-      // Take first 50 lines of diff for context
-      const truncated = diff.split("\n").slice(0, 50).join("\n")
-      return `=== ${f.file} ===\n${truncated}`
-    }).join("\n\n")
+      // Fix 2: Include relevant diffs for verification
+      const relevantDiffs = findings.map(f => {
+        const diff = diffs[f.file] || ""
+        const truncated = diff.split("\n").slice(0, 50).join("\n")
+        return `=== ${f.file} ===\n${truncated}`
+      }).join("\n\n")
 
-    const findingsJson = JSON.stringify(findings, null, 2)
+      const findingsJson = JSON.stringify(findings, null, 2)
 
-    const prompt = `Verify these findings against the actual code:
+      const prompt = `Verify these findings against the actual code:
 
 Findings:
 ${findingsJson}
@@ -512,28 +516,68 @@ For each finding:
 Be strict. Only keep findings you are confident about (confidence >= 0.5).
 Output ONLY valid JSON: { "verified": [{ "file": "...", "line": 42, "category": "...", "severity": "...", "message": "...", "confidence": 0.8 }] }`
 
-    const start = Date.now()
-    const response = await agent.generate(prompt)
-    console.log(`verify completed in ${Date.now() - start}ms`)
+      const start = Date.now()
+      const response = await agent.generate(prompt)
+      console.log(`verify completed in ${Date.now() - start}ms`)
 
-    let verified: Finding[] = []
-    try {
-      const jsonMatch = response.text.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error("No JSON found")
-      const parsed = JSON.parse(jsonMatch[0])
-      const items = Array.isArray(parsed.verified) ? parsed.verified : (Array.isArray(parsed) ? parsed : [])
-      verified = items
-        .map(normalizeFinding)
-        .filter((f: Finding) => f.confidence >= 0.5)
-    } catch {
-      // If verification fails, keep original findings with confidence >= 0.5
-      verified = findings.filter(f => f.confidence >= 0.5)
+      try {
+        const jsonMatch = response.text.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) throw new Error("No JSON found")
+        const parsed = JSON.parse(jsonMatch[0])
+        const items = Array.isArray(parsed.verified) ? parsed.verified : (Array.isArray(parsed) ? parsed : [])
+        verified = items
+          .map(normalizeFinding)
+          .filter((f: Finding) => f.confidence >= 0.5)
+      } catch {
+        verified = findings.filter(f => f.confidence >= 0.5)
+      }
     }
 
-    // Render to markdown
-    return { reviewMarkdown: renderReview(verified, owner, repo, pullNumber) }
+    // Deterministic findings first (highest signal), then LLM-verified ones.
+    return { reviewMarkdown: renderReview([...lintFindings, ...verified], owner, repo, pullNumber) }
   },
 })
+
+// syntaxCheckCommand returns a dependency-free syntax/parse check for the file's
+// language, or null if unsupported. Guarded with `[ -f ]` so a deleted/renamed
+// file (present in the diff but not the tree) never yields a false failure.
+export function syntaxCheckCommand(file: string): string | null {
+  const q = `'${file.replace(/'/g, `'\\''`)}'` // single-quote for the shell
+  let check: string | null = null
+  if (/\.py$/.test(file)) check = `python3 -m py_compile ${q}`
+  else if (/\.(js|mjs|cjs)$/.test(file)) check = `node --check ${q}`
+  else if (/\.go$/.test(file)) check = `gofmt -e ${q} > /dev/null`
+  if (!check) return null
+  return `if [ -f ${q} ]; then ${check}; fi`
+}
+
+// lintChangedFiles runs the deterministic checks in the sandbox and returns a
+// critical finding for each file that fails to parse/compile. Sandbox errors
+// are swallowed (degrade to LLM-only review) rather than failing the run.
+async function lintChangedFiles(files: string[]): Promise<Finding[]> {
+  const sandbox = getSandboxClient()
+  const out: Finding[] = []
+  for (const file of files) {
+    const cmd = syntaxCheckCommand(file)
+    if (!cmd) continue
+    try {
+      const res = await sandbox.exec(cmd, 30)
+      if (res.exit_code !== 0) {
+        const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 4).join(" ").slice(0, 300)
+        out.push({
+          file,
+          category: "bug",
+          severity: "critical",
+          message: `Does not compile / parse: ${detail || `exit ${res.exit_code}`}`,
+          confidence: 1,
+        })
+      }
+    } catch (err) {
+      console.warn(`[lint] sandbox check failed for ${file}:`, err)
+    }
+  }
+  return out
+}
 
 // ─── Render helper ──────────────────────────────────────────────────────────
 

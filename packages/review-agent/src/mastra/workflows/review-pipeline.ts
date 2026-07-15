@@ -1,6 +1,7 @@
 import { createWorkflow, createStep } from "@mastra/core/workflows"
 import { z } from "zod"
 import { getGitFlameClient } from "../../services/gitflame-singleton"
+import { getSandboxClient } from "../../services/sandbox-client"
 
 // ─── Future: Deep Analysis Step ─────────────────────────────────────────────
 // Tools for deep analysis (listChangedFiles, getPrDiff, readRepositoryFile,
@@ -196,6 +197,29 @@ Output ONLY valid JSON.`
 }
 
 // ─── Step 1: fetchContext (deterministic, no LLM) ──────────────────────────
+
+// ── Step 0: Populate sandbox ──────────────────────────────────────────────
+// Fetches the repo tarball at headSha via gitflame (review-agent holds the
+// token) and pushes it into the sandbox workspace, so the agent's build/test
+// tools operate on the real tree. The sandbox itself has no gitflame access —
+// the token never leaves review-agent. Non-fatal: a failure degrades to a
+// diff-only review rather than aborting.
+const populateSandboxStep = createStep({
+  id: "populate-sandbox",
+  inputSchema: ReviewInputSchema,
+  outputSchema: ReviewInputSchema,
+  execute: async ({ inputData }) => {
+    const { owner, repo, headSha } = inputData
+    try {
+      const archive = await getGitFlameClient().getRepoArchive(owner, repo, headSha)
+      const res = await getSandboxClient().populate(archive)
+      console.log(`[populate-sandbox] ${owner}/${repo}@${headSha}: ${res.files} files into workspace`)
+    } catch (err) {
+      console.error(`[populate-sandbox] failed for ${owner}/${repo}@${headSha}:`, err)
+    }
+    return inputData
+  },
+})
 
 const fetchContextStep = createStep({
   id: "fetch-context",
@@ -546,6 +570,7 @@ export const reviewPipeline = createWorkflow({
   inputSchema: ReviewInputSchema,
   outputSchema: ReviewOutputSchema,
 })
+  .then(populateSandboxStep)
   .then(fetchContextStep)
   .then(createPlanStep)
   .then(investigateStep)

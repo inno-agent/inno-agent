@@ -12,8 +12,9 @@ import { writeSandboxFile } from "../../tools/write-sandbox-file"
 
 // Direct Ollama access bypasses the orchestrator and its arch-router,
 // saving ~200-500ms per review and ensuring the coder model is used.
+// Model: 32b via remote GPU for prod, 1.5b default works out-of-box via orchestrator.
 const ollamaUrl = process.env.OLLAMA_BASE_URL
-const reviewModel = process.env.REVIEW_MODEL || "qwen2.5-coder-32b"
+const reviewModel = process.env.REVIEW_MODEL || "qwen2.5-coder:1.5b"
 
 const modelUrl = ollamaUrl
   ? `${ollamaUrl.replace(/\/$/, "")}/v1`

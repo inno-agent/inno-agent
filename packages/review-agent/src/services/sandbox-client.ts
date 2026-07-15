@@ -1,6 +1,7 @@
 export interface SandboxConfig {
   baseUrl: string
   timeout: number
+  token?: string
 }
 
 export interface ExecResult {
@@ -22,10 +23,16 @@ export interface ReadResult {
 export class SandboxClient {
   private baseUrl: string
   private timeout: number
+  private token: string
 
   constructor(config: SandboxConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "")
     this.timeout = config.timeout || 60000
+    this.token = config.token || ""
+  }
+
+  private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return this.token ? { ...extra, Authorization: `Bearer ${this.token}` } : { ...extra }
   }
 
   async exec(command: string, timeoutSeconds = 60): Promise<ExecResult> {
@@ -35,7 +42,7 @@ export class SandboxClient {
     try {
       const resp = await fetch(`${this.baseUrl}/exec`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ command, timeout: timeoutSeconds }),
         signal: controller.signal,
       })
@@ -54,7 +61,7 @@ export class SandboxClient {
   async writeFile(path: string, content: string): Promise<WriteResult> {
     const resp = await fetch(`${this.baseUrl}/write`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this.authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ path, content }),
     })
 
@@ -67,7 +74,9 @@ export class SandboxClient {
   }
 
   async readFile(path: string): Promise<ReadResult> {
-    const resp = await fetch(`${this.baseUrl}/read?path=${encodeURIComponent(path)}`)
+    const resp = await fetch(`${this.baseUrl}/read?path=${encodeURIComponent(path)}`, {
+      headers: this.authHeaders(),
+    })
 
     if (!resp.ok) {
       const text = await resp.text().catch(() => "")
@@ -96,7 +105,8 @@ export function getSandboxClient(): SandboxClient {
   if (!client) {
     const baseUrl = process.env.SANDBOX_URL || "http://sandbox:8080"
     const timeout = parseInt(process.env.SANDBOX_TIMEOUT || "60000")
-    client = new SandboxClient({ baseUrl, timeout })
+    const token = process.env.SANDBOX_TOKEN || ""
+    client = new SandboxClient({ baseUrl, timeout, token })
   }
   return client
 }

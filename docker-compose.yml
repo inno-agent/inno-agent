@@ -152,8 +152,8 @@ services:
   # ─── Identity service (JWT issuer + user context) ─────────────────────────
   identity:
     build:
-      context: ./backend/identity
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: identity/Dockerfile
     image: ghcr.io/inno-agent/identity:${TAG:-latest}
     restart: unless-stopped
     environment:

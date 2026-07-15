@@ -10,15 +10,15 @@ import { searchCode } from "../../tools/search-code"
 import { readSandboxFile } from "../../tools/read-sandbox-file"
 import { writeSandboxFile } from "../../tools/write-sandbox-file"
 
-// Direct Ollama access bypasses the orchestrator and its arch-router,
-// saving ~200-500ms per review and ensuring the coder model is used.
-// Model: 32b via remote GPU for prod, 1.5b default works out-of-box via orchestrator.
-const ollamaUrl = process.env.OLLAMA_BASE_URL
+// The agent talks to Ollama's OpenAI-compatible API (/v1/chat/completions)
+// DIRECTLY. It must NOT go through the orchestrator: the orchestrator exposes
+// its own /v1/chat (not /v1/chat/completions), so Mastra's OpenAI client 404s.
+// OLLAMA_BASE_URL selects local vs remote GPU Ollama; default = local container.
+// Model: 1.5b works out-of-box locally; 32b via remote GPU for prod.
+const ollamaUrl = process.env.OLLAMA_BASE_URL || "http://ollama:11434"
 const reviewModel = process.env.REVIEW_MODEL || "qwen2.5-coder:1.5b"
 
-const modelUrl = ollamaUrl
-  ? `${ollamaUrl.replace(/\/$/, "")}/v1`
-  : `${process.env.ORCHESTRATOR_URL || "http://orchestrator:8080"}/v1`
+const modelUrl = `${ollamaUrl.replace(/\/$/, "")}/v1`
 
 // Agent with tools for code review, build, and test.
 // Tools are available but not forced — model decides when to use them.

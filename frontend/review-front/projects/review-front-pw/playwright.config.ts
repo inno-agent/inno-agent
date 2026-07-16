@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Read environment variables from file.
@@ -26,7 +27,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: 'https://10.100.32.36:9443',
+    baseURL: process.env.CI ? 'http://localhost:5173' : 'https://10.100.32.36:9443',
 
     /* Internal server on a non-standard port — likely a self-signed cert. */
     ignoreHTTPSErrors: true,
@@ -34,6 +35,18 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
+
+  /* On CI there's no network access to the internal server, so spin up the app locally instead. */
+  webServer: process.env.CI
+    ? {
+        command: 'npm run dev',
+        url: 'http://localhost:5173',
+        /* package.json with the "dev" script lives at the review-front root, two levels up from this config. */
+        cwd: fileURLToPath(new URL('../..', import.meta.url)),
+        timeout: 120_000,
+        reuseExistingServer: false,
+      }
+    : undefined,
 
   /* Configure projects for major browsers */
   projects: [

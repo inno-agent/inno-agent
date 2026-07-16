@@ -24,7 +24,7 @@ jobs:
           node-version: "24"
 
       # later will be separated into different CIs on each app
-      - name: Find, lint and build apps
+      - name: Find, lint, test and build apps
         run: |
           for dir in frontend/*/; do
             if [ -f "${dir}package.json" ]; then
@@ -32,7 +32,24 @@ jobs:
               cd "$dir"
               npm ci
               npm run lint
+              npm run test --if-present
               npm run build
               cd -
             fi
           done
+
+      - name: Install Playwright browsers
+        working-directory: frontend/review-front
+        run: npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        working-directory: frontend/review-front
+        run: npm run test:integration
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/review-front/playwright-report/
+          retention-days: 7

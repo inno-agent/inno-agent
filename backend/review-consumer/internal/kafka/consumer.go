@@ -5,10 +5,14 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 
 	kafka "github.com/segmentio/kafka-go"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
 )
 
@@ -73,8 +77,50 @@ func (c *Consumer) Run(ctx context.Context) error {
 		// Retry the SAME message in place on Transient results (capped backoff,
 		// capped attempts) so the failed offset is never leapfrogged — until it
 		// looks like poison, at which point we skip to keep the partition live.
-		if c.processWithRetry(ctx, msg.Offset, msg.Partition,
-			func() processor.Result { return c.processor.Process(ctx, msg.Value) },
+		if c.processWithRetry(
+			ctx, msg.Offset, msg.Partition,
+			func() (result processor.Result) {
+				msgCtx := tracing.ContextFromKafkaHeaders(ctx, kafkaHeaders(msg.Headers))
+
+				// Enrich logger with correlation_id and trace context for this message.
+				baseLog := c.logger
+				if corrID := logger.CorrelationIDFromContext(msgCtx); corrID != "" {
+					baseLog = baseLog.With(zap.String("correlation_id", corrID))
+				}
+				if traceID, spanID := logger.TraceFromContext(msgCtx); traceID != "" {
+					baseLog = baseLog.With(
+						zap.String("trace_id", traceID),
+						zap.String("span_id", spanID),
+					)
+				}
+				msgCtx = logger.WithLogger(msgCtx, baseLog)
+
+				msgCtx, span := tracing.StartSpan(msgCtx, "review-consumer", "kafka.process")
+				defer span.End()
+				span.SetAttributes(
+					attribute.Int64("kafka.offset", msg.Offset),
+					attribute.Int("kafka.partition", msg.Partition),
+				)
+
+				defer func() {
+					if r := recover(); r != nil {
+						span.SetStatus(codes.Error, "panic")
+						c.logger.Error(
+							"panic in processor; treating as poison",
+							zap.Int64("offset", msg.Offset),
+							zap.Int("partition", msg.Partition),
+							zap.Any("panic", r),
+						)
+						result = processor.Skip
+					}
+				}()
+
+				result = c.processor.Process(msgCtx, msg.Value)
+				if result == processor.Transient {
+					span.SetStatus(codes.Error, "transient")
+				}
+				return result
+			},
 			func() bool { return c.commit(ctx, msg) },
 		) {
 			return nil
@@ -141,4 +187,12 @@ func (c *Consumer) processWithRetry(
 			backoff = retryCap
 		}
 	}
+}
+
+func kafkaHeaders(headers []kafka.Header) []tracing.KafkaHeader {
+	out := make([]tracing.KafkaHeader, len(headers))
+	for i, h := range headers {
+		out[i] = tracing.KafkaHeader{Key: h.Key, Value: string(h.Value)}
+	}
+	return out
 }

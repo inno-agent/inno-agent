@@ -12,6 +12,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 var _ domain.ChatService = (*ChatService)(nil)
@@ -38,7 +39,7 @@ func NewChatService(
 
 // ListChats returns a paginated list of chats belonging to the given user.
 func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offset int) ([]domain.ChatItem, int, error) {
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+	log := logger.FromContext(ctx).With(zap.String("layer", "service"))
 
 	chats, total, err := s.chatRepo.ListByUser(ctx, userID, limit, offset)
 	if err != nil {
@@ -68,7 +69,7 @@ func (s *ChatService) ListChats(ctx context.Context, userID string, limit, offse
 
 // GetHistory returns paginated message history for the given chat, scoped to the user.
 func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.MessageDTO, int, error) {
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+	log := logger.FromContext(ctx).With(zap.String("layer", "service"))
 
 	msgs, total, err := s.messageRepo.ListByChat(ctx, userID, chatID, limit, offset)
 	if err != nil {
@@ -94,7 +95,7 @@ func (s *ChatService) GetHistory(ctx context.Context, userID string, chatID uuid
 
 // Stream sends a user message and returns a channel of LLM response chunks along with the resolved chat ID.
 func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUID, message string, modelName string) (<-chan string, uuid.UUID, error) {
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+	log := logger.FromContext(ctx).With(zap.String("layer", "service"))
 
 	if chatID == uuid.Nil {
 		title := s.generateTitle(ctx, message)
@@ -212,7 +213,7 @@ func (s *ChatService) Stream(ctx context.Context, userID string, chatID uuid.UUI
 }
 
 func (s *ChatService) generateTitle(ctx context.Context, message string) string {
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+	log := logger.FromContext(ctx).With(zap.String("layer", "service"))
 
 	titleCtx := context.WithValue(context.Background(), middleware.TokenKey, middleware.TokenFromContext(ctx))
 	titleCtx, cancel := context.WithTimeout(titleCtx, 15*time.Second)

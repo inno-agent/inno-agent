@@ -12,6 +12,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 type streamRequest struct {
@@ -40,7 +41,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 		var err error
 		chatID, err = uuid.Parse(chatIDParam)
 		if err != nil {
-			middleware.LoggerFromContext(ctx).Error("invalid chat_id", zap.Error(err))
+			logger.FromContext(ctx).Error("invalid chat_id", zap.Error(err))
 			writeError(w, http.StatusBadRequest, "invalid chat_id")
 			return
 		}
@@ -54,19 +55,19 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	var req streamRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		middleware.LoggerFromContext(ctx).Error("invalid request body", zap.Error(err))
+		logger.FromContext(ctx).Error("invalid request body", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Message == "" {
-		middleware.LoggerFromContext(ctx).Error("missing message", zap.String("function", "Stream"))
+		logger.FromContext(ctx).Error("missing message", zap.String("function", "Stream"))
 		writeError(w, http.StatusBadRequest, "message is required")
 		return
 	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		middleware.LoggerFromContext(ctx).Error("streaming not supported")
+		logger.FromContext(ctx).Error("streaming not supported")
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
@@ -81,7 +82,7 @@ func (h *StreamHandler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	ch, resolvedChatID, err := h.service.Stream(ctx, userID, chatID, req.Message, req.Model)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).Error("failed to start stream", zap.Error(err))
+		logger.FromContext(ctx).Error("failed to start stream", zap.Error(err))
 		switch {
 		case errors.Is(err, domain.ErrAccessDenied):
 			writeSSEEvent(w, "error", map[string]string{"code": "AUTH_FAILED", "message": "access denied"})

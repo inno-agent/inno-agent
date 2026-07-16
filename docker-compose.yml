@@ -158,6 +158,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_ISSUER_URL:-https://auth.localhost}/application/o/inno-agent/"
@@ -177,6 +178,8 @@ services:
         condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Chat API DB migrations ────────────────────────────────────────────────
   chat-api-migrate:
@@ -203,6 +206,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
@@ -215,6 +219,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Review API DB migrations ────────────────────────────────────────────
@@ -244,6 +250,7 @@ services:
       - "127.0.0.1:8001:8001"
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: ${REVIEW_AUTH_SERVICE_URL-http://identity:8081}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
@@ -259,6 +266,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Ollama (LLM runtime) — local profile only ───────────────────────────
@@ -346,12 +355,16 @@ services:
       - innoagent
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+    depends_on:
+      jaeger:
+        condition: service_started
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:
@@ -396,6 +409,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: review-consumer
@@ -424,6 +438,8 @@ services:
       orchestrator:
         condition: service_started
       identity:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Issue Consumer (webhook-driven issue code generator) ────────────────
@@ -526,6 +542,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       SERVER_PORT: "8002"
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
@@ -535,6 +552,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Review Frontend ──────────────────────────────────────────────────────
   review-front:
@@ -545,6 +564,24 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Jaeger (Distributed Tracing) ─────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+    networks:
+      - innoagent
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ─── Loki (Log Aggregation) ──────────────────────────────────────────────
   loki:

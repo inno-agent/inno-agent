@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 )
 
@@ -93,6 +94,7 @@ func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("tokensource: build service-token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	tracing.PropagateOutbound(ctx, req)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -151,6 +153,7 @@ func (s *Service) exchangeToken(ctx context.Context, userID, actorToken string) 
 		return "", fmt.Errorf("tokensource: build exchange request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	tracing.PropagateOutbound(ctx, req)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {

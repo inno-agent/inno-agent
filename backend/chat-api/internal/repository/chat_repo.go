@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 // ChatRepo is the PostgreSQL implementation of domain.ChatRepository.
@@ -60,7 +60,7 @@ const (
 
 // Create inserts a new chat row and returns the created Chat.
 func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*domain.Chat, error) {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "chat_repo"),
 		zap.String("operation", "Create"),
 		zap.String("user_id", userID),
@@ -78,7 +78,7 @@ func (r *ChatRepo) Create(ctx context.Context, userID string, title *string) (*d
 
 // ListByUser returns a paginated list of chats for the given user along with the total count.
 func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Chat, int, error) {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "chat_repo"),
 		zap.String("operation", "ListByUser"),
 		zap.String("user_id", userID),
@@ -120,7 +120,7 @@ func (r *ChatRepo) ListByUser(ctx context.Context, userID string, limit, offset 
 
 // ExistsForUser reports whether a chat with the given ID belongs to the given user.
 func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID string) (bool, error) {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "chat_repo"),
 		zap.String("operation", "ExistsForUser"),
 		zap.String("chat_id", chatID.String()),
@@ -138,7 +138,7 @@ func (r *ChatRepo) ExistsForUser(ctx context.Context, chatID uuid.UUID, userID s
 
 // UpdateTimestamp sets the updated_at column of a chat to the current time.
 func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "chat_repo"),
 		zap.String("operation", "UpdateTimestamp"),
 		zap.String("chat_id", id.String()),
@@ -158,7 +158,7 @@ func (r *ChatRepo) UpdateTimestamp(ctx context.Context, id uuid.UUID) error {
 
 // SoftDelete marks a chat as deleted by setting the deleted_at timestamp.
 func (r *ChatRepo) SoftDelete(ctx context.Context, chatID uuid.UUID, userID string) error {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "chat_repo"),
 		zap.String("operation", "SoftDelete"),
 		zap.String("chat_id", chatID.String()),

@@ -37,5 +37,20 @@ func ParseIssueBody(raw json.RawMessage) string {
 		}
 	}
 
+	// Try parsing as a single object (e.g., {"type":"doc","content":"..."})
+	var singleBlock struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+		Text    string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &singleBlock); err == nil {
+		if singleBlock.Content != "" {
+			return singleBlock.Content
+		}
+		if singleBlock.Text != "" {
+			return singleBlock.Text
+		}
+	}
+
 	return string(raw)
 }

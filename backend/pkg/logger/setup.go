@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ func New(service string) *zap.Logger {
 		log, err = zap.NewProduction()
 	}
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "logger: failed to build zap logger: %v; falling back to nop\n", err)
 		log = zap.NewNop()
 	}
 	return log.With(zap.String("service", service))

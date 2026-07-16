@@ -2,8 +2,10 @@ package tracing
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,7 +35,8 @@ func Init(ctx context.Context, service string) (func(context.Context) error, err
 		return func(context.Context) error { return nil }, nil
 	}
 
-	exporter, err := otlptracegrpc.New(ctx,
+	exporter, err := otlptracegrpc.New(
+		ctx,
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithTLSCredentials(insecure.NewCredentials()),
 	)
@@ -49,15 +52,33 @@ func Init(ctx context.Context, service string) (func(context.Context) error, err
 		),
 	)
 	if err != nil {
+		_ = exporter.Shutdown(ctx)
 		return nil, err
+	}
+
+	// Parse trace sampling ratio from env (default 1.0 for always-on).
+	samplingRatio := 1.0
+	if ratioStr := strings.TrimSpace(os.Getenv("OTEL_TRACES_SAMPLER_RATIO")); ratioStr != "" {
+		if ratio, err := strconv.ParseFloat(ratioStr, 64); err == nil && ratio >= 0.0 && ratio <= 1.0 {
+			samplingRatio = ratio
+		}
 	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRatio))),
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	// Set error handler to log export errors to stderr.
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		fmt.Fprintf(os.Stderr, "tracing export error: %v\n", err)
+	}))
+
+	// Log startup info to stderr.
+	fmt.Fprintf(os.Stderr, "tracing: exporting to %s for %s\n", endpoint, service)
 
 	return tp.Shutdown, nil
 }
@@ -78,7 +99,12 @@ func Setup(ctx context.Context, service string) (cleanup func(), err error) {
 
 // HTTPMiddleware wraps a handler with an OpenTelemetry span per request.
 func HTTPMiddleware(service string, next http.Handler) http.Handler {
-	return otelhttp.NewHandler(next, service)
+	return otelhttp.NewHandler(
+		next, service,
+		otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}),
+	)
 }
 
 // ChiMiddleware returns chi-compatible OpenTelemetry HTTP middleware.
@@ -87,7 +113,6 @@ func ChiMiddleware(service string) func(http.Handler) http.Handler {
 		return HTTPMiddleware(service, next)
 	}
 }
-
 
 // GinMiddleware returns gin middleware that records OpenTelemetry spans.
 func GinMiddleware(service string) gin.HandlerFunc {

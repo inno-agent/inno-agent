@@ -87,7 +87,7 @@ func main() {
 	r.Use(tracing.GinMiddleware("identity"))
 	r.Use(middleware.Adapt(logger.CorrelationID))
 	r.Use(middleware.Adapt(logger.InjectLogger(log)))
-	r.Use(middleware.Adapt(logger.RequestLogger()))
+	r.Use(middleware.AccessLog())
 	r.Use(telemetry.GinMiddleware("identity"))
 	transport.RegisterHTTPRoutes(r, prov, svc, iss, cfg.JWTExpiry, transport.OIDCEndpoints{
 		Authority: cfg.OIDCIssuer,

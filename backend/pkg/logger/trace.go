@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
 
 // PropagateHeaders forwards the correlation ID to outbound HTTP requests.
@@ -20,16 +19,4 @@ func TraceFromContext(ctx context.Context) (traceID, spanID string) {
 		return "", ""
 	}
 	return sc.TraceID().String(), sc.SpanID().String()
-}
-
-// TraceFields returns zap fields for trace context in logs.
-func TraceFields(ctx context.Context) []zap.Field {
-	traceID, spanID := TraceFromContext(ctx)
-	if traceID == "" {
-		return nil
-	}
-	return []zap.Field{
-		zap.String("trace_id", traceID),
-		zap.String("span_id", spanID),
-	}
 }

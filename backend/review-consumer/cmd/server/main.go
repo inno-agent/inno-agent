@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -37,7 +38,8 @@ func main() {
 
 	tracingCleanup, err := tracing.Setup(ctx, "review-consumer")
 	if err != nil {
-		log.Fatal("tracing init", zap.Error(err))
+		log.Error("tracing init", zap.Error(err))
+		os.Exit(1)
 	}
 	defer tracingCleanup()
 
@@ -45,16 +47,22 @@ func main() {
 	if cfg.ReviewDatabaseDSN != "" {
 		pool, err := pgxpool.New(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
-			log.Fatal("review db pool", zap.Error(err))
+			log.Error("review db pool", zap.Error(err))
+			tracingCleanup()
+			os.Exit(1)
 		}
 		defer pool.Close()
 
 		if err := pool.Ping(ctx); err != nil {
-			log.Fatal("review db ping", zap.Error(err))
+			log.Error("review db ping", zap.Error(err))
+			tracingCleanup()
+			os.Exit(1)
 		}
 
 		if cfg.ReviewServiceClientSecret == "" {
-			log.Fatal("REVIEW_SERVICE_CLIENT_SECRET is required when REVIEW_DATABASE_DSN is set")
+			log.Error("REVIEW_SERVICE_CLIENT_SECRET is required when REVIEW_DATABASE_DSN is set")
+			tracingCleanup()
+			os.Exit(1)
 		}
 
 		store := installation.NewRepository(pool)
@@ -92,6 +100,8 @@ func main() {
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, log)
 
 	if err := consumer.Run(ctx); err != nil {
-		log.Fatal("consumer error", zap.Error(err))
+		log.Error("consumer error", zap.Error(err))
+		tracingCleanup()
+		os.Exit(1)
 	}
 }

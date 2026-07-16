@@ -13,8 +13,12 @@ import (
 
 func TestKafkaHeaderPropagation(t *testing.T) {
 	tp := sdktrace.NewTracerProvider()
-	defer func() { _ = tp.Shutdown(context.Background()) }()
+	prev := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prev)
+	})
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	ctx := logger.ContextWithCorrelationID(context.Background(), "corr-123")

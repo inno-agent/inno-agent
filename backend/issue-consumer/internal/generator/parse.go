@@ -233,6 +233,10 @@ func stripJSONComments(s string) string {
 
 func filesFromOutput(out llmOutput, raw string) ([]domain.GeneratedFile, error) {
 	fences := extractFencedBlocks(raw)
+	// Filter out fences that look like the main JSON spec (contain "summary" and "files").
+	// This avoids accidentally using the spec wrapper as file content.
+	contentFences := filterContentFences(fences)
+
 	files := make([]domain.GeneratedFile, 0, len(out.Files))
 	fenceIdx := 0
 
@@ -244,13 +248,16 @@ func filesFromOutput(out llmOutput, raw string) ([]domain.GeneratedFile, error) 
 
 		content, err := decodeFileContent(f)
 		if err != nil || content == "" {
-			if fenceIdx < len(fences) && !looksLikeJSON(fences[fenceIdx].Content) {
-				content = strings.TrimSpace(fences[fenceIdx].Content)
+			// Allow consuming a fence if it doesn't look like JSON, OR if the file has a .json extension.
+			// (A file with .json extension should legitimately have JSON content.)
+			if fenceIdx < len(contentFences) && (!looksLikeJSON(contentFences[fenceIdx].Content) || hasJSONExtension(path)) {
+				content = strings.TrimSpace(contentFences[fenceIdx].Content)
 				fenceIdx++
 			}
 		}
 		if content == "" {
-			continue
+			// File declared but no content found anywhere. Return error instead of silently dropping.
+			return nil, fmt.Errorf("file %s declared but has no content (not in JSON and not in any markdown fence)", path)
 		}
 
 		files = append(files, domain.GeneratedFile{
@@ -264,6 +271,40 @@ func filesFromOutput(out llmOutput, raw string) ([]domain.GeneratedFile, error) 
 	}
 
 	return files, nil
+}
+
+func hasJSONExtension(path string) bool {
+	return strings.HasSuffix(path, ".json")
+}
+
+func isMainSpecFence(content string) bool {
+	// A JSON fence that contains both "summary" and "files" keys is likely the main spec.
+	if !strings.Contains(content, "summary") {
+		return false
+	}
+	if !strings.Contains(content, "files") {
+		return false
+	}
+	// Do a quick JSON structure check to confirm it looks like the spec
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &obj); err != nil {
+		return false
+	}
+	_, hasSummary := obj["summary"]
+	_, hasFiles := obj["files"]
+	return hasSummary && hasFiles
+}
+
+func filterContentFences(fences []fencedBlock) []fencedBlock {
+	var result []fencedBlock
+	for _, f := range fences {
+		// Skip JSON fences that look like the main spec
+		if looksLikeJSON(f.Content) && isMainSpecFence(strings.TrimSpace(f.Content)) {
+			continue
+		}
+		result = append(result, f)
+	}
+	return result
 }
 
 func decodeFileContent(f llmFile) (string, error) {

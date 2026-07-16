@@ -168,3 +168,58 @@ func TestStripJSONComments_PreservesSlashesInStrings(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+func TestFilesFromOutput_JSONFileWithJSONFenceContentNotDropped(t *testing.T) {
+	// Bug #4: when a .json file is declared without content, but a fence with JSON content exists,
+	// the fence should be consumed as the file content, NOT silently dropped.
+	// The main spec is in a JSON fence (clean parsing), with a JSON fence for package.json content.
+	// Using tsconfig.json as another example of a .json file that should accept JSON fence content.
+	raw := "```json\n{\"summary\":\"setup config\",\"files\":[{\"path\":\"main.py\",\"content\":\"print('hello')\"},{\"path\":\"tsconfig.json\"},{\"path\":\"package.json\"}]}\n```\n" +
+		"The tool will configure TypeScript:\n" +
+		"```json\n{\"compilerOptions\":{\"target\":\"ES2020\",\"module\":\"ESNext\"}}\n```\n" +
+		"And npm:\n" +
+		"```json\n{\"name\":\"myapp\",\"version\":\"1.0.0\"}\n```"
+
+	result, err := parseLLMOutput(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Files) != 3 {
+		t.Fatalf("expected 3 files, got %d: %+v", len(result.Files), result.Files)
+	}
+
+	// Check all files are present
+	pathsSeen := make(map[string]string) // path -> content
+	for _, f := range result.Files {
+		pathsSeen[f.Path] = f.Content
+	}
+
+	if _, ok := pathsSeen["main.py"]; !ok {
+		t.Fatal("main.py missing")
+	}
+	if _, ok := pathsSeen["tsconfig.json"]; !ok {
+		t.Fatal("tsconfig.json was silently dropped - BUG NOT FIXED")
+	}
+	if content, ok := pathsSeen["tsconfig.json"]; !ok || !strings.Contains(content, "target") {
+		t.Fatalf("tsconfig.json has wrong content: %q", content)
+	}
+	if _, ok := pathsSeen["package.json"]; !ok {
+		t.Fatal("package.json was silently dropped - BUG NOT FIXED")
+	}
+	if content, ok := pathsSeen["package.json"]; !ok || !strings.Contains(content, "myapp") {
+		t.Fatalf("package.json has wrong content: %q", content)
+	}
+}
+
+func TestFilesFromOutput_FileDeclaredWithNoContentAnywhere(t *testing.T) {
+	// A file declared with no content anywhere (not in JSON, not in any fence) should error,
+	// not be silently skipped. Currently this is the silent drop bug.
+	raw := `{"summary":"done","files":[{"path":"main.py","content":"print(1)"},{"path":"missing.txt"}]}`
+
+	_, err := parseLLMOutput(raw)
+	// Currently this succeeds (BUG) because missing.txt is silently dropped.
+	// After fix, it should return an error.
+	if err == nil {
+		t.Fatal("expected error for file declared with no content anywhere (currently silently dropped)")
+	}
+}

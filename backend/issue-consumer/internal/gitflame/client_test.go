@@ -1,8 +1,15 @@
 package gitflame
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/domain"
 )
 
 func TestCreateBranchRequestJSON(t *testing.T) {
@@ -164,4 +171,106 @@ func TestParseExistingPRNumber(t *testing.T) {
 	if got := parseExistingPRNumber([]byte(`{"message":"nope"}`)); got != 0 {
 		t.Fatalf("missing = %d", got)
 	}
+}
+
+// Bug #1: Test PushFiles can update existing files
+func TestPushFiles_UpdatesExistingFile(t *testing.T) {
+	var (
+		getFileCalled  bool
+		putFileCalled  bool
+		postFileCalled bool
+	)
+
+	server := newMockGiteaServer(t, func(method, path string, body []byte) (statusCode int, respBody []byte) {
+		if strings.Contains(path, "/contents/") {
+			if method == "GET" {
+				getFileCalled = true
+				// File exists, return sha
+				return 200, []byte(`{"sha":"abc123def456"}`)
+			}
+			if method == "PUT" {
+				putFileCalled = true
+				// Verify the request body contains the sha
+				var req updateFileRequest
+				if err := json.Unmarshal(body, &req); err != nil {
+					t.Fatalf("failed to unmarshal PUT body: %v", err)
+				}
+				if req.Sha != "abc123def456" {
+					t.Fatalf("expected sha abc123def456, got %s", req.Sha)
+				}
+				// Update succeeds
+				return 200, []byte(`{"sha":"newsha789"}`)
+			}
+			if method == "POST" {
+				postFileCalled = true
+				// Create succeeds
+				return 201, []byte(`{"sha":"newsha"}`)
+			}
+		}
+		if strings.Contains(path, "/branches") {
+			// Branch creation/existence check
+			return 201, []byte(`{}`)
+		}
+		return 500, []byte("unexpected request")
+	})
+	defer server.Close()
+
+	c := NewClient(server.URL, "test-token")
+	ref := domain.IssueRef{Owner: "test-owner", Repo: "test-repo", DefaultBranch: "main"}
+	files := []domain.GeneratedFile{{Path: "test.txt", Content: "hello"}}
+
+	err := c.PushFiles(context.Background(), ref, "innoagent-test", files, "test commit")
+	if err != nil {
+		t.Fatalf("PushFiles failed: %v", err)
+	}
+
+	if !getFileCalled {
+		t.Fatal("GET /contents/{path} was not called")
+	}
+	if !putFileCalled {
+		t.Fatal("PUT /contents/{path} was not called for existing file")
+	}
+	if postFileCalled {
+		t.Fatal("POST /contents/{path} should not be called when file exists")
+	}
+}
+
+// Bug #2: Test "not configured" errors are tagged as permanent
+func TestGetIssue_NotConfigured(t *testing.T) {
+	c := NewClient("", "")
+	_, _, err := c.GetIssue(context.Background(), domain.IssueRef{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, domain.ErrPermanent) {
+		t.Fatalf("error %v is not domain.ErrPermanent", err)
+	}
+}
+
+func TestCreatePullRequest_NotConfigured(t *testing.T) {
+	c := NewClient("", "")
+	_, err := c.CreatePullRequest(context.Background(), domain.IssueRef{}, "", "", "", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, domain.ErrPermanent) {
+		t.Fatalf("error %v is not domain.ErrPermanent", err)
+	}
+}
+
+// Helper function to create a mock Gitea API server for testing
+func newMockGiteaServer(t *testing.T, handler func(method, path string, body []byte) (statusCode int, respBody []byte)) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := make([]byte, 0)
+		if r.Body != nil {
+			b := make([]byte, 8192)
+			n, _ := r.Body.Read(b)
+			body = b[:n]
+			r.Body.Close()
+		}
+
+		statusCode, respBody := handler(r.Method, r.URL.Path, body)
+		w.WriteHeader(statusCode)
+		_, _ = w.Write(respBody)
+	}))
 }

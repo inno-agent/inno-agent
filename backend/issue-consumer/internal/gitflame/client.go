@@ -50,7 +50,7 @@ type issueResponse struct {
 
 func (c *Client) GetIssue(ctx context.Context, ref domain.IssueRef) (string, string, error) {
 	if c.baseURL == "" || c.token == "" {
-		return "", "", fmt.Errorf("gitflame: not configured")
+		return "", "", fmt.Errorf("gitflame: not configured: %w", domain.ErrPermanent)
 	}
 
 	issueURL := fmt.Sprintf(
@@ -145,7 +145,7 @@ func (c *Client) CreatePullRequest(
 	reviewers []string,
 ) (int64, error) {
 	if c.baseURL == "" || c.token == "" {
-		return 0, fmt.Errorf("gitflame: not configured")
+		return 0, fmt.Errorf("gitflame: not configured: %w", domain.ErrPermanent)
 	}
 
 	baseBranch := ref.DefaultBranch
@@ -441,9 +441,60 @@ type createFileRequest struct {
 	NewBranch string `json:"new_branch,omitempty"`
 }
 
+type updateFileRequest struct {
+	Message string `json:"message"`
+	Content string `json:"content"`
+	Branch  string `json:"branch"`
+	Sha     string `json:"sha"`
+}
+
 type createBranchRequest struct {
 	NewBranchName string `json:"new_branch_name"`
 	OldBranchName string `json:"old_branch_name"`
+}
+
+// getFileSha retrieves the SHA of a file on a given branch.
+// Returns (sha, exists, error).
+// exists is true if the file exists (200), false if not (404).
+func (c *Client) getFileSha(ctx context.Context, repoBase, path, branch string) (string, bool, error) {
+	fileURL := repoBase + "/contents/" + escapePathSegments(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return "", false, fmt.Errorf("gitflame: build get file sha request %s: %w", path, err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	q := req.URL.Query()
+	q.Add("ref", branch)
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", false, fmt.Errorf("gitflame: get file sha %s failed: %w: %w", path, domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", false, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := fmt.Sprintf("gitflame: get file sha %s returned %d: %s", path, resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return "", false, fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+		return "", false, fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+	}
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	var fileInfo struct {
+		Sha string `json:"sha"`
+	}
+	if err := json.Unmarshal(body, &fileInfo); err != nil {
+		return "", false, fmt.Errorf("gitflame: parse file sha response %s: %w", path, err)
+	}
+
+	return fileInfo.Sha, true, nil
 }
 
 func (c *Client) ensureBranch(ctx context.Context, ref domain.IssueRef, branch, baseBranch string) error {
@@ -514,35 +565,70 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 	)
 
 	for _, f := range files {
-		reqBody := createFileRequest{
-			Message: message,
-			Content: base64.StdEncoding.EncodeToString([]byte(f.Content)),
-			Branch:  branch,
-		}
-
-		payload, err := json.Marshal(reqBody)
+		// Check if file already exists on the branch
+		sha, exists, err := c.getFileSha(ctx, repoBase, f.Path, branch)
 		if err != nil {
-			return fmt.Errorf("gitflame: marshal create file %s: %w", f.Path, err)
+			return err
 		}
 
+		encodedContent := base64.StdEncoding.EncodeToString([]byte(f.Content))
 		fileURL := repoBase + "/contents/" + escapePathSegments(f.Path)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, fileURL, bytes.NewReader(payload))
+
+		var (
+			payload        []byte
+			method         string
+			expectedStatus int
+		)
+
+		if exists {
+			// File exists, use PUT to update
+			reqBody := updateFileRequest{
+				Message: message,
+				Content: encodedContent,
+				Branch:  branch,
+				Sha:     sha,
+			}
+			var err error
+			payload, err = json.Marshal(reqBody)
+			if err != nil {
+				return fmt.Errorf("gitflame: marshal update file %s: %w", f.Path, err)
+			}
+			method = http.MethodPut
+			expectedStatus = http.StatusOK
+		} else {
+			// File doesn't exist, use POST to create
+			reqBody := createFileRequest{
+				Message: message,
+				Content: encodedContent,
+				Branch:  branch,
+			}
+			var err error
+			payload, err = json.Marshal(reqBody)
+			if err != nil {
+				return fmt.Errorf("gitflame: marshal create file %s: %w", f.Path, err)
+			}
+			method = http.MethodPost
+			expectedStatus = http.StatusCreated
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, fileURL, bytes.NewReader(payload))
 		if err != nil {
-			return fmt.Errorf("gitflame: build create file request %s: %w", f.Path, err)
+			return fmt.Errorf("gitflame: build file request %s: %w", f.Path, err)
 		}
 		req.Header.Set("Authorization", "token "+c.token)
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("gitflame: create file %s failed: %w: %w", f.Path, domain.ErrTransient, err)
+			return fmt.Errorf("gitflame: file request %s failed: %w: %w", f.Path, domain.ErrTransient, err)
 		}
 
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		_ = resp.Body.Close()
 
-		if resp.StatusCode != http.StatusCreated {
-			msg := fmt.Sprintf("gitflame: create file %s returned %d: %s", f.Path, resp.StatusCode, strings.TrimSpace(string(body)))
+		// Accept both 200 (OK) and 201 (Created) for update/create
+		if resp.StatusCode != expectedStatus && !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {
+			msg := fmt.Sprintf("gitflame: file request %s returned %d: %s", f.Path, resp.StatusCode, strings.TrimSpace(string(body)))
 			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 				return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
 			}

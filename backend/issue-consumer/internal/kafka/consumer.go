@@ -18,6 +18,7 @@ const (
 	retryInitial = time.Second
 	retryCap     = 30 * time.Second
 	fetchErrWait = time.Second
+	maxAttempts  = 10
 )
 
 type Consumer struct {
@@ -68,6 +69,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 
 		backoff := retryInitial
+		attempts := 0
 		for {
 			c.logIncomingMessage(msg)
 
@@ -78,6 +80,26 @@ func (c *Consumer) Run(ctx context.Context) error {
 						return nil
 					}
 					c.logger.Error("commit failed", zap.Error(err))
+					telemetry.IncConsumerKafkaCommitError()
+				}
+				break
+			}
+
+			attempts++
+			if attempts >= maxAttempts {
+				c.logger.Error(
+					"retry exhausted; skipping message",
+					zap.Int("attempts", attempts),
+					zap.Int("partition", msg.Partition),
+					zap.Int64("offset", msg.Offset),
+					zap.ByteString("key", msg.Key),
+				)
+				telemetry.IncError("issue-consumer", "retry_exhausted")
+				if err := c.reader.CommitMessages(ctx, msg); err != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
+					c.logger.Error("commit failed after retry exhausted", zap.Error(err))
 					telemetry.IncConsumerKafkaCommitError()
 				}
 				break

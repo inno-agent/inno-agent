@@ -47,7 +47,8 @@ func RequestLogger() func(http.Handler) http.Handler {
 				status = http.StatusOK
 			}
 
-			FromContext(r.Context()).Info("http_request",
+			FromContext(r.Context()).Info(
+				"http_request",
 				zap.String("method", r.Method),
 				zap.String("path", r.URL.Path),
 				zap.String("query", r.URL.RawQuery),

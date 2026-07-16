@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
 
 const reviewSystemPrompt = `You are a senior software engineer performing pull request review.

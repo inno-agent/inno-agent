@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/pkg/logger"
+	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 )
 
 type reviewRequest struct {

@@ -200,7 +200,8 @@ func main() {
 
 	srv := &http.Server{
 		Addr: ":" + cfg.ServerPort,
-		Handler: tracing.HTTPMiddleware("orchestrator",
+		Handler: tracing.HTTPMiddleware(
+			"orchestrator",
 			logger.CorrelationID(
 				logger.InjectLogger(log)(
 					logger.RequestLogger()(

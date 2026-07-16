@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
-	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 type OrchestratorClient struct {

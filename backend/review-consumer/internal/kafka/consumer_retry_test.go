@@ -26,7 +26,8 @@ func TestProcessWithRetry_CommitsImmediatelyOnDone(t *testing.T) {
 	shrinkBackoff(t)
 	c := newTestConsumer()
 	processCalls, commits := 0, 0
-	c.processWithRetry(context.Background(), 1, 0,
+	c.processWithRetry(
+		context.Background(), 1, 0,
 		func() processor.Result { processCalls++; return processor.Done },
 		func() bool { commits++; return false },
 	)
@@ -39,7 +40,8 @@ func TestProcessWithRetry_GivesUpAndCommitsAfterMaxRetries(t *testing.T) {
 	shrinkBackoff(t)
 	c := newTestConsumer()
 	processCalls, commits := 0, 0
-	cancelled := c.processWithRetry(context.Background(), 7, 3,
+	cancelled := c.processWithRetry(
+		context.Background(), 7, 3,
 		func() processor.Result { processCalls++; return processor.Transient }, // always transient
 		func() bool { commits++; return false },
 	)
@@ -59,7 +61,8 @@ func TestProcessWithRetry_RecoversBeforeCap(t *testing.T) {
 	shrinkBackoff(t)
 	c := newTestConsumer()
 	processCalls, commits := 0, 0
-	c.processWithRetry(context.Background(), 2, 0,
+	c.processWithRetry(
+		context.Background(), 2, 0,
 		func() processor.Result {
 			processCalls++
 			if processCalls < 3 {
@@ -80,7 +83,8 @@ func TestProcessWithRetry_StopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	commits := 0
-	cancelled := c.processWithRetry(ctx, 1, 0,
+	cancelled := c.processWithRetry(
+		ctx, 1, 0,
 		func() processor.Result { return processor.Transient },
 		func() bool { commits++; return false },
 	)

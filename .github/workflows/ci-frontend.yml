@@ -32,7 +32,11 @@ jobs:
               cd "$dir"
               npm ci
               npm run lint
-              npm run test
+              if npm run | grep -q "test$"; then
+                npm run test
+              else
+                echo "Skipping tests for $dir (no test script found)"
+              fi
               npm run build
               cd -
             fi

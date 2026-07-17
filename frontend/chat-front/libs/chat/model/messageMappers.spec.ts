@@ -22,8 +22,10 @@ describe('messageMappers', () => {
     describe('fromApiMessage', () => {
         it('converts API message to thread message', () => {
             const apiMessage: Message = {
+                id: '1',
                 role: 'assistant',
                 content: 'Response text',
+                created_at: '2026-07-17T23:54:00Z',
             }
             const result = fromApiMessage(apiMessage)
             expect(result).toEqual({

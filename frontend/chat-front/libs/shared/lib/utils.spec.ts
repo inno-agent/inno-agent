@@ -19,8 +19,10 @@ describe('cn', () => {
     })
 
     it('handles conditional classes', () => {
-        expect(cn('base-class', true && 'conditional-class')).toBe('base-class conditional-class')
-        expect(cn('base-class', false && 'conditional-class')).toBe('base-class')
+        const isActive = true
+        const isDisabled = false
+        expect(cn('base-class', isActive && 'conditional-class')).toBe('base-class conditional-class')
+        expect(cn('base-class', isDisabled && 'conditional-class')).toBe('base-class')
     })
 
     it('caches static strings', () => {

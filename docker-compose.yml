@@ -465,6 +465,15 @@ services:
       REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
+      # Codegen Agent (Mastra) - optional. Falls back to single-shot LLM via
+      # orchestrator when empty. Points at the same review-agent service's
+      # /codegen endpoint.
+      # NOTE: this bypasses per-user delegated-token attribution on the LLM
+      # call (Mastra calls Ollama directly, no token) — see
+      # backend/issue-consumer/internal/config/config.go.
+      CODEGEN_AGENT_URL: ${CODEGEN_AGENT_URL:-}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in review-agent.
+      CODEGEN_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
     networks:
       - innoagent
     depends_on:

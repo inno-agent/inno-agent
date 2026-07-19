@@ -16,6 +16,7 @@ import (
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/installation"
 	konsumer "github.com/inno-agent/inno-agent/backend/issue-consumer/internal/kafka"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/llm"
+	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/mastra"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/processor"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/tokensource"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
@@ -67,8 +68,22 @@ func main() {
 	telemetry.ListenAndServe(":9090", "issue-consumer")
 
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
-	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
-	genService := generator.NewService(gitFlameClient, gitFlameClient, llmClient, tokenSrc, cfg.CodegenModel, logger)
+
+	var genService domain.Generator
+	if cfg.CodegenAgentURL != "" {
+		mastraClient := mastra.NewClient(cfg.CodegenAgentURL, cfg.CodegenAgentToken)
+		genService = mastra.NewGenerator(mastraClient, logger)
+		// See the CodegenAgentURL doc comment in internal/config: the Mastra
+		// path calls the LLM with no per-user delegated token, unlike the
+		// single-shot fallback below.
+		logger.Info("using Mastra codegen agent (no per-user LLM token attribution)",
+			zap.String("url", cfg.CodegenAgentURL))
+	} else {
+		llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
+		genService = generator.NewService(gitFlameClient, gitFlameClient, llmClient, tokenSrc, cfg.CodegenModel, logger)
+		logger.Info("using single-shot LLM codegen", zap.String("orchestrator", cfg.OrchestratorURL))
+	}
+
 	proc := processor.New(genService, gitFlameClient, gitFlameClient, gitFlameClient, logger,
 		cfg.BotGitFlameUsername, cfg.OnboardingURL)
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)

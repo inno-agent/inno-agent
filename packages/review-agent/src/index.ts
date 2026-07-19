@@ -14,6 +14,7 @@ type AppEnv = {
 
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
+const CODEGEN_TIMEOUT_MS = parseInt(process.env.CODEGEN_TIMEOUT_MS || "300000") // 5 minutes default
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
 const MAX_CONCURRENT_REVIEWS = parseInt(process.env.MAX_CONCURRENT_REVIEWS || "4")
 
@@ -79,6 +80,16 @@ const ReviewRequestSchema = z.object({
   headSha: z.string(),
 })
 
+const CodegenRequestSchema = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  issueNumber: z.number(),
+  defaultBranch: z.string().optional(),
+  issueType: z.string().optional(),
+  title: z.string().optional(),
+  body: z.string().optional(),
+})
+
 const app = new Hono<AppEnv>()
 
 // CORS middleware
@@ -102,8 +113,9 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// Auth middleware for /review endpoint
-app.use("/review", async (c, next) => {
+// Bearer-token auth for the agent endpoints. REVIEW_AGENT_AUTH_TOKEN is the
+// shared secret for this service; both /review and /codegen are guarded by it.
+const authMiddleware = async (c: any, next: any) => {
   if (!REVIEW_AGENT_AUTH_TOKEN) {
     return c.json({ error: "Auth not configured" }, 503)
   }
@@ -119,7 +131,10 @@ app.use("/review", async (c, next) => {
   }
 
   await next()
-})
+}
+
+app.use("/review", authMiddleware)
+app.use("/codegen", authMiddleware)
 
 app.post("/review", async (c) => {
   const requestId = c.get("requestId")
@@ -187,6 +202,59 @@ app.post("/review", async (c) => {
 // Health check endpoint
 app.get("/health", (c) => {
   return c.json({ status: "ok" })
+})
+
+// ─── /codegen: issue → generated files via the codegen pipeline ────────────
+//
+// Mirrors /review: the consumer sends the issue ref (+ optional context from
+// the webhook), the Mastra codegen workflow fetches repo context, runs the
+// code-generator agent, parses the structured output, and returns the files.
+app.post("/codegen", async (c) => {
+  const requestId = c.get("requestId")
+  const body = await c.req.json()
+  const parsed = CodegenRequestSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", details: parsed.error }, 400)
+  }
+
+  const { owner, repo, issueNumber } = parsed.data
+
+  console.log(`[${requestId}] Starting codegen for ${owner}/${repo}#${issueNumber}`)
+
+  await reviewSemaphore.acquire()
+  try {
+    const workflow = mastra.getWorkflow("codegenPipeline")
+    const run = await workflow.createRun()
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Codegen timeout")), CODEGEN_TIMEOUT_MS)
+    })
+
+    const resultPromise = run.start({ inputData: parsed.data })
+
+    const result = await Promise.race([resultPromise, timeoutPromise]) as any
+
+    if (result.status === "success") {
+      const out = result.result
+      console.log(`[${requestId}] Codegen completed: ${out.files?.length || 0} files`)
+      return c.json({
+        summary: out.summary || "",
+        files: out.files || [],
+      })
+    }
+
+    console.error(`[${requestId}] Codegen failed with status: ${result.status}`)
+    return c.json({ error: "Codegen failed", status: result.status }, 500)
+  } catch (error: any) {
+    console.error(`[${requestId}] Codegen error:`, error)
+    if (error.message === "Codegen timeout") {
+      return c.json({ error: "Codegen timeout" }, 504)
+    }
+    return c.json({ error: "Internal server error" }, 500)
+  } finally {
+    reviewSemaphore.release()
+  }
 })
 
 const port = parseInt(process.env.SERVER_PORT || "4100")

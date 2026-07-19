@@ -12,6 +12,22 @@ type Config struct {
 	GitFlameBaseURL   string
 	GitFlameToken     string
 
+	// CodegenAgentURL is the URL of the Mastra codegen agent service.
+	// If empty, falls back to single-shot LLM via OrchestratorURL.
+	//
+	// SECURITY / AUDIT NOTE: enabling this changes the token model for the LLM
+	// call. The single-shot fallback (internal/generator) exchanges the issue
+	// assigner's GitFlame identity for a delegated RFC 8693 user token via
+	// internal/tokensource and attaches it to every orchestrator /v1/chat call,
+	// giving per-user attribution/quota on generation. The Mastra agent calls
+	// Ollama directly (bypassing the orchestrator, same as the review agent)
+	// with NO per-user token — see packages/review-agent/src/mastra/agents/
+	// code-generator.ts for details. Do not assume the delegated-token
+	// guarantee holds once this is set.
+	CodegenAgentURL string
+	// CodegenAgentToken is the shared secret for authenticating to the codegen agent.
+	CodegenAgentToken string
+
 	BotGitFlameUsername string
 	IdentityURL         string
 	OnboardingURL       string
@@ -31,6 +47,9 @@ func Load() *Config {
 		CodegenModel:      getEnv("CODEGEN_MODEL", "qwen2.5-coder:1.5b"),
 		GitFlameBaseURL:   getEnv("GITFLAME_BASE_URL", ""),
 		GitFlameToken:     getEnv("GITFLAME_TOKEN", ""),
+
+		CodegenAgentURL:   getEnv("CODEGEN_AGENT_URL", ""),
+		CodegenAgentToken: getEnv("CODEGEN_AGENT_AUTH_TOKEN", ""),
 
 		BotGitFlameUsername: getEnv("BOT_GITFLAME_USERNAME", ""),
 		IdentityURL:         getEnv("IDENTITY_URL", "http://identity:8081"),

@@ -17,6 +17,8 @@ func TestCompletionsClientForwardsBodyVerbatim(t *testing.T) {
 	var gotPath, gotAuth, gotContentType string
 	var gotBody []byte
 
+	wantBody := []byte(`{"choices":[{"message":{"tool_calls":[{"id":"c1"}]}}]}`)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
@@ -25,7 +27,7 @@ func TestCompletionsClientForwardsBodyVerbatim(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"c1"}]}}]}`))
+		_, _ = w.Write(wantBody)
 	}))
 	defer srv.Close()
 
@@ -52,8 +54,8 @@ func TestCompletionsClientForwardsBodyVerbatim(t *testing.T) {
 	if res.Status != http.StatusOK {
 		t.Errorf("status = %d, want 200", res.Status)
 	}
-	if !strings.Contains(string(res.Body), `"tool_calls"`) {
-		t.Errorf("tool_calls lost from response: %s", res.Body)
+	if string(res.Body) != string(wantBody) {
+		t.Errorf("body = %s, want %s", res.Body, wantBody)
 	}
 }
 
@@ -77,9 +79,11 @@ func TestCompletionsClientOmitsAuthWhenNoAPIKey(t *testing.T) {
 }
 
 func TestCompletionsClientReturnsUpstreamStatusAndBody(t *testing.T) {
+	wantBody := []byte(`{"error":{"message":"bad tools schema"}}`)
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":{"message":"bad tools schema"}}`))
+		_, _ = w.Write(wantBody)
 	}))
 	defer srv.Close()
 
@@ -91,21 +95,103 @@ func TestCompletionsClientReturnsUpstreamStatusAndBody(t *testing.T) {
 	if res.Status != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", res.Status)
 	}
-	if !strings.Contains(string(res.Body), "bad tools schema") {
-		t.Errorf("upstream error body lost: %s", res.Body)
+	if string(res.Body) != string(wantBody) {
+		t.Errorf("body = %s, want %s", res.Body, wantBody)
 	}
 }
 
-func TestCompletionsClientRejectsOversizedResponse(t *testing.T) {
+func TestCompletionsClientSizeCapBoundary(t *testing.T) {
+	tests := []struct {
+		name    string
+		size    int
+		wantErr bool
+	}{
+		{"one under cap", 9, false},
+		{"exactly at cap", 10, false},
+		{"one over cap", 11, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(strings.Repeat("x", tt.size)))
+			}))
+			defer srv.Close()
+
+			c := llm.NewCompletionsClient(srv.URL+"/v1", "", 5*time.Second, 10)
+			res, err := c.Complete(context.Background(), []byte(`{}`))
+
+			if tt.wantErr {
+				if !errors.Is(err, llm.ErrResponseTooLarge) {
+					t.Fatalf("err = %v, want ErrResponseTooLarge", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Complete: %v", err)
+			}
+			if len(res.Body) != tt.size {
+				t.Errorf("body length = %d, want %d (body must not be truncated)", len(res.Body), tt.size)
+			}
+		})
+	}
+}
+
+func TestCompletionsClientPreservesContentType(t *testing.T) {
+	tests := []struct {
+		name          string
+		setCType      bool
+		upstreamCType string
+		wantCType     string
+	}{
+		{"upstream json passes through", true, "application/json", "application/json"},
+		{"upstream text passes through", true, "text/plain; charset=utf-8", "text/plain; charset=utf-8"},
+		{"upstream missing defaults to json", false, "", "application/json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.setCType {
+					w.Header().Set("Content-Type", tt.upstreamCType)
+				} else {
+					// Explicitly set to empty to suppress Go's auto-detection
+					w.Header().Set("Content-Type", "")
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			defer srv.Close()
+
+			c := llm.NewCompletionsClient(srv.URL+"/v1", "", 5*time.Second, 1<<20)
+			res, err := c.Complete(context.Background(), []byte(`{}`))
+			if err != nil {
+				t.Fatalf("Complete: %v", err)
+			}
+			if res.ContentType != tt.wantCType {
+				t.Errorf("content type = %q, want %q", res.ContentType, tt.wantCType)
+			}
+		})
+	}
+}
+
+func TestCompletionsClientConstructorDefaults(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(strings.Repeat("x", 100)))
+		_, _ = w.Write([]byte(`{"test":"data"}`))
 	}))
 	defer srv.Close()
 
-	c := llm.NewCompletionsClient(srv.URL+"/v1", "", 5*time.Second, 10)
-	_, err := c.Complete(context.Background(), []byte(`{}`))
-	if !errors.Is(err, llm.ErrResponseTooLarge) {
-		t.Fatalf("err = %v, want ErrResponseTooLarge", err)
+	// Client built with zero arguments should still work
+	c := llm.NewCompletionsClient(srv.URL+"/v1", "", 0, 0)
+	res, err := c.Complete(context.Background(), []byte(`{}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != http.StatusOK {
+		t.Errorf("status = %d, want 200", res.Status)
 	}
 }

@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"innoagent/internal/catalog"
 	"innoagent/internal/llm"
+
+	"go.uber.org/zap"
 )
 
 // Sentinel errors for pre-flight rejections. The HTTP handler maps these to
@@ -169,4 +172,100 @@ func (o *AIOrchestrator) prepareCompletions(ctx context.Context, req *completion
 // content, which is exactly what the opacity design exists to prevent.
 func (o *AIOrchestrator) injectSharedContext(ctx context.Context, req *completionsRequest) error {
 	return nil
+}
+
+// Completer is the transport the orchestrator forwards prepared bodies to.
+// llm.CompletionsClient satisfies it; tests substitute a stub.
+type Completer interface {
+	Complete(ctx context.Context, body []byte) (*llm.CompletionsResult, error)
+}
+
+// SetCompleter installs the transport. Kept separate from New so the existing
+// constructor signature — and every caller of it — stays untouched.
+func (o *AIOrchestrator) SetCompleter(c Completer) {
+	o.completer = c
+}
+
+// CompleteResult is what the HTTP handler writes back. RequestedModel and
+// ResolvedModel differ when the client asked for "auto" or omitted the field;
+// the handler logs both for attribution.
+type CompleteResult struct {
+	Status         int
+	Body           []byte
+	ContentType    string
+	RequestedModel string
+	ResolvedModel  string
+}
+
+// genericUpstreamError is returned in place of an upstream 5xx body, which may
+// carry internal hostnames and paths.
+var genericUpstreamError = []byte(`{"error":{"message":"upstream model runtime error","type":"upstream_error"}}`)
+
+// Complete parses, prepares and forwards a chat-completions request.
+//
+// Pre-flight rejections come back as sentinel errors for the handler to map.
+// Once the request reaches the runtime, every outcome is expressed as a
+// CompleteResult so the client always receives a body.
+func (o *AIOrchestrator) Complete(ctx context.Context, body []byte) (*CompleteResult, error) {
+	req, err := parseCompletionsRequest(body)
+	if err != nil {
+		return nil, err
+	}
+	requested := req.model
+
+	if err := o.prepareCompletions(ctx, req); err != nil {
+		return nil, err
+	}
+	if err := o.injectSharedContext(ctx, req); err != nil {
+		return nil, fmt.Errorf("orchestrator: inject shared context: %w", err)
+	}
+
+	outbound, err := req.marshal()
+	if err != nil {
+		return nil, fmt.Errorf("orchestrator: marshal completions request: %w", err)
+	}
+
+	res, err := o.completer.Complete(ctx, outbound)
+	if err != nil {
+		status := http.StatusBadGateway
+		if errors.Is(err, context.DeadlineExceeded) {
+			status = http.StatusGatewayTimeout
+		}
+		o.logger.Error("completions upstream call failed",
+			zap.String("model", req.model),
+			zap.Error(err))
+		return &CompleteResult{
+			Status:         status,
+			Body:           genericUpstreamError,
+			ContentType:    "application/json",
+			RequestedModel: requested,
+			ResolvedModel:  req.model,
+		}, nil
+	}
+
+	// Client errors from the runtime are almost always a complaint about the
+	// tools schema and are undebuggable without the original text, so they pass
+	// through. Server errors may carry internal addresses, so the client gets a
+	// generic body and the detail goes to the log.
+	if res.Status >= 500 {
+		o.logger.Error("completions upstream returned server error",
+			zap.String("model", req.model),
+			zap.Int("upstream_status", res.Status),
+			zap.ByteString("upstream_body", res.Body))
+		return &CompleteResult{
+			Status:         http.StatusBadGateway,
+			Body:           genericUpstreamError,
+			ContentType:    "application/json",
+			RequestedModel: requested,
+			ResolvedModel:  req.model,
+		}, nil
+	}
+
+	return &CompleteResult{
+		Status:         res.Status,
+		Body:           res.Body,
+		ContentType:    res.ContentType,
+		RequestedModel: requested,
+		ResolvedModel:  req.model,
+	}, nil
 }

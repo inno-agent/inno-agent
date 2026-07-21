@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"innoagent/internal/catalog"
+	"innoagent/internal/llm"
 
 	"go.uber.org/zap"
 )
@@ -284,5 +286,155 @@ func TestInjectSharedContextIsCurrentlyANoOp(t *testing.T) {
 	}
 	if len(req.messages) != 3 {
 		t.Errorf("message count = %d, want 3", len(req.messages))
+	}
+}
+
+// stubCompleter stands in for the llm.CompletionsClient.
+type stubCompleter struct {
+	result   *llm.CompletionsResult
+	err      error
+	lastBody []byte
+}
+
+func (s *stubCompleter) Complete(ctx context.Context, body []byte) (*llm.CompletionsResult, error) {
+	s.lastBody = body
+	return s.result, s.err
+}
+
+func TestCompleteForwardsAndReturnsUpstreamSuccess(t *testing.T) {
+	// richBody names a real model, so this orchestrator's allowlist has to
+	// contain it — newTestOrchestrator only allows m1/m2.
+	o := New(&mockProvider{}, &mockProvider{}, defaultRoutes(), []string{"qwen2.5-coder:1.5b"}, zap.NewNop())
+	upstreamBody := []byte(`{"choices":[{"message":{"tool_calls":[{"id":"c1"}]}}]}`)
+	stub := &stubCompleter{result: &llm.CompletionsResult{
+		Status:      200,
+		Body:        upstreamBody,
+		ContentType: "application/json",
+	}}
+	o.SetCompleter(stub)
+
+	res, err := o.Complete(context.Background(), []byte(richBody))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != 200 {
+		t.Errorf("status = %d, want 200", res.Status)
+	}
+	if string(res.Body) != string(upstreamBody) {
+		t.Errorf("body = %s, want %s", res.Body, upstreamBody)
+	}
+
+	// The tools array must reach the runtime untouched; that is the whole point.
+	var sent map[string]json.RawMessage
+	if err := json.Unmarshal(stub.lastBody, &sent); err != nil {
+		t.Fatalf("unmarshal forwarded body: %v", err)
+	}
+	var want map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(richBody), &want); err != nil {
+		t.Fatalf("unmarshal source: %v", err)
+	}
+	if string(sent["tools"]) != string(want["tools"]) {
+		t.Errorf("tools changed:\n got %s\nwant %s", sent["tools"], want["tools"])
+	}
+	if string(sent["messages"]) != string(want["messages"]) {
+		t.Errorf("messages changed:\n got %s\nwant %s", sent["messages"], want["messages"])
+	}
+}
+
+func TestCompletePassesUpstream4xxThrough(t *testing.T) {
+	o := newTestOrchestrator()
+	upstreamBody := []byte(`{"error":{"message":"bad tools schema"}}`)
+	o.SetCompleter(&stubCompleter{result: &llm.CompletionsResult{
+		Status:      400,
+		Body:        upstreamBody,
+		ContentType: "application/json",
+	}})
+
+	res, err := o.Complete(context.Background(), []byte(`{"model":"m1","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != 400 {
+		t.Errorf("status = %d, want 400", res.Status)
+	}
+	// 4xx bodies pass through verbatim: they are almost always a complaint
+	// about the tools schema and are undebuggable without the original text.
+	if string(res.Body) != string(upstreamBody) {
+		t.Errorf("body = %s, want %s", res.Body, upstreamBody)
+	}
+}
+
+func TestCompleteCollapsesUpstream5xx(t *testing.T) {
+	o := newTestOrchestrator()
+	o.SetCompleter(&stubCompleter{result: &llm.CompletionsResult{
+		Status:      500,
+		Body:        []byte(`{"error":"dial tcp 10.0.0.5:11434 refused"}`),
+		ContentType: "application/json",
+	}})
+
+	res, err := o.Complete(context.Background(), []byte(`{"model":"m1","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != 502 {
+		t.Errorf("status = %d, want 502", res.Status)
+	}
+	if strings.Contains(string(res.Body), "10.0.0.5") {
+		t.Errorf("upstream internals leaked to client: %s", res.Body)
+	}
+}
+
+func TestCompleteMapsTimeoutTo504(t *testing.T) {
+	o := newTestOrchestrator()
+	o.SetCompleter(&stubCompleter{err: context.DeadlineExceeded})
+
+	res, err := o.Complete(context.Background(), []byte(`{"model":"m1","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != 504 {
+		t.Errorf("status = %d, want 504", res.Status)
+	}
+}
+
+func TestCompleteMapsOversizedResponseTo502(t *testing.T) {
+	o := newTestOrchestrator()
+	o.SetCompleter(&stubCompleter{err: llm.ErrResponseTooLarge})
+
+	res, err := o.Complete(context.Background(), []byte(`{"model":"m1","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if res.Status != 502 {
+		t.Errorf("status = %d, want 502", res.Status)
+	}
+}
+
+func TestCompletePropagatesPreflightErrors(t *testing.T) {
+	o := newTestOrchestrator()
+	o.SetCompleter(&stubCompleter{})
+
+	if _, err := o.Complete(context.Background(), []byte(`{"model":"nope","messages":[{"role":"user","content":"x"}]}`)); !errors.Is(err, ErrModelNotAllowed) {
+		t.Fatalf("err = %v, want ErrModelNotAllowed", err)
+	}
+}
+
+func TestCompleteReportsRequestedAndResolvedModel(t *testing.T) {
+	o := newTestOrchestrator()
+	o.SetCompleter(&stubCompleter{result: &llm.CompletionsResult{
+		Status: 200, Body: []byte(`{}`), ContentType: "application/json",
+	}})
+
+	res, err := o.Complete(context.Background(), []byte(`{"model":"`+catalog.AutoID+`","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	// Attribution needs both: "auto" is what the client asked for, "m2" is what
+	// the router actually picked.
+	if res.RequestedModel != catalog.AutoID {
+		t.Errorf("RequestedModel = %q, want %q", res.RequestedModel, catalog.AutoID)
+	}
+	if res.ResolvedModel != "m2" {
+		t.Errorf("ResolvedModel = %q, want m2", res.ResolvedModel)
 	}
 }

@@ -121,7 +121,7 @@ func TestRouterMessagesDecodesRolesAndText(t *testing.T) {
 	}
 }
 
-func TestRouterMessagesSkipsNonObjectsSoRouterFallbackSeesRealContent(t *testing.T) {
+func TestRouterMessagesSkipsNonObjects(t *testing.T) {
 	// Non-object messages (e.g. integers, nulls) are skipped when decoding for
 	// routing. This is safe because routerMessages() output affects only model
 	// selection; the request forwarded upstream comes from r.raw (untouched
@@ -132,7 +132,6 @@ func TestRouterMessagesSkipsNonObjectsSoRouterFallbackSeesRealContent(t *testing
 	// appended as zero-values, the fallback would see empty instead of real
 	// content (e.g., a system message), breaking routing decisions.
 
-	// Case 1: Non-object is skipped (yields 1 message, not 2).
 	req, err := parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"user","content":"hi"},42]}`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -145,22 +144,25 @@ func TestRouterMessagesSkipsNonObjectsSoRouterFallbackSeesRealContent(t *testing
 	if msgs[0].Role != "user" || msgs[0].Content != "hi" {
 		t.Errorf("msgs[0] = %+v", msgs[0])
 	}
+}
 
-	// Case 2: Regression test for the fallback scenario.
-	// System message followed by non-object should yield the system message
-	// as the last element, so route() can use it via the fallback when no
-	// user messages exist.
-	req, err = parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"system","content":"you are a Go expert, answer about goroutines"},42]}`))
+// TestRouterMessagesPreservesLastRealMessageForRouterFallback pins the specific
+// regression that motivated the skip: route() falls back to the LAST message
+// when no user-role message is present, so a trailing non-object must not
+// become the last element or the router classifies against empty content.
+//
+// This lives in its own function on purpose. Folded into the test above as a
+// second case, a t.Fatalf on the earlier assertion aborts before this one runs,
+// so it could never fail under the very mutation it exists to catch.
+func TestRouterMessagesPreservesLastRealMessageForRouterFallback(t *testing.T) {
+	req, err := parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"system","content":"you are a Go expert, answer about goroutines"},42]}`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
-	msgs = req.routerMessages()
-	if len(msgs) != 1 {
-		t.Fatalf("len = %d, want 1", len(msgs))
-	}
-	// The last (and only) message should be the system message, not a zero-value.
-	if msgs[len(msgs)-1].Role != "system" || msgs[len(msgs)-1].Content == "" {
-		t.Errorf("last message = %+v, want system message with content", msgs[len(msgs)-1])
+	msgs := req.routerMessages()
+	last := msgs[len(msgs)-1]
+	if last.Role != "system" || last.Content == "" {
+		t.Errorf("last message = %+v, want the system message with its content", last)
 	}
 }

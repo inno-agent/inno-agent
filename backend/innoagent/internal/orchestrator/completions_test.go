@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"innoagent/internal/llm"
 )
 
 // The body below deliberately carries: a tools array, tool_choice, a message
@@ -18,6 +20,10 @@ func TestParseCompletionsPreservesEverythingButModel(t *testing.T) {
 	}
 
 	req.setModel("replacement-model")
+
+	if req.model != "replacement-model" {
+		t.Errorf("req.model = %q, want replacement-model", req.model)
+	}
 
 	out, err := req.marshal()
 	if err != nil {
@@ -114,5 +120,27 @@ func TestRouterMessagesDecodesRolesAndText(t *testing.T) {
 	// to empty rather than fail the whole request.
 	if msgs[1].Role != "assistant" || msgs[1].Content != "" {
 		t.Errorf("msgs[1] = %+v", msgs[1])
+	}
+}
+
+func TestRouterMessagesHandlesNonObjectMessages(t *testing.T) {
+	// Non-object messages (e.g. integers, nulls) must degrade to zero-value
+	// rather than being silently dropped. This ensures the request is never
+	// truncated.
+	req, err := parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"user","content":"hi"},42]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	msgs := req.routerMessages()
+	if len(msgs) != 2 {
+		t.Fatalf("len = %d, want 2 (non-object messages must not be dropped)", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "hi" {
+		t.Errorf("msgs[0] = %+v", msgs[0])
+	}
+	// Non-object message degrades to zero value
+	if msgs[1] != (llm.Message{}) {
+		t.Errorf("msgs[1] = %+v, want zero-value llm.Message{}", msgs[1])
 	}
 }

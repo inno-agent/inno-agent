@@ -1,10 +1,12 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 
+	"innoagent/internal/catalog"
 	"innoagent/internal/llm"
 )
 
@@ -111,4 +113,60 @@ func (r *completionsRequest) routerMessages() []llm.Message {
 		out = append(out, llm.Message{Role: m.Role, Content: content})
 	}
 	return out
+}
+
+// modelAllowed reports whether the client may request this model.
+//
+// The allowlist is o.models, which comes from LLM_MODELS. ROUTER_MODEL is a
+// separate setting and is deliberately not in that list, so naming the routing
+// model is refused here. Checking against the catalog instead would be a bug:
+// the catalog carries display metadata, not permission.
+func (o *AIOrchestrator) modelAllowed(model string) bool {
+	if model == "" || model == catalog.AutoID {
+		return true
+	}
+	for _, m := range o.models {
+		if m == model {
+			return true
+		}
+	}
+	return false
+}
+
+// prepareCompletions validates and rewrites the request in place, leaving it
+// ready to forward. It rejects streaming and disallowed models, and resolves
+// "auto" (and the empty model) to a concrete one.
+func (o *AIOrchestrator) prepareCompletions(ctx context.Context, req *completionsRequest) error {
+	if req.stream {
+		return ErrStreamUnsupported
+	}
+	if !o.modelAllowed(req.model) {
+		return fmt.Errorf("%w: %q", ErrModelNotAllowed, req.model)
+	}
+
+	var resolved string
+	switch req.model {
+	case catalog.AutoID:
+		resolved = o.route(ctx, req.routerMessages())
+	case "":
+		resolved = o.models[0]
+	default:
+		resolved = req.model
+	}
+
+	req.setModel(resolved)
+	return nil
+}
+
+// injectSharedContext is the extension point for cross-service user context
+// (P3): platform instructions and remembered user preferences, prepended as a
+// system message.
+//
+// It is a deliberate no-op today, and it is the ONLY place allowed to modify
+// the message array. Note what it must do when implemented: prepend a newly
+// built raw element, never re-encode an existing one. Round-tripping a client
+// message through a Go struct would silently drop tool_calls and multimodal
+// content, which is exactly what the opacity design exists to prevent.
+func (o *AIOrchestrator) injectSharedContext(ctx context.Context, req *completionsRequest) error {
+	return nil
 }

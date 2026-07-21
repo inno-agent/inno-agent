@@ -1,9 +1,14 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"innoagent/internal/catalog"
+
+	"go.uber.org/zap"
 )
 
 // The body below deliberately carries: a tools array, tool_choice, a message
@@ -164,5 +169,120 @@ func TestRouterMessagesPreservesLastRealMessageForRouterFallback(t *testing.T) {
 	last := msgs[len(msgs)-1]
 	if last.Role != "system" || last.Content == "" {
 		t.Errorf("last message = %+v, want the system message with its content", last)
+	}
+}
+
+// newTestOrchestrator builds an orchestrator whose allowlist is exactly
+// {"m1","m2"} and whose router always answers "m2".
+func newTestOrchestrator() *AIOrchestrator {
+	router := &mockProvider{chatResponses: map[string]string{"": `{"route":"m2"}`}}
+	return New(&mockProvider{}, router, defaultRoutes(), []string{"m1", "m2"}, zap.NewNop())
+}
+
+func TestResolveCompletionsModelRejectsUnknownModel(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(`{"model":"nope","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := o.prepareCompletions(context.Background(), req); !errors.Is(err, ErrModelNotAllowed) {
+		t.Fatalf("err = %v, want ErrModelNotAllowed", err)
+	}
+}
+
+// The router model is deliberately absent from LLM_MODELS. A client naming it
+// must be refused, or it can drive the internal routing model directly.
+func TestResolveCompletionsModelRejectsRouterModel(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(`{"model":"arch-router:1.5b","messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := o.prepareCompletions(context.Background(), req); !errors.Is(err, ErrModelNotAllowed) {
+		t.Fatalf("err = %v, want ErrModelNotAllowed", err)
+	}
+}
+
+func TestResolveCompletionsRejectsStreaming(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(`{"model":"m1","stream":true,"messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := o.prepareCompletions(context.Background(), req); !errors.Is(err, ErrStreamUnsupported) {
+		t.Fatalf("err = %v, want ErrStreamUnsupported", err)
+	}
+}
+
+func TestResolveCompletionsAutoSubstitutesRoutedModel(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(`{"model":"` + catalog.AutoID + `","messages":[{"role":"user","content":"write go code"}]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := o.prepareCompletions(context.Background(), req); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if req.model != "m2" {
+		t.Errorf("model = %q, want m2 (router choice)", req.model)
+	}
+
+	out, err := req.marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(out, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.Model != "m2" {
+		t.Errorf("outgoing model = %q, want m2", decoded.Model)
+	}
+}
+
+func TestResolveCompletionsEmptyModelUsesDefault(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(`{"messages":[{"role":"user","content":"x"}]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := o.prepareCompletions(context.Background(), req); err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if req.model != "m1" {
+		t.Errorf("model = %q, want m1 (first of LLM_MODELS)", req.model)
+	}
+}
+
+// The shared-context seam is a no-op today. This test pins that: P3 will change
+// the expectation deliberately, and until then nothing may silently start
+// rewriting client messages.
+func TestInjectSharedContextIsCurrentlyANoOp(t *testing.T) {
+	o := newTestOrchestrator()
+	req, err := parseCompletionsRequest([]byte(richBody))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	before, err := req.marshal()
+	if err != nil {
+		t.Fatalf("marshal before: %v", err)
+	}
+
+	if err := o.injectSharedContext(context.Background(), req); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+
+	after, err := req.marshal()
+	if err != nil {
+		t.Fatalf("marshal after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("request mutated:\nbefore %s\nafter  %s", before, after)
+	}
+	if len(req.messages) != 3 {
+		t.Errorf("message count = %d, want 3", len(req.messages))
 	}
 }

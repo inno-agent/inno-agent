@@ -105,7 +105,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 				defer func() {
 					if r := recover(); r != nil {
 						span.SetStatus(codes.Error, "panic")
-						c.logger.Error(
+						baseLog.Error(
 							"panic in processor; treating as poison",
 							zap.Int64("offset", msg.Offset),
 							zap.Int("partition", msg.Partition),

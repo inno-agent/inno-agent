@@ -23,12 +23,20 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// DefaultTimeout is the client-side budget for a /codegen call.
+//
+// It must exceed the agent's own CODEGEN_TIMEOUT_MS (default 300s), otherwise
+// the client aborts at the same instant the agent would answer 504 and the
+// retry-on-504 branch below is unreachable. The agent may also spend up to
+// three sequential LLM calls under one request (generate + two repair rounds).
+const DefaultTimeout = 450 * time.Second
+
 func NewClient(baseURL, authToken string) *Client {
 	return &Client{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		authToken: authToken,
 		httpClient: &http.Client{
-			Timeout: 300 * time.Second,
+			Timeout: DefaultTimeout,
 		},
 	}
 }
@@ -94,7 +102,13 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Gen
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		msg := fmt.Sprintf("mastra: status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 
-		// 4xx = permanent (bad request, auth, etc.)
+		// 408/429 are 4xx but describe load, not a bad request: retry them.
+		// Classifying 429 as permanent silently drops the issue on rate limit.
+		if resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests {
+			return nil, fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+		}
+
+		// Other 4xx = permanent (bad request, auth, etc.)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			return nil, fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
 		}
@@ -118,7 +132,10 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Gen
 
 	var result codegenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("mastra: decode: %w", err)
+		// Classify explicitly rather than letting the processor's default take
+		// over: a 200 with an undecodable body is usually a truncated or
+		// proxied response, which a retry can fix.
+		return nil, fmt.Errorf("mastra: decode: %w: %w", domain.ErrTransient, err)
 	}
 
 	files := make([]domain.GeneratedFile, 0, len(result.Files))

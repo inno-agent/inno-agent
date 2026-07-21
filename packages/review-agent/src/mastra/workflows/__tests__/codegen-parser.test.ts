@@ -52,6 +52,30 @@ describe("parseLLMOutput", () => {
     expect(result).toBeNull()
   })
 
+  it("falls back to plain content when content_base64 is not base64", () => {
+    // Node's Buffer.from(s, "base64") silently drops invalid characters instead
+    // of throwing, so an unvalidated decode turns prose into garbage bytes and
+    // never reaches the `content` fallback.
+    const raw = `{"summary":"ok","files":[{"path":"a.py","content_base64":"this is not base64 at all!!!","content":"print(1)"}]}`
+    const result = parseLLMOutput(raw)
+    expect(result).not.toBeNull()
+    expect(result!.files[0].content).toBe("print(1)")
+  })
+
+  it("accepts base64 with missing padding and embedded newlines", () => {
+    // 11 bytes → base64 normally carries one "=" of padding; strip it.
+    const encoded = Buffer.from("print('hi')").toString("base64")
+    expect(encoded.endsWith("=")).toBe(true)
+    const unpadded = encoded.replace(/=+$/, "")
+    // "\\n" so the emitted JSON carries an escaped newline (a literal one
+    // inside a JSON string is a parse error, not something a model emits).
+    const withNewlines = unpadded.slice(0, 4) + "\\n" + unpadded.slice(4)
+    const raw = `{"summary":"ok","files":[{"path":"main.py","content_base64":"${withNewlines}"}]}`
+    const result = parseLLMOutput(raw)
+    expect(result).not.toBeNull()
+    expect(result!.files[0].content).toBe("print('hi')")
+  })
+
   it("decompresses gzip'd base64 content (model ignored no-gzip instruction)", () => {
     const gzipped = gzipSync(Buffer.from("print('gzip hi')\n"))
     const encoded = gzipped.toString("base64")

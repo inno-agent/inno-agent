@@ -59,12 +59,14 @@ const fetchIssueContextStep = createStep({
     let title = inputData.title || ""
     let body = inputData.body || ""
 
-    // Fetch the issue when the webhook payload didn't carry title/body.
-    if (!title && !body) {
+    // Fetch the issue when the webhook payload is missing EITHER field. The
+    // common webhook shape carries a title but no body; requiring both to be
+    // absent before fetching left the generator working from a title alone.
+    if (!title || !body) {
       try {
         const issue = await client.getIssue(owner, repo, issueNumber)
-        title = issue.title
-        body = issue.body
+        if (issue.title) title = issue.title
+        if (issue.body) body = issue.body
       } catch (err) {
         console.warn(`[codegen] failed to fetch issue ${owner}/${repo}#${issueNumber}:`, err)
       }
@@ -418,24 +420,33 @@ function decodeFileBytes(raw: Uint8Array): string {
   return new TextDecoder("utf-8").decode(raw)
 }
 
+const base64StdRE = /^[A-Za-z0-9+/]+$/
+const base64UrlRE = /^[A-Za-z0-9\-_]+$/
+
+// decodeBase64Lenient decodes standard or URL-safe base64, tolerating missing
+// padding and embedded whitespace, and returns null for anything else.
+//
+// The validation is not optional: Node's Buffer.from(s, "base64") NEVER throws,
+// it silently drops characters outside the alphabet. Without an explicit check,
+// a model that puts plain prose in content_base64 decodes to garbage bytes,
+// which then look like a successful decode and get written to the branch —
+// the `content` fallback in decodeFileContent would never be reached. Go's
+// base64.StdEncoding.DecodeString errors on invalid input; this mirrors that.
 function decodeBase64Lenient(enc: string): Uint8Array | null {
   enc = enc.replace(/[\n\r\s\t]/g, "")
   if (!enc) return null
 
-  for (let pad = 0; pad < 4; pad++) {
-    try {
-      const candidate = enc + "=".repeat(pad)
-      const buf = Buffer.from(candidate, "base64")
-      if (buf.length > 0 || candidate.endsWith("=")) return new Uint8Array(buf)
-    } catch {
-      // continue
-    }
-  }
-  try {
-    return new Uint8Array(Buffer.from(enc, "base64url"))
-  } catch {
-    return null
-  }
+  const stripped = enc.replace(/=+$/, "")
+  const isStd = base64StdRE.test(stripped)
+  const isUrl = !isStd && base64UrlRE.test(stripped)
+  if (!isStd && !isUrl) return null
+
+  // base64 encodes in 4-char groups; a remainder of 1 char is never valid.
+  if (stripped.length % 4 === 1) return null
+
+  const buf = Buffer.from(stripped, isUrl ? "base64url" : "base64")
+  if (buf.length === 0) return null
+  return new Uint8Array(buf)
 }
 
 function parseFromMarkdownFences(raw: string): GenerationResult {

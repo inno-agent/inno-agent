@@ -42,6 +42,50 @@ class Semaphore {
 
 const reviewSemaphore = new Semaphore(MAX_CONCURRENT_REVIEWS)
 
+// withTimeout races a workflow run against a deadline and always clears the
+// timer, so a completed run doesn't pin a multi-minute timer per request.
+//
+// It deliberately does NOT cancel the underlying run — Mastra keeps executing
+// it. Callers must therefore release their semaphore slot when the run promise
+// settles, not when this function returns; see runSlot below.
+async function withTimeout<T>(runPromise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      runPromise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timeout`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+// runSlot acquires a concurrency slot, invokes `start`, and releases the slot
+// only when the run itself settles.
+//
+// Releasing in a `finally` around the timeout race would hand the slot back
+// while the abandoned run is still burning an Ollama connection, letting real
+// concurrency drift above MAX_CONCURRENT_REVIEWS. The returned promise tracks
+// the run, so the caller's timeout covers slot-queue time too.
+function runSlot<T>(start: () => Promise<T>): Promise<T> {
+  return reviewSemaphore.acquire().then(() => {
+    let runPromise: Promise<T>
+    try {
+      runPromise = start()
+    } catch (err) {
+      reviewSemaphore.release()
+      throw err
+    }
+    runPromise.then(
+      () => reviewSemaphore.release(),
+      () => reviewSemaphore.release(),
+    )
+    return runPromise
+  })
+}
+
 // Simple in-memory cache for PR reviews
 interface CacheEntry {
   markdown: string
@@ -159,21 +203,16 @@ app.post("/review", async (c) => {
 
   console.log(`[${requestId}] Starting review for ${owner}/${repo}#${pullNumber}`)
 
-  // Fix 7: Rate limiting
-  await reviewSemaphore.acquire()
   try {
     const workflow = mastra.getWorkflow("reviewPipeline")
     const run = await workflow.createRun()
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Review timeout")), REVIEW_TIMEOUT_MS)
-    })
-
-    const resultPromise = run.start({
+    // Fix 7: Rate limiting
+    const resultPromise = runSlot(() => run.start({
       inputData: { owner, repo, pullNumber, headSha },
-    })
+    }))
 
-    const result = await Promise.race([resultPromise, timeoutPromise]) as any
+    const result = await withTimeout(resultPromise, REVIEW_TIMEOUT_MS, "Review") as any
 
     if (result.status === "success") {
       const reviewMarkdown = result.result.reviewMarkdown
@@ -194,8 +233,6 @@ app.post("/review", async (c) => {
       return c.json({ error: "Review timeout" }, 504)
     }
     return c.json({ error: "Internal server error" }, 500)
-  } finally {
-    reviewSemaphore.release()
   }
 })
 
@@ -222,18 +259,13 @@ app.post("/codegen", async (c) => {
 
   console.log(`[${requestId}] Starting codegen for ${owner}/${repo}#${issueNumber}`)
 
-  await reviewSemaphore.acquire()
   try {
     const workflow = mastra.getWorkflow("codegenPipeline")
     const run = await workflow.createRun()
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Codegen timeout")), CODEGEN_TIMEOUT_MS)
-    })
+    const resultPromise = runSlot(() => run.start({ inputData: parsed.data }))
 
-    const resultPromise = run.start({ inputData: parsed.data })
-
-    const result = await Promise.race([resultPromise, timeoutPromise]) as any
+    const result = await withTimeout(resultPromise, CODEGEN_TIMEOUT_MS, "Codegen") as any
 
     if (result.status === "success") {
       const out = result.result
@@ -252,8 +284,6 @@ app.post("/codegen", async (c) => {
       return c.json({ error: "Codegen timeout" }, 504)
     }
     return c.json({ error: "Internal server error" }, 500)
-  } finally {
-    reviewSemaphore.release()
   }
 })
 

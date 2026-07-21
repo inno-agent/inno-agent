@@ -15,6 +15,13 @@ import (
 
 const (
 	defaultMaxResponseBytes = 10 << 20
+
+	// defaultCompletionsTimeout matches the config default for this endpoint.
+	// It deliberately does NOT reuse qwen.go's defaultHTTPTimeout (120s): the
+	// misuse fallback must not be tighter than the wired-up path, or a long
+	// tool-calling generation would work when constructed from config and time
+	// out when the client is built directly.
+	defaultCompletionsTimeout = 180 * time.Second
 )
 
 // ErrResponseTooLarge is returned when the runtime's response exceeds the
@@ -41,7 +48,7 @@ type CompletionsClient struct {
 
 func NewCompletionsClient(baseURL, apiKey string, timeout time.Duration, maxRespBytes int64) *CompletionsClient {
 	if timeout <= 0 {
-		timeout = defaultHTTPTimeout
+		timeout = defaultCompletionsTimeout
 	}
 	if maxRespBytes <= 0 {
 		maxRespBytes = defaultMaxResponseBytes

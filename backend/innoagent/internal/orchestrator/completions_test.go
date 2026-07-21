@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-
-	"innoagent/internal/llm"
 )
 
 // The body below deliberately carries: a tools array, tool_choice, a message
@@ -123,24 +121,46 @@ func TestRouterMessagesDecodesRolesAndText(t *testing.T) {
 	}
 }
 
-func TestRouterMessagesHandlesNonObjectMessages(t *testing.T) {
-	// Non-object messages (e.g. integers, nulls) must degrade to zero-value
-	// rather than being silently dropped. This ensures the request is never
-	// truncated.
+func TestRouterMessagesSkipsNonObjectsSoRouterFallbackSeesRealContent(t *testing.T) {
+	// Non-object messages (e.g. integers, nulls) are skipped when decoding for
+	// routing. This is safe because routerMessages() output affects only model
+	// selection; the request forwarded upstream comes from r.raw (untouched
+	// bytes), so no content is lost from the perspective of the actual LLM call.
+	//
+	// This matters for the route() fallback: route() filters to user messages,
+	// and if none remain, uses messages[len(messages)-1]. If non-objects were
+	// appended as zero-values, the fallback would see empty instead of real
+	// content (e.g., a system message), breaking routing decisions.
+
+	// Case 1: Non-object is skipped (yields 1 message, not 2).
 	req, err := parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"user","content":"hi"},42]}`))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 
 	msgs := req.routerMessages()
-	if len(msgs) != 2 {
-		t.Fatalf("len = %d, want 2 (non-object messages must not be dropped)", len(msgs))
+	if len(msgs) != 1 {
+		t.Fatalf("len = %d, want 1 (non-object messages must be skipped)", len(msgs))
 	}
 	if msgs[0].Role != "user" || msgs[0].Content != "hi" {
 		t.Errorf("msgs[0] = %+v", msgs[0])
 	}
-	// Non-object message degrades to zero value
-	if msgs[1] != (llm.Message{}) {
-		t.Errorf("msgs[1] = %+v, want zero-value llm.Message{}", msgs[1])
+
+	// Case 2: Regression test for the fallback scenario.
+	// System message followed by non-object should yield the system message
+	// as the last element, so route() can use it via the fallback when no
+	// user messages exist.
+	req, err = parseCompletionsRequest([]byte(`{"model":"auto","messages":[{"role":"system","content":"you are a Go expert, answer about goroutines"},42]}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	msgs = req.routerMessages()
+	if len(msgs) != 1 {
+		t.Fatalf("len = %d, want 1", len(msgs))
+	}
+	// The last (and only) message should be the system message, not a zero-value.
+	if msgs[len(msgs)-1].Role != "system" || msgs[len(msgs)-1].Content == "" {
+		t.Errorf("last message = %+v, want system message with content", msgs[len(msgs)-1])
 	}
 }

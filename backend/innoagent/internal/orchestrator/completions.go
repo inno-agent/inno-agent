@@ -88,26 +88,27 @@ func (r *completionsRequest) marshal() ([]byte, error) {
 
 // routerMessages decodes roles and text for the router only. It is called
 // solely when model == "auto"; on an explicit model the message array is never
-// decoded. Every message element produces exactly one output message: objects
-// decode to Role and Content (with non-string content degrading to empty);
-// non-objects degrade to a zero-value message. This ensures the request is
-// never silently truncated — the router only needs something to classify.
+// decoded. Messages whose content is not a plain string (multimodal parts,
+// tool_calls with null content) degrade to empty text rather than failing the
+// request. Elements that are not JSON objects are skipped — this affects only
+// the model selection decision. The request forwarded upstream comes from r.raw
+// (untouched bytes), so no part of the original message array is ever lost; the
+// opacity guarantee is unaffected by this filtering.
 func (r *completionsRequest) routerMessages() []llm.Message {
 	out := make([]llm.Message, 0, len(r.messages))
 	for _, raw := range r.messages {
-		msg := llm.Message{}
 		var m struct {
 			Role    string          `json:"role"`
 			Content json.RawMessage `json:"content"`
 		}
-		if err := json.Unmarshal(raw, &m); err == nil {
-			var content string
-			if len(m.Content) > 0 {
-				_ = json.Unmarshal(m.Content, &content)
-			}
-			msg = llm.Message{Role: m.Role, Content: content}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
 		}
-		out = append(out, msg)
+		var content string
+		if len(m.Content) > 0 {
+			_ = json.Unmarshal(m.Content, &content)
+		}
+		out = append(out, llm.Message{Role: m.Role, Content: content})
 	}
 	return out
 }

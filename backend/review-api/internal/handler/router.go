@@ -16,7 +16,7 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *Installation
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Correlation-ID")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -38,6 +38,7 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *Installation
 		if installH != nil {
 			r.Post("/installations", installH.Create)
 			r.Get("/installations/me", installH.Get)
+			r.Delete("/installations/me", installH.Erase)
 		}
 		if inviteH != nil {
 			r.Post("/invitations/accept", inviteH.AcceptInvite)

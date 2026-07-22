@@ -193,7 +193,180 @@ func (c *Client) CreatePullRequest(
 		_ = c.addPullRequestReviewers(ctx, ref, prIndex, reviewers)
 	}
 
+	_ = c.linkPullRequestToIssue(ctx, ref, prIndex)
+
 	return prIndex, nil
+}
+
+// fullIssue is GitFlame's issue read shape. It carries every field the edit
+// endpoint below must round-trip — see linkPullRequestToIssue.
+type fullIssue struct {
+	Title        string            `json:"title"`
+	Body         []issueBodyBlock  `json:"body"`
+	Assignees    []issueUser       `json:"assignees"`
+	Labels       []issueLabel      `json:"labels"`
+	Milestone    *issueMilestone   `json:"milestone"`
+	Dependencies []issueDependency `json:"dependencies"`
+}
+
+type issueBodyBlock struct {
+	Body string `json:"body"`
+	Mime string `json:"mime"`
+	Size int    `json:"size"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type issueUser struct {
+	Login string `json:"login"`
+}
+
+type issueLabel struct {
+	ID int64 `json:"id"`
+}
+
+type issueMilestone struct {
+	ID int64 `json:"id"`
+}
+
+type issueDependency struct {
+	Number int64 `json:"number"`
+}
+
+// editIssueRequest mirrors GitFlame's own issue-edit form submission: the
+// endpoint is PATCH-as-full-replace, not a merge (confirmed from a real
+// network trace of the GitFlame web UI), so every editable field read via
+// getFullIssue must be sent back unchanged except the one being modified.
+type editIssueRequest struct {
+	Title        string           `json:"title"`
+	Body         []issueBodyBlock `json:"body"`
+	Assignees    []string         `json:"assignees"`
+	Labels       []int64          `json:"labels"`
+	Milestone    int64            `json:"milestone"`
+	Dependencies []int64          `json:"dependencies"`
+	Type         string           `json:"type"`
+}
+
+func (c *Client) getFullIssue(ctx context.Context, ref domain.IssueRef) (*fullIssue, error) {
+	issueURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/issues/%d",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+		ref.Index,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, issueURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("gitflame: build get issue request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("gitflame: get issue failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := fmt.Sprintf("gitflame: get issue returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return nil, fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+		return nil, fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+	}
+
+	var issue fullIssue
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, fmt.Errorf("gitflame: parse full issue: %w", err)
+	}
+	return &issue, nil
+}
+
+// linkPullRequestToIssue adds prNumber to the issue's dependencies so
+// GitFlame's UI shows the PR as linked — GitFlame does not auto-link from
+// "Closes #N" text in the PR body the way GitHub/Gitea do; the link is a
+// separate explicit field on the issue, set here via read-modify-write.
+// Best-effort: called with its error discarded — a missing link is cosmetic,
+// not worth failing PR creation over.
+func (c *Client) linkPullRequestToIssue(ctx context.Context, ref domain.IssueRef, prNumber int64) error {
+	issue, err := c.getFullIssue(ctx, ref)
+	if err != nil {
+		return err
+	}
+
+	deps := make([]int64, 0, len(issue.Dependencies)+1)
+	linked := false
+	for _, d := range issue.Dependencies {
+		deps = append(deps, d.Number)
+		if d.Number == prNumber {
+			linked = true
+		}
+	}
+	if !linked {
+		deps = append(deps, prNumber)
+	}
+
+	var milestoneID int64
+	if issue.Milestone != nil {
+		milestoneID = issue.Milestone.ID
+	}
+
+	labels := make([]int64, 0, len(issue.Labels))
+	for _, l := range issue.Labels {
+		labels = append(labels, l.ID)
+	}
+
+	assignees := make([]string, 0, len(issue.Assignees))
+	for _, a := range issue.Assignees {
+		assignees = append(assignees, a.Login)
+	}
+
+	reqBody := editIssueRequest{
+		Title:        issue.Title,
+		Body:         issue.Body,
+		Assignees:    assignees,
+		Labels:       labels,
+		Milestone:    milestoneID,
+		Dependencies: deps,
+		Type:         "issue",
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("gitflame: marshal edit issue: %w", err)
+	}
+
+	issueURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/issues/%d",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+		ref.Index,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, issueURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("gitflame: build edit issue request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitflame: edit issue failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		msg := fmt.Sprintf("gitflame: edit issue returned %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+		}
+		return fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+	}
+	return nil
 }
 
 func (c *Client) resolvePullRequestNumber(

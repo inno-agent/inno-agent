@@ -23,16 +23,19 @@ type IssueRef struct {
 	DefaultBranch string
 }
 
-type GeneratedFile struct {
-	Path    string
-	Content string
+type ChangedFile struct {
+	Path   string
+	Status string
 }
 
 type GenerationResult struct {
-	Files   []GeneratedFile
-	Summary string
+	// Branch is the name the agent already pushed to — issue-consumer no
+	// longer pushes anything itself, it only creates the PR from this.
+	Branch       string
+	ChangedFiles []ChangedFile
+	Summary      string
 	// Verified reports whether the agent's build/test verification passed before
-	// the code was returned. False means the change is pushed with a warning.
+	// the code was pushed. False means the change was pushed with a warning.
 	Verified bool
 }
 
@@ -48,10 +51,6 @@ type LLMProvider interface {
 type IssueSource interface {
 	GetIssue(ctx context.Context, ref IssueRef) (title, body string, err error)
 	GetRawFile(ctx context.Context, ref IssueRef, path string) (content string, found bool, err error)
-}
-
-type CodePusher interface {
-	PushFiles(ctx context.Context, ref IssueRef, branch string, files []GeneratedFile, message string) error
 }
 
 type PullRequestCreator interface {

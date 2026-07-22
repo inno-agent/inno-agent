@@ -235,6 +235,62 @@ func TestPushFiles_UpdatesExistingFile(t *testing.T) {
 	}
 }
 
+// A create racing another writer to the same path (issue reassignment
+// retries, redelivered webhooks) gets 409 AlreadyExistNameError even though
+// the preceding getFileSha saw 404. PushFiles must retry as an update instead
+// of surfacing the race as a permanent failure that drops the whole push.
+func TestPushFiles_CreateConflict_RetriesAsUpdate(t *testing.T) {
+	var getCalls, postCalls, putCalls int
+
+	server := newMockGiteaServer(t, func(method, path string, body []byte) (statusCode int, respBody []byte) {
+		if strings.Contains(path, "/contents/") {
+			switch method {
+			case "GET":
+				getCalls++
+				if getCalls == 1 {
+					return 404, []byte(`{"message":"not found"}`)
+				}
+				return 200, []byte(`{"sha":"racedsha"}`)
+			case "POST":
+				postCalls++
+				return 409, []byte(`{"message":"[go.mod]","code":"AlreadyExistNameError"}`)
+			case "PUT":
+				putCalls++
+				var req updateFileRequest
+				if err := json.Unmarshal(body, &req); err != nil {
+					t.Fatalf("failed to unmarshal PUT body: %v", err)
+				}
+				if req.Sha != "racedsha" {
+					t.Fatalf("expected sha racedsha, got %s", req.Sha)
+				}
+				return 200, []byte(`{"sha":"finalsha"}`)
+			}
+		}
+		if strings.Contains(path, "/branches") {
+			return 201, []byte(`{}`)
+		}
+		return 500, []byte("unexpected request")
+	})
+	defer server.Close()
+
+	c := NewClient(server.URL, "test-token")
+	ref := domain.IssueRef{Owner: "test-owner", Repo: "test-repo", DefaultBranch: "main"}
+	files := []domain.GeneratedFile{{Path: "go.mod", Content: "module test"}}
+
+	if err := c.PushFiles(context.Background(), ref, "innoagent-test", files, "test commit"); err != nil {
+		t.Fatalf("PushFiles failed: %v", err)
+	}
+	if postCalls != 1 {
+		t.Fatalf("expected 1 POST attempt, got %d", postCalls)
+	}
+	if putCalls != 1 {
+		t.Fatalf("expected 1 retry PUT, got %d", putCalls)
+	}
+	if getCalls != 2 {
+		t.Fatalf("expected initial GET + retry GET, got %d", getCalls)
+	}
+}
+
 // Bug #2: Test "not configured" errors are tagged as permanent
 func TestGetIssue_NotConfigured(t *testing.T) {
 	c := NewClient("", "")

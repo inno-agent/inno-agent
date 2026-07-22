@@ -565,78 +565,85 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 	)
 
 	for _, f := range files {
-		// Check if file already exists on the branch
 		sha, exists, err := c.getFileSha(ctx, repoBase, f.Path, branch)
 		if err != nil {
 			return err
 		}
-
-		encodedContent := base64.StdEncoding.EncodeToString([]byte(f.Content))
-		fileURL := repoBase + "/contents/" + escapePathSegments(f.Path)
-
-		var (
-			payload        []byte
-			method         string
-			expectedStatus int
-		)
-
-		if exists {
-			// File exists, use PUT to update
-			reqBody := updateFileRequest{
-				Message: message,
-				Content: encodedContent,
-				Branch:  branch,
-				Sha:     sha,
-			}
-			var err error
-			payload, err = json.Marshal(reqBody)
-			if err != nil {
-				return fmt.Errorf("gitflame: marshal update file %s: %w", f.Path, err)
-			}
-			method = http.MethodPut
-			expectedStatus = http.StatusOK
-		} else {
-			// File doesn't exist, use POST to create
-			reqBody := createFileRequest{
-				Message: message,
-				Content: encodedContent,
-				Branch:  branch,
-			}
-			var err error
-			payload, err = json.Marshal(reqBody)
-			if err != nil {
-				return fmt.Errorf("gitflame: marshal create file %s: %w", f.Path, err)
-			}
-			method = http.MethodPost
-			expectedStatus = http.StatusCreated
-		}
-
-		req, err := http.NewRequestWithContext(ctx, method, fileURL, bytes.NewReader(payload))
-		if err != nil {
-			return fmt.Errorf("gitflame: build file request %s: %w", f.Path, err)
-		}
-		req.Header.Set("Authorization", "token "+c.token)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("gitflame: file request %s failed: %w: %w", f.Path, domain.ErrTransient, err)
-		}
-
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		_ = resp.Body.Close()
-
-		// Accept both 200 (OK) and 201 (Created) for update/create
-		if resp.StatusCode != expectedStatus && !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated) {
-			msg := fmt.Sprintf("gitflame: file request %s returned %d: %s", f.Path, resp.StatusCode, strings.TrimSpace(string(body)))
-			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-				return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
-			}
-			return fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+		if err := c.pushOneFile(ctx, repoBase, branch, message, f, sha, exists); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// pushOneFile creates or updates a single file. If a create races another
+// writer to the same path (issue reassignment retries, redelivered webhooks)
+// GitFlame answers 409/422 AlreadyExistNameError instead of the 404 the
+// preceding getFileSha saw — re-check and retry once as an update rather than
+// surfacing that race as a permanent failure that drops the whole push.
+func (c *Client) pushOneFile(
+	ctx context.Context, repoBase, branch, message string, f domain.GeneratedFile, sha string, exists bool,
+) error {
+	encodedContent := base64.StdEncoding.EncodeToString([]byte(f.Content))
+	fileURL := repoBase + "/contents/" + escapePathSegments(f.Path)
+
+	var (
+		payload        []byte
+		method         string
+		expectedStatus int
+		err            error
+	)
+
+	if exists {
+		payload, err = json.Marshal(updateFileRequest{Message: message, Content: encodedContent, Branch: branch, Sha: sha})
+		if err != nil {
+			return fmt.Errorf("gitflame: marshal update file %s: %w", f.Path, err)
+		}
+		method = http.MethodPut
+		expectedStatus = http.StatusOK
+	} else {
+		payload, err = json.Marshal(createFileRequest{Message: message, Content: encodedContent, Branch: branch})
+		if err != nil {
+			return fmt.Errorf("gitflame: marshal create file %s: %w", f.Path, err)
+		}
+		method = http.MethodPost
+		expectedStatus = http.StatusCreated
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fileURL, bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("gitflame: build file request %s: %w", f.Path, err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("gitflame: file request %s failed: %w: %w", f.Path, domain.ErrTransient, err)
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	_ = resp.Body.Close()
+
+	if resp.StatusCode == expectedStatus || resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		return nil
+	}
+
+	if !exists && (resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity) {
+		retrySha, retryExists, err := c.getFileSha(ctx, repoBase, f.Path, branch)
+		if err != nil {
+			return err
+		}
+		if retryExists {
+			return c.pushOneFile(ctx, repoBase, branch, message, f, retrySha, true)
+		}
+	}
+
+	msg := fmt.Sprintf("gitflame: file request %s returned %d: %s", f.Path, resp.StatusCode, strings.TrimSpace(string(body)))
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		return fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
+	}
+	return fmt.Errorf("%s: %w", msg, domain.ErrTransient)
 }
 
 func (c *Client) PostIssueComment(ctx context.Context, ref domain.IssueRef, body string) error {

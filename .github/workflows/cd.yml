@@ -66,7 +66,16 @@ jobs:
 
       - name: Resolve short SHA
         id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        # Fixed length, not the plain `--short` default: that picks the
+        # minimum length unique among objects present in THIS clone, which
+        # varies with clone depth/history size. build-and-push runs on a
+        # fresh ephemeral runner (small object set); deploy runs on the
+        # self-hosted runner with `clean: false`, whose workspace accumulates
+        # history across every prior run (thousands of objects), so the two
+        # jobs computed different-length abbreviations for the same commit —
+        # e.g. 7 chars here vs 8 there — and the deploy pull 404'd on a tag
+        # that was never pushed. A fixed length makes both jobs agree always.
+        run: echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -103,7 +112,10 @@ jobs:
 
       - name: Resolve short SHA
         id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        # Fixed length so this always agrees with build-and-push's tag — see
+        # the comment on that job's identical step. Must not drift back to
+        # plain `--short`.
+        run: echo "short=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

@@ -1,3 +1,4 @@
+import type { RequestContext } from "@mastra/core/di"
 import { createWorkflow, createStep } from "@mastra/core/workflows"
 import { z } from "zod"
 import { gunzipSync } from "node:zlib"
@@ -118,31 +119,59 @@ const generateStep = createStep({
     readmeMd: z.string(),
   }),
   outputSchema: CodegenOutputSchema,
-  execute: async ({ inputData }) => {
-    const { owner, repo, defaultBranch, issueType, issueNumber, title, body, agentsMd, readmeMd } = inputData
-
-    const userMsg = `Repository: ${owner}/${repo}\nDefault branch: ${defaultBranch}\nIssue type: ${issueType}\nIssue #${issueNumber}\nTitle: ${title}\n\nDescription:\n${body}\n\n=== AGENTS.md ===\n${agentsMd}\n\n=== README.md ===\n${readmeMd}`
-
-    const start = Date.now()
-    let raw = await codeGeneratorAgent.generate(userMsg)
-    console.log(`[codegen] generate completed in ${Date.now() - start}ms`)
-
-    let result = parseLLMOutput(raw.text)
-    for (let attempt = 0; attempt < 2 && !result; attempt++) {
-      console.warn(`[codegen] parse failed; requesting repair (attempt ${attempt + 1})`)
-      raw = await codeGeneratorAgent.generate(`${userMsg}\n\n--- Previous reply ---\n${raw.text}\n\n--- ${codegenRepairPrompt}`)
-      result = parseLLMOutput(raw.text)
-    }
-
-    if (!result) {
-      throw new Error("codegen: failed to parse LLM output after repair retries")
-    }
-    if (result.files.length === 0) {
-      throw new Error("codegen: LLM returned no files")
-    }
-    return result
-  },
+  execute: async ({ inputData, requestContext }) => generateFromContext(inputData, requestContext),
 })
+
+interface GenerateStepInput {
+  owner: string
+  repo: string
+  issueNumber: number
+  defaultBranch: string
+  issueType: string
+  title: string
+  body: string
+  agentsMd: string
+  readmeMd: string
+}
+
+// generateFromContext runs the LLM generate + repair-retry loop. Every call —
+// the initial one and each repair round inside the loop — must carry
+// requestContext, or the orchestratorModel resolver throws for lack of a
+// delegated token. The repair calls are the easy ones to miss because they sit
+// inside a for loop that only runs when the first output won't parse.
+//
+// Exported so a test can drive the repair loop directly (feed unparseable
+// output) without standing up a full workflow run.
+export async function generateFromContext(
+  inputData: GenerateStepInput,
+  requestContext: RequestContext,
+): Promise<GenerationResult> {
+  const { owner, repo, defaultBranch, issueType, issueNumber, title, body, agentsMd, readmeMd } = inputData
+
+  const userMsg = `Repository: ${owner}/${repo}\nDefault branch: ${defaultBranch}\nIssue type: ${issueType}\nIssue #${issueNumber}\nTitle: ${title}\n\nDescription:\n${body}\n\n=== AGENTS.md ===\n${agentsMd}\n\n=== README.md ===\n${readmeMd}`
+
+  const start = Date.now()
+  let raw = await codeGeneratorAgent.generate(userMsg, { requestContext })
+  console.log(`[codegen] generate completed in ${Date.now() - start}ms`)
+
+  let result = parseLLMOutput(raw.text)
+  for (let attempt = 0; attempt < 2 && !result; attempt++) {
+    console.warn(`[codegen] parse failed; requesting repair (attempt ${attempt + 1})`)
+    raw = await codeGeneratorAgent.generate(
+      `${userMsg}\n\n--- Previous reply ---\n${raw.text}\n\n--- ${codegenRepairPrompt}`,
+      { requestContext },
+    )
+    result = parseLLMOutput(raw.text)
+  }
+
+  if (!result) {
+    throw new Error("codegen: failed to parse LLM output after repair retries")
+  }
+  if (result.files.length === 0) {
+    throw new Error("codegen: LLM returned no files")
+  }
+  return result
+}
 
 // ─── Workflow ───────────────────────────────────────────────────────────────
 

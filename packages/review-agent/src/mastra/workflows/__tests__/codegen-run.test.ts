@@ -8,10 +8,11 @@ import { codeGeneratorAgent } from "../../agents/code-generator"
 import { runCodegen } from "../codegen-pipeline"
 
 // runCodegen(ctx, requestContext) is the agentic core of the pipeline. The
-// workflow step is a thin wrapper, so these tests drive it directly. Two
+// workflow step is a thin wrapper, so these tests drive it directly. Three
 // contracts matter and are both rot-prone:
 //   1. every sandbox call carries the run id (isolation),
-//   2. an unfixable verify yields verified:false rather than throwing.
+//   2. an unfixable verify yields verified:false rather than throwing,
+//   3. no uncommitted changes after the run throws EmptyDiffError.
 
 const ISSUE = {
   owner: "o",
@@ -32,14 +33,10 @@ function contextWithRun(runId: string): RequestContext {
 }
 
 // stubEverything wires the collaborators so runCodegen executes end to end
-// against fakes. execExit controls what every sandbox exec returns.
-function stubEverything(execExit: number) {
+// against fakes. execExit controls what every sandbox exec (build/test) returns.
+function stubEverything(execExit: number, hasChanges = true) {
   const runIds: string[] = []
   const client = {
-    populate: vi.fn(async (runId: string) => {
-      runIds.push(runId)
-      return { files: 1 }
-    }),
     exec: vi.fn(async (runId: string) => {
       runIds.push(runId)
       return { stdout: "out", stderr: "err", exit_code: execExit, duration_ms: 1 }
@@ -50,12 +47,14 @@ function stubEverything(execExit: number) {
   }
   vi.spyOn(sandboxClient, "getSandboxClient").mockReturnValue(client as any)
   vi.spyOn(gitflame, "getGitFlameClient").mockReturnValue({
-    getRepoArchive: vi.fn(async () => new Uint8Array()),
+    getAuthenticatedCloneUrl: vi.fn(() => "https://x-access-token:t@host/o/r.git"),
+    redactToken: vi.fn((s: string) => s),
   } as any)
-  vi.spyOn(gitWorkspace, "gitBaseline").mockResolvedValue(undefined)
-  vi.spyOn(gitWorkspace, "collectAddedAndModified").mockResolvedValue([
-    { path: "a.py", content: "print(1)\n" },
-  ])
+  vi.spyOn(gitWorkspace, "cloneAndBranch").mockResolvedValue(undefined)
+  vi.spyOn(gitWorkspace, "hasUncommittedChanges").mockResolvedValue(hasChanges)
+  vi.spyOn(gitWorkspace, "commitAll").mockResolvedValue(undefined)
+  vi.spyOn(gitWorkspace, "pushBranch").mockResolvedValue(undefined)
+  vi.spyOn(gitWorkspace, "listChangedFiles").mockResolvedValue([{ path: "a.py", status: "A" }])
   vi.spyOn(codeGeneratorAgent, "generate").mockResolvedValue({ text: "did the thing" } as any)
   return { runIds }
 }
@@ -71,7 +70,8 @@ describe("runCodegen", () => {
     expect(runIds.length).toBeGreaterThan(0)
     expect(runIds.every((id) => id === "run-xyz")).toBe(true)
     expect(result.verified).toBe(true)
-    expect(result.files).toHaveLength(1)
+    expect(result.branch).toBe("innoagent-issue-1")
+    expect(result.changedFiles).toHaveLength(1)
   })
 
   it("returns verified:false when verification cannot be fixed", async () => {
@@ -80,13 +80,12 @@ describe("runCodegen", () => {
     const result = await runCodegen(ISSUE, contextWithRun("run-xyz"))
 
     expect(result.verified).toBe(false)
-    // Did not throw — the run still returns its files with an honest flag.
-    expect(result.files).toHaveLength(1)
+    // Did not throw — the run still returns its branch with an honest flag.
+    expect(result.changedFiles).toHaveLength(1)
   })
 
   it("throws EmptyDiffError when the agent changed nothing", async () => {
-    stubEverything(0)
-    vi.spyOn(gitWorkspace, "collectAddedAndModified").mockResolvedValue([])
+    stubEverything(0, false)
 
     await expect(runCodegen(ISSUE, contextWithRun("run-xyz"))).rejects.toBeInstanceOf(
       gitWorkspace.EmptyDiffError,

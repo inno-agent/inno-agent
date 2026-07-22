@@ -1,0 +1,61 @@
+name: CI Review Agent
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/review-agent/**"
+      - ".github/workflows/ci-review-agent.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/review-agent/**"
+      - ".github/workflows/ci-review-agent.yml"
+
+concurrency:
+  group: ci-review-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-review-agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/review-agent
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: packages/review-agent/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  docker-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/review-agent
+          file: packages/review-agent/Dockerfile
+          push: false

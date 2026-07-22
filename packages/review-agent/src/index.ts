@@ -4,6 +4,7 @@ import { mastra } from "./mastra/index"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { requestContextFromHeaders, hasDelegatedToken } from "./services/delegated-token"
+import { withSandboxRunId } from "./services/sandbox-run"
 
 // ─── Hono typed context ─────────────────────────────────────────────────────
 
@@ -198,6 +199,7 @@ app.post("/review", async (c) => {
     // absence is a contract violation, not something a retry fixes.
     return c.json({ error: "missing X-Delegated-Token" }, 400)
   }
+  withSandboxRunId(requestContext, randomUUID())
 
   // Check cache first
   const cacheKey = `${owner}/${repo}#${pullNumber}@${headSha}`
@@ -270,6 +272,7 @@ app.post("/codegen", async (c) => {
     // absence is a contract violation, not something a retry fixes.
     return c.json({ error: "missing X-Delegated-Token" }, 400)
   }
+  withSandboxRunId(requestContext, randomUUID())
 
   const { owner, repo, issueNumber } = parsed.data
 

@@ -1,3 +1,4 @@
+import { sandboxRunIdFromContext } from "../../services/sandbox-run"
 import { createWorkflow, createStep } from "@mastra/core/workflows"
 import { z } from "zod"
 import { getGitFlameClient } from "../../services/gitflame-singleton"
@@ -208,8 +209,9 @@ const populateSandboxStep = createStep({
   id: "populate-sandbox",
   inputSchema: ReviewInputSchema,
   outputSchema: ReviewInputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { owner, repo, pullNumber } = inputData
+    const runId = sandboxRunIdFromContext(requestContext)
     try {
       // Archive by head branch, not headSha: the gitflame archive endpoint
       // resolves ref names but rejects raw commit SHAs (500). head.repo may be
@@ -221,7 +223,7 @@ const populateSandboxStep = createStep({
         return inputData
       }
       const archive = await client.getRepoArchive(headOwner, headRepo, headRef)
-      const res = await getSandboxClient().populate(archive)
+      const res = await getSandboxClient().populate(runId, archive)
       console.log(`[populate-sandbox] ${headOwner}/${headRepo}@${headRef}: ${res.files} files into workspace`)
     } catch (err) {
       console.error(`[populate-sandbox] failed for ${owner}/${repo}#${pullNumber}:`, err)
@@ -484,7 +486,7 @@ const verifyStep = createStep({
     // in the sandbox). These are ground truth — a weak model that eyeballs a
     // diff routinely misses broken syntax; a real compiler/parser does not.
     // Not sent through LLM verification.
-    const lintFindings = await lintChangedFiles(Object.keys(diffs))
+    const lintFindings = await lintChangedFiles(Object.keys(diffs), sandboxRunIdFromContext(requestContext))
 
     // LLM-verify the model's own findings (only when it produced any).
     let verified: Finding[] = []
@@ -554,14 +556,14 @@ export function syntaxCheckCommand(file: string): string | null {
 // lintChangedFiles runs the deterministic checks in the sandbox and returns a
 // critical finding for each file that fails to parse/compile. Sandbox errors
 // are swallowed (degrade to LLM-only review) rather than failing the run.
-async function lintChangedFiles(files: string[]): Promise<Finding[]> {
+async function lintChangedFiles(files: string[], runId: string): Promise<Finding[]> {
   const sandbox = getSandboxClient()
   const out: Finding[] = []
   for (const file of files) {
     const cmd = syntaxCheckCommand(file)
     if (!cmd) continue
     try {
-      const res = await sandbox.exec(cmd, 30)
+      const res = await sandbox.exec(runId, cmd, 30)
       if (res.exit_code !== 0) {
         const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 4).join(" ").slice(0, 300)
         out.push({

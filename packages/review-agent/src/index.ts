@@ -16,7 +16,11 @@ type AppEnv = {
 
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
-const CODEGEN_TIMEOUT_MS = parseInt(process.env.CODEGEN_TIMEOUT_MS || "300000") // 5 minutes default
+// Agentic codegen is multi-step (plan + implement + verify + repair rounds),
+// each a full LLM tool loop, so it needs far more than a single-shot call.
+// Coupled triple: this must stay below the Go client's timeout AND below the
+// P2 token freshness threshold, or the delegated token expires mid-run.
+const CODEGEN_TIMEOUT_MS = parseInt(process.env.CODEGEN_TIMEOUT_MS || "900000") // 15 minutes default
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
 const MAX_CONCURRENT_REVIEWS = parseInt(process.env.MAX_CONCURRENT_REVIEWS || "4")
 
@@ -288,14 +292,24 @@ app.post("/codegen", async (c) => {
 
     if (result.status === "success") {
       const out = result.result
-      console.log(`[${requestId}] Codegen completed: ${out.files?.length || 0} files`)
+      console.log(`[${requestId}] Codegen completed: ${out.files?.length || 0} files (verified: ${out.verified === true})`)
       return c.json({
         summary: out.summary || "",
         files: out.files || [],
+        verified: out.verified === true,
       })
     }
 
-    console.error(`[${requestId}] Codegen failed with status: ${result.status}`)
+    // A step that threw surfaces here as status "failed" with the error on the
+    // result, NOT in the catch below. EmptyDiffError means the agent changed
+    // nothing — deterministically pointless, so 422 (the Go client classifies
+    // 4xx as permanent and won't retry). Everything else is a 500.
+    if (result.error?.name === "EmptyDiffError") {
+      console.warn(`[${requestId}] Codegen produced no changes`)
+      return c.json({ error: "codegen produced no changes" }, 422)
+    }
+
+    console.error(`[${requestId}] Codegen failed with status: ${result.status}`, result.error)
     return c.json({ error: "Codegen failed", status: result.status }, 500)
   } catch (error: any) {
     console.error(`[${requestId}] Codegen error:`, error)

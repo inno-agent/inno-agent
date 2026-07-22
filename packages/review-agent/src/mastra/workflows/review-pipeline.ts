@@ -342,7 +342,7 @@ const createPlanStep = createStep({
     repo: z.string(),
     pullNumber: z.number(),
   }),
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, requestContext }) => {
     const { files, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
 
     // Fix 10: Trivial PR — only skip for truly tiny changes
@@ -387,7 +387,7 @@ Skip files that are purely: lock files, auto-generated, formatting-only changes.
 Output ONLY valid JSON: { "plan": [{ "file": "...", "priority": "...", "focus": "..." }] }`
 
     const start = Date.now()
-    const response = await agent.generate(prompt)
+    const response = await agent.generate(prompt, { requestContext })
     console.log(`createPlan completed in ${Date.now() - start}ms`)
 
     let plan = parsePlan(response.text)
@@ -429,7 +429,7 @@ const investigateStep = createStep({
     repo: z.string(),
     pullNumber: z.number(),
   }),
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, requestContext }) => {
     const { plan, diffs, description, agentsMd, readmeMd, owner, repo, pullNumber } = inputData
     const agent = mastra.getAgent("codeReviewerAgent")
 
@@ -445,7 +445,7 @@ const investigateStep = createStep({
       const batchResults = await Promise.all(
         batch.map(async (chunk) => {
           const prompt = buildInvestigatePrompt(chunk, owner, repo, pullNumber, description, agentsMd, readmeMd)
-          const response = await agent.generate(prompt)
+          const response = await agent.generate(prompt, { requestContext })
           return parseFindings(response.text)
         })
       )
@@ -477,7 +477,7 @@ const verifyStep = createStep({
     pullNumber: z.number(),
   }),
   outputSchema: ReviewOutputSchema,
-  execute: async ({ inputData, mastra }) => {
+  execute: async ({ inputData, mastra, requestContext }) => {
     const { findings, diffs, owner, repo, pullNumber } = inputData
 
     // Deterministic syntax/build check on the changed files (already populated
@@ -517,7 +517,7 @@ Be strict. Only keep findings you are confident about (confidence >= 0.5).
 Output ONLY valid JSON: { "verified": [{ "file": "...", "line": 42, "category": "...", "severity": "...", "message": "...", "confidence": 0.8 }] }`
 
       const start = Date.now()
-      const response = await agent.generate(prompt)
+      const response = await agent.generate(prompt, { requestContext })
       console.log(`verify completed in ${Date.now() - start}ms`)
 
       try {

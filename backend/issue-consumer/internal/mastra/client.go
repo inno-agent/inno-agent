@@ -25,11 +25,11 @@ type Client struct {
 
 // DefaultTimeout is the client-side budget for a /codegen call.
 //
-// It must exceed the agent's own CODEGEN_TIMEOUT_MS (default 300s), otherwise
-// the client aborts at the same instant the agent would answer 504 and the
-// retry-on-504 branch below is unreachable. The agent may also spend up to
-// three sequential LLM calls under one request (generate + two repair rounds).
-const DefaultTimeout = 450 * time.Second
+// Coupled triple: it must exceed the agent's CODEGEN_TIMEOUT_MS (default 900s
+// for the multi-step agentic run) so the client does not abort before the agent
+// answers, and the token freshness threshold must exceed BOTH so the delegated
+// token cannot expire mid-run. So: agent 900s < this 1000s < freshness 20m.
+const DefaultTimeout = 1000 * time.Second
 
 func NewClient(baseURL, authToken string) *Client {
 	return &Client{
@@ -57,8 +57,9 @@ type codegenFile struct {
 }
 
 type codegenResponse struct {
-	Summary string        `json:"summary"`
-	Files   []codegenFile `json:"files"`
+	Summary  string        `json:"summary"`
+	Files    []codegenFile `json:"files"`
+	Verified bool          `json:"verified"`
 }
 
 // Generate calls the Mastra /codegen endpoint and returns the generated files.
@@ -166,7 +167,8 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef, delegatedTok
 	}
 
 	return &domain.GenerationResult{
-		Files:   files,
-		Summary: result.Summary,
+		Files:    files,
+		Summary:  result.Summary,
+		Verified: result.Verified,
 	}, nil
 }

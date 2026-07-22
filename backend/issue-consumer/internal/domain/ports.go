@@ -31,6 +31,9 @@ type GeneratedFile struct {
 type GenerationResult struct {
 	Files   []GeneratedFile
 	Summary string
+	// Verified reports whether the agent's build/test verification passed before
+	// the code was returned. False means the change is pushed with a warning.
+	Verified bool
 }
 
 type LLMMessage struct {

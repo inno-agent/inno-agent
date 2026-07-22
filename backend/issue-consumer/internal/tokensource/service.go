@@ -25,7 +25,7 @@ type UserStore interface {
 // review agent at 300s, so 10m covers the larger plus margin. Not derived from
 // either service's config on purpose — a consumer should not read another
 // service's settings.
-const freshnessThreshold = 10 * time.Minute
+const freshnessThreshold = 20 * time.Minute
 
 type cachedDelegate struct {
 	token  string

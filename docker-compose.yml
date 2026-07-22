@@ -496,9 +496,9 @@ services:
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Direct Ollama bypasses orchestrator + arch-router (~200-500ms saved per review).
-      # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # The agents call the orchestrator's /v1/chat/completions, carrying the
+      # PR/issue author's delegated token as the bearer (per-user attribution +
+      # onboarding gate). They no longer talk to Ollama directly.
       ORCHESTRATOR_URL: http://orchestrator:8080
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
       REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}

@@ -15,15 +15,14 @@ type Config struct {
 	// CodegenAgentURL is the URL of the Mastra codegen agent service.
 	// If empty, falls back to single-shot LLM via OrchestratorURL.
 	//
-	// SECURITY / AUDIT NOTE: enabling this changes the token model for the LLM
-	// call. The single-shot fallback (internal/generator) exchanges the issue
-	// assigner's GitFlame identity for a delegated RFC 8693 user token via
-	// internal/tokensource and attaches it to every orchestrator /v1/chat call,
-	// giving per-user attribution/quota on generation. The Mastra agent calls
-	// Ollama directly (bypassing the orchestrator, same as the review agent)
-	// with NO per-user token — see packages/review-agent/src/mastra/agents/
-	// code-generator.ts for details. Do not assume the delegated-token
-	// guarantee holds once this is set.
+	// TOKEN MODEL: both paths now carry the issue assigner's delegated RFC 8693
+	// user token. internal/mastra.Generator exchanges it via internal/tokensource
+	// (which also gates on onboarding: ErrNotOnboarded for an unregistered
+	// assigner) and sends it to the codegen agent in the X-Delegated-Token
+	// header; the agent forwards it to the orchestrator's /v1/chat/completions as
+	// the bearer, so per-user attribution and the onboarding gate hold on this
+	// path just as they do on the single-shot fallback. See
+	// packages/review-agent/src/mastra/model.ts for the agent side.
 	CodegenAgentURL string
 	// CodegenAgentToken is the shared secret for authenticating to the codegen agent.
 	CodegenAgentToken string

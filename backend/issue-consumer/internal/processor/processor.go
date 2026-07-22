@@ -386,6 +386,11 @@ func buildSuccessComment(branch string, prIndex int64, reviewer string, result *
 	sb.WriteString("Code generated and pushed to branch `")
 	sb.WriteString(branch)
 	sb.WriteString("`.\n\n")
+	if result.Verified {
+		sb.WriteString("✅ Build and tests passed (verified before push).\n\n")
+	} else {
+		sb.WriteString("⚠️ Verification did not pass — the change was pushed but its build/tests are not green. Review carefully.\n\n")
+	}
 	if prIndex > 0 {
 		sb.WriteString(fmt.Sprintf("Pull request #%d opened", prIndex))
 		if reviewer != "" {

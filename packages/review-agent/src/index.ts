@@ -3,6 +3,8 @@ import { Hono } from "hono"
 import { mastra } from "./mastra/index"
 import { z } from "zod"
 import { randomUUID } from "crypto"
+import { requestContextFromHeaders, hasDelegatedToken } from "./services/delegated-token"
+import { withSandboxRunId } from "./services/sandbox-run"
 
 // ─── Hono typed context ─────────────────────────────────────────────────────
 
@@ -14,6 +16,11 @@ type AppEnv = {
 
 const REVIEW_AGENT_AUTH_TOKEN = process.env.REVIEW_AGENT_AUTH_TOKEN || ""
 const REVIEW_TIMEOUT_MS = parseInt(process.env.REVIEW_TIMEOUT_MS || "300000") // 5 minutes default
+// Agentic codegen is multi-step (plan + implement + verify + repair rounds),
+// each a full LLM tool loop, so it needs far more than a single-shot call.
+// Coupled triple: this must stay below the Go client's timeout AND below the
+// P2 token freshness threshold, or the delegated token expires mid-run.
+const CODEGEN_TIMEOUT_MS = parseInt(process.env.CODEGEN_TIMEOUT_MS || "900000") // 15 minutes default
 const CACHE_TTL_MS = parseInt(process.env.CACHE_TTL_MS || "3600000") // 1 hour default
 const MAX_CONCURRENT_REVIEWS = parseInt(process.env.MAX_CONCURRENT_REVIEWS || "4")
 
@@ -40,6 +47,50 @@ class Semaphore {
 }
 
 const reviewSemaphore = new Semaphore(MAX_CONCURRENT_REVIEWS)
+
+// withTimeout races a workflow run against a deadline and always clears the
+// timer, so a completed run doesn't pin a multi-minute timer per request.
+//
+// It deliberately does NOT cancel the underlying run — Mastra keeps executing
+// it. Callers must therefore release their semaphore slot when the run promise
+// settles, not when this function returns; see runSlot below.
+async function withTimeout<T>(runPromise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      runPromise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timeout`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+// runSlot acquires a concurrency slot, invokes `start`, and releases the slot
+// only when the run itself settles.
+//
+// Releasing in a `finally` around the timeout race would hand the slot back
+// while the abandoned run is still burning an Ollama connection, letting real
+// concurrency drift above MAX_CONCURRENT_REVIEWS. The returned promise tracks
+// the run, so the caller's timeout covers slot-queue time too.
+function runSlot<T>(start: () => Promise<T>): Promise<T> {
+  return reviewSemaphore.acquire().then(() => {
+    let runPromise: Promise<T>
+    try {
+      runPromise = start()
+    } catch (err) {
+      reviewSemaphore.release()
+      throw err
+    }
+    runPromise.then(
+      () => reviewSemaphore.release(),
+      () => reviewSemaphore.release(),
+    )
+    return runPromise
+  })
+}
 
 // Simple in-memory cache for PR reviews
 interface CacheEntry {
@@ -79,6 +130,16 @@ const ReviewRequestSchema = z.object({
   headSha: z.string(),
 })
 
+const CodegenRequestSchema = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  issueNumber: z.number(),
+  defaultBranch: z.string().optional(),
+  issueType: z.string().optional(),
+  title: z.string().optional(),
+  body: z.string().optional(),
+})
+
 const app = new Hono<AppEnv>()
 
 // CORS middleware
@@ -102,8 +163,9 @@ app.use("*", async (c, next) => {
   await next()
 })
 
-// Auth middleware for /review endpoint
-app.use("/review", async (c, next) => {
+// Bearer-token auth for the agent endpoints. REVIEW_AGENT_AUTH_TOKEN is the
+// shared secret for this service; both /review and /codegen are guarded by it.
+const authMiddleware = async (c: any, next: any) => {
   if (!REVIEW_AGENT_AUTH_TOKEN) {
     return c.json({ error: "Auth not configured" }, 503)
   }
@@ -119,7 +181,10 @@ app.use("/review", async (c, next) => {
   }
 
   await next()
-})
+}
+
+app.use("/review", authMiddleware)
+app.use("/codegen", authMiddleware)
 
 app.post("/review", async (c) => {
   const requestId = c.get("requestId")
@@ -131,6 +196,14 @@ app.post("/review", async (c) => {
   }
 
   const { owner, repo, pullNumber, headSha } = parsed.data
+
+  const requestContext = requestContextFromHeaders((n) => c.req.header(n))
+  if (!hasDelegatedToken(requestContext)) {
+    // The consumer always sends X-Delegated-Token on the success path; its
+    // absence is a contract violation, not something a retry fixes.
+    return c.json({ error: "missing X-Delegated-Token" }, 400)
+  }
+  withSandboxRunId(requestContext, randomUUID())
 
   // Check cache first
   const cacheKey = `${owner}/${repo}#${pullNumber}@${headSha}`
@@ -144,21 +217,17 @@ app.post("/review", async (c) => {
 
   console.log(`[${requestId}] Starting review for ${owner}/${repo}#${pullNumber}`)
 
-  // Fix 7: Rate limiting
-  await reviewSemaphore.acquire()
   try {
     const workflow = mastra.getWorkflow("reviewPipeline")
     const run = await workflow.createRun()
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Review timeout")), REVIEW_TIMEOUT_MS)
-    })
-
-    const resultPromise = run.start({
+    // Fix 7: Rate limiting
+    const resultPromise = runSlot(() => run.start({
       inputData: { owner, repo, pullNumber, headSha },
-    })
+      requestContext,
+    }))
 
-    const result = await Promise.race([resultPromise, timeoutPromise]) as any
+    const result = await withTimeout(resultPromise, REVIEW_TIMEOUT_MS, "Review") as any
 
     if (result.status === "success") {
       const reviewMarkdown = result.result.reviewMarkdown
@@ -179,14 +248,76 @@ app.post("/review", async (c) => {
       return c.json({ error: "Review timeout" }, 504)
     }
     return c.json({ error: "Internal server error" }, 500)
-  } finally {
-    reviewSemaphore.release()
   }
 })
 
 // Health check endpoint
 app.get("/health", (c) => {
   return c.json({ status: "ok" })
+})
+
+// ─── /codegen: issue → generated files via the codegen pipeline ────────────
+//
+// Mirrors /review: the consumer sends the issue ref (+ optional context from
+// the webhook), the Mastra codegen workflow fetches repo context, runs the
+// code-generator agent, parses the structured output, and returns the files.
+app.post("/codegen", async (c) => {
+  const requestId = c.get("requestId")
+  const body = await c.req.json()
+  const parsed = CodegenRequestSchema.safeParse(body)
+
+  if (!parsed.success) {
+    return c.json({ error: "Invalid request", details: parsed.error }, 400)
+  }
+
+  const requestContext = requestContextFromHeaders((n) => c.req.header(n))
+  if (!hasDelegatedToken(requestContext)) {
+    // The consumer always sends X-Delegated-Token on the success path; its
+    // absence is a contract violation, not something a retry fixes.
+    return c.json({ error: "missing X-Delegated-Token" }, 400)
+  }
+  withSandboxRunId(requestContext, randomUUID())
+
+  const { owner, repo, issueNumber } = parsed.data
+
+  console.log(`[${requestId}] Starting codegen for ${owner}/${repo}#${issueNumber}`)
+
+  try {
+    const workflow = mastra.getWorkflow("codegenPipeline")
+    const run = await workflow.createRun()
+
+    const resultPromise = runSlot(() => run.start({ inputData: parsed.data, requestContext }))
+
+    const result = await withTimeout(resultPromise, CODEGEN_TIMEOUT_MS, "Codegen") as any
+
+    if (result.status === "success") {
+      const out = result.result
+      console.log(`[${requestId}] Codegen completed: ${out.files?.length || 0} files (verified: ${out.verified === true})`)
+      return c.json({
+        summary: out.summary || "",
+        files: out.files || [],
+        verified: out.verified === true,
+      })
+    }
+
+    // A step that threw surfaces here as status "failed" with the error on the
+    // result, NOT in the catch below. EmptyDiffError means the agent changed
+    // nothing — deterministically pointless, so 422 (the Go client classifies
+    // 4xx as permanent and won't retry). Everything else is a 500.
+    if (result.error?.name === "EmptyDiffError") {
+      console.warn(`[${requestId}] Codegen produced no changes`)
+      return c.json({ error: "codegen produced no changes" }, 422)
+    }
+
+    console.error(`[${requestId}] Codegen failed with status: ${result.status}`, result.error)
+    return c.json({ error: "Codegen failed", status: result.status }, 500)
+  } catch (error: any) {
+    console.error(`[${requestId}] Codegen error:`, error)
+    if (error.message === "Codegen timeout") {
+      return c.json({ error: "Codegen timeout" }, 504)
+    }
+    return c.json({ error: "Internal server error" }, 500)
+  }
 })
 
 const port = parseInt(process.env.SERVER_PORT || "4100")

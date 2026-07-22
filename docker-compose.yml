@@ -158,6 +158,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_ISSUER_URL:-https://auth.localhost}/application/o/inno-agent/"
@@ -177,6 +178,8 @@ services:
         condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Chat API DB migrations ────────────────────────────────────────────────
   chat-api-migrate:
@@ -203,6 +206,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
@@ -215,6 +219,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Review API DB migrations ────────────────────────────────────────────
@@ -244,6 +250,7 @@ services:
       - "127.0.0.1:8001:8001"
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: ${REVIEW_AUTH_SERVICE_URL-http://identity:8081}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
@@ -259,6 +266,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Ollama (LLM runtime) — local profile only ───────────────────────────
@@ -346,12 +355,16 @@ services:
       - innoagent
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+    depends_on:
+      jaeger:
+        condition: service_started
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:
@@ -396,6 +409,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: review-consumer
@@ -425,6 +439,8 @@ services:
         condition: service_started
       identity:
         condition: service_started
+      jaeger:
+        condition: service_started
 
   # ─── Issue Consumer (webhook-driven issue code generator) ────────────────
   issue-consumer:
@@ -438,9 +454,7 @@ services:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: issue-consumer
-      ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
-      CODEGEN_MODEL: ${CODEGEN_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       IDENTITY_URL: http://identity:8081
@@ -449,6 +463,13 @@ services:
       REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
+      # Codegen agent (Mastra) — REQUIRED. Points at the review-agent service's
+      # /codegen endpoint; the single-shot generator has been removed. The agent
+      # runs the agentic loop and carries the issue author's delegated token to
+      # the orchestrator (per-user attribution + onboarding gate).
+      CODEGEN_AGENT_URL: ${CODEGEN_AGENT_URL:-http://review-agent:4100}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in review-agent.
+      CODEGEN_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
     networks:
       - innoagent
     depends_on:
@@ -471,11 +492,17 @@ services:
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Direct Ollama bypasses orchestrator + arch-router (~200-500ms saved per review).
-      # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # The agents call the orchestrator's /v1/chat/completions, carrying the
+      # PR/issue author's delegated token as the bearer (per-user attribution +
+      # onboarding gate). They no longer talk to Ollama directly.
       ORCHESTRATOR_URL: http://orchestrator:8080
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      # Codegen may use a larger model than review — the agentic loop needs it.
+      # Falls back to REVIEW_MODEL when unset. Point at e.g. qwen2.5-coder:32b.
+      CODEGEN_MODEL: ${CODEGEN_MODEL:-}
+      # Multi-step agentic codegen budget. Coupled: below the issue-consumer Go
+      # client timeout (1000s) and the token freshness threshold (20m).
+      CODEGEN_TIMEOUT_MS: ${CODEGEN_TIMEOUT_MS:-900000}
       REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
       SANDBOX_URL: http://sandbox:8080
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
@@ -526,6 +553,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       SERVER_PORT: "8002"
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
@@ -535,6 +563,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Review Frontend ──────────────────────────────────────────────────────
   review-front:
@@ -545,6 +575,24 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Jaeger (Distributed Tracing) ─────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+    networks:
+      - innoagent
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ─── Loki (Log Aggregation) ──────────────────────────────────────────────
   loki:

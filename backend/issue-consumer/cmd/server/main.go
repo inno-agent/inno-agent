@@ -11,11 +11,10 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/config"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/domain"
-	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/generator"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/gitflame"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/installation"
 	konsumer "github.com/inno-agent/inno-agent/backend/issue-consumer/internal/kafka"
-	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/llm"
+	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/mastra"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/processor"
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/tokensource"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
@@ -67,8 +66,15 @@ func main() {
 	telemetry.ListenAndServe(":9090", "issue-consumer")
 
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
-	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
-	genService := generator.NewService(gitFlameClient, gitFlameClient, llmClient, tokenSrc, cfg.CodegenModel, logger)
+
+	if cfg.CodegenAgentURL == "" {
+		logger.Fatal("CODEGEN_AGENT_URL is required (the single-shot generator has been removed)")
+	}
+	mastraClient := mastra.NewClient(cfg.CodegenAgentURL, cfg.CodegenAgentToken)
+	genService := mastra.NewGenerator(mastraClient, tokenSrc, logger)
+	logger.Info("using Mastra codegen agent with per-user LLM token attribution",
+		zap.String("url", cfg.CodegenAgentURL))
+
 	proc := processor.New(genService, gitFlameClient, gitFlameClient, gitFlameClient, logger,
 		cfg.BotGitFlameUsername, cfg.OnboardingURL)
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)

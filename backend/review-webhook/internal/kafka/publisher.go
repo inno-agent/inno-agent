@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	kafka "github.com/segmentio/kafka-go"
+
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 // Publisher writes messages to a single Kafka topic using synchronous acks.
@@ -26,9 +28,14 @@ func NewPublisher(brokers, topic string) *Publisher {
 
 // Publish writes a single message with the given key and value.
 func (p *Publisher) Publish(ctx context.Context, key string, value []byte) error {
+	headers := make([]kafka.Header, 0)
+	for _, h := range tracing.KafkaHeadersFromContext(ctx) {
+		headers = append(headers, kafka.Header{Key: h.Key, Value: []byte(h.Value)})
+	}
 	return p.writer.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(key),
-		Value: value,
+		Key:     []byte(key),
+		Value:   value,
+		Headers: headers,
 	})
 }
 

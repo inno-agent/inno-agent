@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/event"
 )
@@ -94,15 +95,21 @@ func New(
 }
 
 func (p *Processor) Process(ctx context.Context, data []byte) Result {
+	// Use enriched logger from context (with correlation_id/trace_id) if
+	// available, else the processor's own. FromContext would return a no-op
+	// logger here, silently dropping every line for callers outside the
+	// consumer path.
+	log := logger.FromContextOr(ctx, p.logger)
+
 	var env event.Envelope
 	if err := json.Unmarshal(data, &env); err != nil {
-		p.logger.Warn("undecodable envelope; skipping", zap.Error(err))
+		log.Warn("undecodable envelope; skipping", zap.Error(err))
 		return Skip
 	}
 
 	var pr event.PullRequestEvent
 	if err := json.Unmarshal(env.Payload, &pr); err != nil {
-		p.logger.Warn("undecodable pull_request payload; skipping", zap.Error(err))
+		log.Warn("undecodable pull_request payload; skipping", zap.Error(err))
 		return Skip
 	}
 
@@ -114,7 +121,7 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	// Only react when the bot itself is the requested reviewer. Compare
 	// case-insensitively — GitFlame stores logins lowercased.
 	if p.botUsername != "" && !strings.EqualFold(pr.RequestedReviewer.Login, p.botUsername) {
-		p.logger.Debug(
+		log.Debug(
 			"requested_reviewer is not the bot; skipping",
 			zap.String("requested_reviewer", pr.RequestedReviewer.Login),
 			zap.String("bot_username", p.botUsername),
@@ -145,12 +152,12 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	p.mu.Unlock()
 
 	if already {
-		p.logger.Info("dedup hit; skipping", zap.String("key", dedupKey))
+		log.Info("dedup hit; skipping", zap.String("key", dedupKey))
 		return Skip
 	}
 
 	prLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
-	p.logger.Info("reviewing PR", zap.String("pr", prLabel), zap.String("assigner", assigner))
+	log.Info("reviewing PR", zap.String("pr", prLabel), zap.String("assigner", assigner))
 
 	review, err := p.reviewer.Review(ctx, ref)
 	if err != nil {
@@ -161,14 +168,14 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 			)
 			if postErr := p.poster.PostPRComment(ctx, ref, msg); postErr != nil {
 				if errors.Is(postErr, domain.ErrTransient) {
-					p.logger.Error("post not-onboarded comment transiently failed; will retry", zap.String("pr", prLabel), zap.Error(postErr))
+					log.Error("post not-onboarded comment transiently failed; will retry", zap.String("pr", prLabel), zap.Error(postErr))
 					return Transient
 				}
 
-				p.logger.Error("post not-onboarded comment permanently failed; skipping", zap.String("pr", prLabel), zap.Error(postErr))
+				log.Error("post not-onboarded comment permanently failed; skipping", zap.String("pr", prLabel), zap.Error(postErr))
 			}
 
-			p.logger.Info("assigner not onboarded; skipped after comment", zap.String("pr", prLabel), zap.String("assigner", assigner))
+			log.Info("assigner not onboarded; skipped after comment", zap.String("pr", prLabel), zap.String("assigner", assigner))
 
 			p.mu.Lock()
 			p.seen.add(dedupKey, seenCap)
@@ -180,11 +187,11 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		if errors.Is(err, domain.ErrPermanent) {
 			// Permanent failure (e.g. 401/403 from LLM or GitFlame): commit the
 			// offset so the partition advances rather than blocking indefinitely.
-			p.logger.Error("review permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
+			log.Error("review permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
 		}
 
-		p.logger.Error("review failed; will retry", zap.Error(err))
+		log.Error("review failed; will retry", zap.Error(err))
 
 		return Transient
 	}
@@ -192,11 +199,11 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	if err := p.poster.PostPRComment(ctx, ref, review); err != nil {
 		if errors.Is(err, domain.ErrPermanent) {
 			// Same rationale: don't block the partition on a permanent poster error.
-			p.logger.Error("post comment permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
+			log.Error("post comment permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
 		}
 
-		p.logger.Error("post comment failed; will retry", zap.Error(err))
+		log.Error("post comment failed; will retry", zap.Error(err))
 
 		return Transient
 	}
@@ -205,12 +212,12 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	p.seen.add(dedupKey, seenCap)
 	p.mu.Unlock()
 
-	p.logger.Info("review posted", zap.String("pr", prLabel))
+	log.Info("review posted", zap.String("pr", prLabel))
 
 	// Best effort: the review is already posted, so a failure here must not
 	// cause a redelivery (that would re-review and double-post the comment).
 	if err := p.poster.RemoveRequestedReviewer(ctx, ref, p.botUsername); err != nil {
-		p.logger.Warn("failed to remove self as reviewer", zap.String("pr", prLabel), zap.Error(err))
+		log.Warn("failed to remove self as reviewer", zap.String("pr", prLabel), zap.Error(err))
 	}
 
 	return Done

@@ -14,9 +14,18 @@ import (
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/domain"
 )
 
+// UserStore looks up a user_id by GitFlame username.
 type UserStore interface {
 	GetUserID(ctx context.Context, gitflameUsername string) (userID string, found bool, err error)
 }
+
+// freshnessThreshold is how much validity a cached token must retain to be
+// reused. It must exceed the longest possible agent run so a token cannot
+// expire mid-run: issue-consumer's Mastra client bounds a run at 450s and the
+// review agent at 300s, so 10m covers the larger plus margin. Not derived from
+// either service's config on purpose — a consumer should not read another
+// service's settings.
+const freshnessThreshold = 20 * time.Minute
 
 type cachedDelegate struct {
 	token  string
@@ -65,7 +74,7 @@ func (s *Service) Token(ctx context.Context, ref domain.IssueRef) (string, error
 
 func (s *Service) getServiceToken(ctx context.Context) (string, error) {
 	s.mu.Lock()
-	if s.cachedToken != "" && time.Until(s.cachedExpiry) > 5*time.Minute {
+	if s.cachedToken != "" && time.Until(s.cachedExpiry) > freshnessThreshold {
 		tok := s.cachedToken
 		s.mu.Unlock()
 		return tok, nil

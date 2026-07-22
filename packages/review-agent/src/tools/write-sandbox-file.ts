@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { getSandboxClient } from "../services/sandbox-client"
+import { sandboxRunIdFromContext } from "../services/sandbox-run"
 
 export const writeSandboxFile = createTool({
   id: "write-sandbox-file",
@@ -12,9 +13,10 @@ export const writeSandboxFile = createTool({
   outputSchema: z.object({
     success: z.boolean(),
   }),
-  execute: async ({ path, content }) => {
+  execute: async ({ path, content }, context) => {
+    const runId = sandboxRunIdFromContext(context?.requestContext)
     const client = getSandboxClient()
-    await client.writeFile(path, content)
+    await client.writeFile(runId, path, content)
     return { success: true }
   },
 })

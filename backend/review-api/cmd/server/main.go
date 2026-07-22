@@ -12,7 +12,9 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/config"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/db"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/gitflame"
@@ -28,11 +30,17 @@ func main() {
 
 	cfg := config.Load()
 
-	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	log := logger.New("review-api")
+	defer func() { _ = log.Sync() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+
+	tracingCleanup, err := tracing.Setup(ctx, "review-api")
+	if err != nil {
+		log.Fatal("tracing init", zap.Error(err))
+	}
+	defer tracingCleanup()
 
 	llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)
 	gitFlameClient := gitflame.NewClient(cfg.GitFlameBaseURL, cfg.GitFlameToken)
@@ -48,24 +56,28 @@ func main() {
 	if cfg.ReviewDatabaseDSN != "" {
 		pool, err := db.NewPool(ctx, cfg.ReviewDatabaseDSN)
 		if err != nil {
-			logger.Fatal("review db pool", zap.Error(err))
+			log.Fatal("review db pool", zap.Error(err))
 		}
 		defer pool.Close()
 
 		installRepo := installation.NewRepository(pool)
 		identityClient := identityclient.New(cfg.AuthServiceURL)
-		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, logger)
-		inviteHandler = handler.NewInviteHandler(installRepo, gitFlameClient, logger)
-		logger.Info("onboarding enabled (installations)")
+		installHandler = handler.NewInstallationHandler(installRepo, identityClient, cfg.ReviewConsumerClientID, log)
+		inviteHandler = handler.NewInviteHandler(installRepo, gitFlameClient, log)
+		log.Info("onboarding enabled (installations)")
 	} else {
-		logger.Warn("REVIEW_DATABASE_DSN unset; /installations and /invitations/accept disabled")
+		log.Warn("REVIEW_DATABASE_DSN unset; /installations and /invitations/accept disabled")
 	}
 
 	telemetry.Init("review-api")
 
 	router := chi.NewRouter()
+	router.Use(tracing.ChiMiddleware("review-api"))
+	router.Use(logger.CorrelationID)
+	router.Use(logger.InjectLogger(log))
+	router.Use(logger.RequestLogger())
 	router.Use(telemetry.ChiMiddleware("review-api"))
-	handler.RegisterRoutes(router, reviewHandler, installHandler, inviteHandler, cfg.AuthServiceURL, logger)
+	handler.RegisterRoutes(router, reviewHandler, installHandler, inviteHandler, cfg.AuthServiceURL)
 	router.Handle("/metrics", telemetry.Handler())
 
 	server := &http.Server{
@@ -77,18 +89,18 @@ func main() {
 	}
 
 	go func() {
-		logger.Info("server starting", zap.String("port", cfg.ServerPort))
+		log.Info("server starting", zap.String("port", cfg.ServerPort))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Fatal("server error", zap.Error(err))
+			log.Fatal("server error", zap.Error(err))
 		}
 	}()
 
 	<-ctx.Done()
-	logger.Info("shutting down")
+	log.Info("shutting down")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown error", zap.Error(err))
+		log.Error("shutdown error", zap.Error(err))
 	}
 }

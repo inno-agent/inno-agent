@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
@@ -13,10 +12,7 @@ import (
 // installH and inviteH may be nil when the review database is not configured
 // (dev mode); in that case the /installations and /invitations/accept routes
 // are not registered.
-func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string, logger *zap.Logger) {
-	r.Use(middleware.CorrelationID)
-	r.Use(middleware.Logger(logger))
-	r.Use(middleware.RequestLogger())
+func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -30,7 +30,7 @@ func NewClient(baseURL, authToken string) *Client {
 	}
 }
 
-func (c *Client) Review(ctx context.Context, ref domain.PRRef) (string, error) {
+func (c *Client) Review(ctx context.Context, ref domain.PRRef, delegatedToken string) (string, error) {
 	payload := map[string]interface{}{
 		"owner":      ref.Owner,
 		"repo":       ref.Repo,
@@ -54,6 +54,12 @@ func (c *Client) Review(ctx context.Context, ref domain.PRRef) (string, error) {
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 
+	// The delegated user token rides in its own header: Authorization already
+	// carries the shared service secret (actor), this carries the subject.
+	if delegatedToken != "" {
+		req.Header.Set("X-Delegated-Token", delegatedToken)
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("mastra: request failed: %w: %w", domain.ErrTransient, err)
@@ -64,13 +70,19 @@ func (c *Client) Review(ctx context.Context, ref domain.PRRef) (string, error) {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		msg := fmt.Sprintf("mastra: status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 
+		// 401 almost always means an expired delegated token; a retry mints a
+		// fresh one, so treat it as transient rather than dropping the task.
+		if resp.StatusCode == http.StatusUnauthorized {
+			return "", fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+		}
+
 		// 4xx = permanent (bad request, auth, etc.)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			return "", fmt.Errorf("%s: %w", msg, domain.ErrPermanent)
 		}
 
 		// 504 Gateway Timeout = transient (retry)
-		if resp.StatusCode == 504 {
+		if resp.StatusCode == http.StatusGatewayTimeout {
 			return "", fmt.Errorf("%s: %w", msg, domain.ErrTransient)
 		}
 

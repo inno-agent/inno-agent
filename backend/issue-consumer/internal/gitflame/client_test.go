@@ -291,6 +291,63 @@ func TestPushFiles_CreateConflict_RetriesAsUpdate(t *testing.T) {
 	}
 }
 
+// Two concurrent Process() runs for the same reassigned issue (each
+// redelivery gets a fresh delivery ID, so dedup doesn't stop this) can both
+// fetch the same file's sha, then race to PUT — the loser's sha is stale by
+// the time its request lands and GitFlame answers 409/422. PushFiles must
+// re-fetch the now-current sha and retry once rather than dropping the push.
+func TestPushFiles_UpdateConflict_RetriesWithFreshSha(t *testing.T) {
+	var getCalls, putCalls int
+
+	server := newMockGiteaServer(t, func(method, path string, body []byte) (statusCode int, respBody []byte) {
+		if strings.Contains(path, "/contents/") {
+			switch method {
+			case "GET":
+				getCalls++
+				if getCalls == 1 {
+					return 200, []byte(`{"sha":"stalesha"}`)
+				}
+				return 200, []byte(`{"sha":"freshsha"}`)
+			case "PUT":
+				putCalls++
+				var req updateFileRequest
+				if err := json.Unmarshal(body, &req); err != nil {
+					t.Fatalf("failed to unmarshal PUT body: %v", err)
+				}
+				if putCalls == 1 {
+					if req.Sha != "stalesha" {
+						t.Fatalf("expected first PUT to use stalesha, got %s", req.Sha)
+					}
+					return 409, []byte(`{"message":"[go.mod]","code":"AlreadyExistNameError"}`)
+				}
+				if req.Sha != "freshsha" {
+					t.Fatalf("expected retry PUT to use freshsha, got %s", req.Sha)
+				}
+				return 200, []byte(`{"sha":"finalsha"}`)
+			}
+		}
+		if strings.Contains(path, "/branches") {
+			return 201, []byte(`{}`)
+		}
+		return 500, []byte("unexpected request")
+	})
+	defer server.Close()
+
+	c := NewClient(server.URL, "test-token")
+	ref := domain.IssueRef{Owner: "test-owner", Repo: "test-repo", DefaultBranch: "main"}
+	files := []domain.GeneratedFile{{Path: "go.mod", Content: "module test"}}
+
+	if err := c.PushFiles(context.Background(), ref, "innoagent-test", files, "test commit"); err != nil {
+		t.Fatalf("PushFiles failed: %v", err)
+	}
+	if putCalls != 2 {
+		t.Fatalf("expected initial PUT + retry PUT, got %d", putCalls)
+	}
+	if getCalls != 2 {
+		t.Fatalf("expected initial GET + retry GET, got %d", getCalls)
+	}
+}
+
 // Bug #2: Test "not configured" errors are tagged as permanent
 func TestGetIssue_NotConfigured(t *testing.T) {
 	c := NewClient("", "")

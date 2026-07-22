@@ -569,7 +569,7 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 		if err != nil {
 			return err
 		}
-		if err := c.pushOneFile(ctx, repoBase, branch, message, f, sha, exists); err != nil {
+		if err := c.pushOneFile(ctx, repoBase, branch, message, f, sha, exists, false); err != nil {
 			return err
 		}
 	}
@@ -577,13 +577,18 @@ func (c *Client) PushFiles(ctx context.Context, ref domain.IssueRef, branch stri
 	return nil
 }
 
-// pushOneFile creates or updates a single file. If a create races another
-// writer to the same path (issue reassignment retries, redelivered webhooks)
-// GitFlame answers 409/422 AlreadyExistNameError instead of the 404 the
-// preceding getFileSha saw — re-check and retry once as an update rather than
-// surfacing that race as a permanent failure that drops the whole push.
+// pushOneFile creates or updates a single file. Issue reassignment can fire
+// off concurrent Process() runs for the same issue (each redelivery gets a
+// fresh delivery ID, so dedup doesn't catch it), and two of them can race on
+// the same path: a create races another writer's create (404 seen, then 409
+// AlreadyExistNameError), or an update races another writer's update (sha
+// seen, then stale by the time the PUT lands, also 409/422). Either way,
+// re-check and retry once with the file's current state rather than
+// surfacing the race as a permanent failure that drops the whole push.
+// retried bounds this to a single retry so a genuine, persistent conflict
+// still surfaces as an error instead of looping.
 func (c *Client) pushOneFile(
-	ctx context.Context, repoBase, branch, message string, f domain.GeneratedFile, sha string, exists bool,
+	ctx context.Context, repoBase, branch, message string, f domain.GeneratedFile, sha string, exists bool, retried bool,
 ) error {
 	encodedContent := base64.StdEncoding.EncodeToString([]byte(f.Content))
 	fileURL := repoBase + "/contents/" + escapePathSegments(f.Path)
@@ -629,14 +634,12 @@ func (c *Client) pushOneFile(
 		return nil
 	}
 
-	if !exists && (resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity) {
+	if !retried && (resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity) {
 		retrySha, retryExists, err := c.getFileSha(ctx, repoBase, f.Path, branch)
 		if err != nil {
 			return err
 		}
-		if retryExists {
-			return c.pushOneFile(ctx, repoBase, branch, message, f, retrySha, true)
-		}
+		return c.pushOneFile(ctx, repoBase, branch, message, f, retrySha, retryExists, true)
 	}
 
 	msg := fmt.Sprintf("gitflame: file request %s returned %d: %s", f.Path, resp.StatusCode, strings.TrimSpace(string(body)))

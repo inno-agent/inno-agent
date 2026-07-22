@@ -167,6 +167,23 @@ async function verify(runId: string): Promise<{ ok: boolean; output: string }> {
   return { ok: true, output: `${build.stdout}\n${test.stdout}`.trim() }
 }
 
+// summarizeGenerate reduces an agent.generate() result to a one-line signal of
+// whether the model actually invoked any tools, or just talked. An empty diff
+// at the end of the run is otherwise indistinguishable between "the model
+// never called write_sandbox_file" and "it wrote back identical content" —
+// this makes that distinguishable from the logs alone.
+function summarizeGenerate(label: string, result: { text?: string; toolCalls?: unknown[] }): void {
+  const calls = Array.isArray(result.toolCalls) ? result.toolCalls : []
+  const names = calls
+    .map((c) => (c as { toolName?: string; args?: { path?: string } }))
+    .map((c) => (c.args?.path ? `${c.toolName}(${c.args.path})` : c.toolName))
+    .join(", ")
+  console.log(
+    `[codegen] ${label}: ${calls.length} tool call(s)${names ? ` [${names}]` : ""}, ` +
+      `reply preview: ${(result.text || "").slice(0, 200).replace(/\n/g, " ")}`,
+  )
+}
+
 // runCodegen is the agentic core: populate → baseline → plan → implement →
 // verify → repair → collect. Exported so a test can drive it without standing up
 // a workflow run. requestContext carries both the delegated token (for the LLM
@@ -190,28 +207,33 @@ export async function runCodegen(
     const base = issuePrompt(ctx)
 
     // ── plan ─────────────────────────────────────────────────────────────
-    await codeGeneratorAgent.generate(
+    const planned = await codeGeneratorAgent.generate(
       `${base}\n\nFirst, explore the repository with your read/search tools and decide what to change. Do not write anything yet — reply with a short plan.`,
       { requestContext },
     )
+    summarizeGenerate("plan", planned)
 
     // ── implement ────────────────────────────────────────────────────────
     const implemented = await codeGeneratorAgent.generate(
       `${base}\n\nNow implement the change. Write the files with write_sandbox_file, then build and test. Reply with a short summary of what you changed.`,
       { requestContext },
     )
+    summarizeGenerate("implement", implemented)
     let summary = implemented.text?.trim() || `Implemented issue #${ctx.issueNumber}`
 
     // ── verify + repair ──────────────────────────────────────────────────
     let result = await verify(runId)
+    if (!result.ok) console.warn(`[codegen] verify failed after implement:\n${result.output.slice(0, 2000)}`)
     for (let round = 0; !result.ok && round < MAX_REPAIR_ROUNDS; round++) {
       console.warn(`[codegen] verification failed; repair round ${round + 1}/${MAX_REPAIR_ROUNDS}`)
       const repaired = await codeGeneratorAgent.generate(
         `${base}\n\nThe build or tests failed:\n\n${result.output}\n\nFix it. Edit the files with write_sandbox_file, then build and test again. Reply with a short summary.`,
         { requestContext },
       )
+      summarizeGenerate(`repair round ${round + 1}`, repaired)
       if (repaired.text?.trim()) summary = repaired.text.trim()
       result = await verify(runId)
+      if (!result.ok) console.warn(`[codegen] verify failed after repair round ${round + 1}:\n${result.output.slice(0, 2000)}`)
     }
 
     // ── collect ──────────────────────────────────────────────────────────

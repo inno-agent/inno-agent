@@ -246,7 +246,8 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 				zap.String("issue", issueLabel), zap.Error(err))
 			skipReason = skipGenerationPermanent
 			telemetry.IncError("issue-consumer", "generation_permanent")
-			return Skip
+			msg := fmt.Sprintf("⚠️ Code generation failed and will not be retried:\n\n```\n%s\n```", err.Error())
+			return p.notifyPermanentFailure(ctx, ref, issueLabel, dedupKey, msg)
 		}
 
 		p.logger.Error("generation failed; will retry", zap.Error(err))
@@ -266,7 +267,11 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 				zap.String("issue", issueLabel), zap.Error(err))
 			skipReason = skipPushPermanent
 			telemetry.IncError("issue-consumer", "push_permanent")
-			return Skip
+			msg := fmt.Sprintf(
+				"⚠️ Code was generated but pushing it to branch `%s` failed and will not be retried:\n\n```\n%s\n```",
+				branch, err.Error(),
+			)
+			return p.notifyPermanentFailure(ctx, ref, issueLabel, dedupKey, msg)
 		}
 		p.logger.Error("push failed; will retry", zap.Error(err))
 		telemetry.IncError("issue-consumer", "push_transient")
@@ -286,6 +291,7 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 	}
 
 	var prIndex int64
+	var prErr error
 	if p.prCreator != nil {
 		prIndex, err = p.prCreator.CreatePullRequest(ctx, ref, branch, prTitle, prBody, []string{reviewer})
 		if err != nil {
@@ -293,6 +299,7 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 				p.logger.Warn("pull request creation permanently failed; continuing with branch only",
 					zap.String("issue", issueLabel), zap.Error(err))
 				telemetry.IncError("issue-consumer", "pr_permanent")
+				prErr = err
 			} else {
 				p.logger.Error("pull request creation failed; will retry", zap.Error(err))
 				telemetry.IncError("issue-consumer", "pr_transient")
@@ -303,7 +310,10 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 		}
 	}
 
-	comment := buildSuccessComment(branch, prIndex, reviewer, genResult)
+	// prErr is surfaced in the comment itself (not just logs) — a failed PR
+	// creation still leaves working code on the branch, and the user needs to
+	// know to open the PR by hand rather than assume nothing happened.
+	comment := buildSuccessComment(branch, prIndex, reviewer, genResult, prErr)
 	if err := p.poster.PostIssueComment(ctx, ref, comment); err != nil {
 		if errors.Is(err, domain.ErrPermanent) {
 			p.logger.Error("post comment permanently failed; skipping message",
@@ -329,6 +339,26 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 		zap.Int64("pull_request", prIndex),
 	)
 	return Done
+}
+
+// notifyPermanentFailure posts a best-effort comment explaining a failure
+// that will not be retried, then marks the delivery seen and skips. The user
+// must never be left without a status update just because we gave up.
+func (p *Processor) notifyPermanentFailure(ctx context.Context, ref domain.IssueRef, issueLabel, dedupKey, msg string) Result {
+	if postErr := p.poster.PostIssueComment(ctx, ref, msg); postErr != nil {
+		if errors.Is(postErr, domain.ErrTransient) {
+			p.logger.Error("post failure comment transiently failed; will retry",
+				zap.String("issue", issueLabel), zap.Error(postErr))
+			return Transient
+		}
+		p.logger.Error("post failure comment permanently failed; skipping",
+			zap.String("issue", issueLabel), zap.Error(postErr))
+	}
+
+	p.mu.Lock()
+	p.seen.add(dedupKey, seenCap)
+	p.mu.Unlock()
+	return Skip
 }
 
 func resultLabel(r Result) string {
@@ -381,7 +411,7 @@ func inferIssueType(labels []event.Label) string {
 	return "issue"
 }
 
-func buildSuccessComment(branch string, prIndex int64, reviewer string, result *domain.GenerationResult) string {
+func buildSuccessComment(branch string, prIndex int64, reviewer string, result *domain.GenerationResult, prErr error) string {
 	var sb strings.Builder
 	sb.WriteString("Code generated and pushed to branch `")
 	sb.WriteString(branch)
@@ -397,6 +427,8 @@ func buildSuccessComment(branch string, prIndex int64, reviewer string, result *
 			sb.WriteString(fmt.Sprintf(" with @%s as reviewer", reviewer))
 		}
 		sb.WriteString(".\n\n")
+	} else if prErr != nil {
+		sb.WriteString(fmt.Sprintf("⚠️ Pull request creation failed and was not retried: `%s`. Open one manually from branch `%s`.\n\n", prErr.Error(), branch))
 	}
 	if result.Summary != "" {
 		sb.WriteString("**Summary:** ")

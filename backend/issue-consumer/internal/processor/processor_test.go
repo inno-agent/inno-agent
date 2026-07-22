@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -162,6 +163,30 @@ func TestProcess_Assigned_Done(t *testing.T) {
 	}
 }
 
+// PR creation failing permanently must not go quiet: the branch was already
+// pushed with working code, and the user needs the comment to know they must
+// open the PR themselves.
+func TestProcess_PRCreationPermanentError_DoneWithFailureComment(t *testing.T) {
+	data := makeEnvelope("assigned", "del-pr-fail")
+	gen := &fakeGenerator{result: &domain.GenerationResult{
+		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+	}}
+	pusher := &fakePusher{prErr: fmt.Errorf("500: %w", domain.ErrPermanent)}
+	poster := &fakePoster{}
+	p := newProc(gen, pusher, poster)
+
+	result := p.Process(context.Background(), data)
+	if result != processor.Done {
+		t.Fatalf("expected Done, got %v", result)
+	}
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(poster.posted))
+	}
+	if !strings.Contains(poster.posted[0], "Pull request creation failed") {
+		t.Fatalf("comment does not mention the PR failure:\n%s", poster.posted[0])
+	}
+}
+
 func TestProcess_Assigned_ReviewerIsIssueCreatorNotSender(t *testing.T) {
 	issue := event.IssueEvent{Action: "assigned", Number: 8}
 	issue.Issue.Number = 8
@@ -242,11 +267,17 @@ func TestProcess_PushPermanentError_Skip(t *testing.T) {
 		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
 	}}
 	pusher := &fakePusher{err: fmt.Errorf("403: %w", domain.ErrPermanent)}
-	p := newProc(gen, pusher, &fakePoster{})
+	poster := &fakePoster{}
+	p := newProc(gen, pusher, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
+	}
+	// A permanent failure that isn't going to be retried must still tell the
+	// user — silently skipping leaves them with no idea anything happened.
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 failure comment posted, got %d", len(poster.posted))
 	}
 }
 
@@ -318,11 +349,15 @@ func TestProcess_UndecodablePayload_Skip(t *testing.T) {
 func TestProcess_GenerationPermanentError_Skip(t *testing.T) {
 	data := makeEnvelope("assigned", "del-8")
 	gen := &fakeGenerator{err: fmt.Errorf("401: %w", domain.ErrPermanent)}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	poster := &fakePoster{}
+	p := newProc(gen, &fakePusher{}, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
+	}
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 failure comment posted, got %d", len(poster.posted))
 	}
 }
 

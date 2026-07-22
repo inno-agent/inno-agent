@@ -12,7 +12,11 @@ RUN apk add --no-cache nodejs npm ripgrep git python3 bash \
 RUN GOBIN=/usr/local/bin GOTOOLCHAIN=auto CGO_ENABLED=0 \
     go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 COPY --from=builder /sandbox-server /usr/local/bin/sandbox-server
-RUN mkdir -p /workspace && chown sandbox:sandbox /workspace
+# /go is GOPATH from the golang base image (root-owned) — golangci-lint's
+# install above already wrote into it as root. Without chowning it, go
+# mod/build calls as the non-root sandbox user fail with "permission denied"
+# the first time they need to write the module cache.
+RUN mkdir -p /workspace && chown -R sandbox:sandbox /workspace /go
 USER sandbox
 WORKDIR /workspace
 EXPOSE 8080

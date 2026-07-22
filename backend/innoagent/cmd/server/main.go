@@ -79,6 +79,9 @@ func main() {
 	}
 
 	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, log)
+	orch.SetCompleter(llm.NewCompletionsClient(
+		cfg.BaseURL, cfg.APIKey, cfg.CompletionsTimeout, cfg.MaxBodyBytes,
+	))
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	telemetry.Init("orchestrator")
@@ -103,6 +106,13 @@ func main() {
 		_ = json.NewEncoder(w).Encode(cat)
 	})
 	mux.Handle("/v1/models", auth.Middleware(identityClient)(modelsHandler))
+
+	// OpenAI-compatible endpoint for agentic clients. Unlike /v1/chat below it
+	// forwards the body opaquely, so tool calling survives; streaming is not
+	// supported there yet and answers 501.
+	mux.Handle("/v1/chat/completions", auth.Middleware(identityClient)(
+		completionsHandler(orch, cfg.MaxBodyBytes, log),
+	))
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

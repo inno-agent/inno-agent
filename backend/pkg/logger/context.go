@@ -38,9 +38,25 @@ func WithLogger(ctx context.Context, log *zap.Logger) context.Context {
 
 // FromContext returns the request logger from context, or a no-op logger if absent.
 func FromContext(ctx context.Context) *zap.Logger {
-	log, _ := ctx.Value(loggerKey).(*zap.Logger)
-	if log == nil {
-		return zap.NewNop()
+	if log := fromContext(ctx); log != nil {
+		return log
 	}
+	return zap.NewNop()
+}
+
+// FromContextOr returns the request logger from context, or fallback if absent.
+//
+// Prefer this over FromContext anywhere a real fallback logger exists:
+// FromContext never returns nil, so `log := FromContext(ctx); if log == nil {
+// log = fallback }` silently discards logs instead of using the fallback.
+func FromContextOr(ctx context.Context, fallback *zap.Logger) *zap.Logger {
+	if log := fromContext(ctx); log != nil {
+		return log
+	}
+	return fallback
+}
+
+func fromContext(ctx context.Context) *zap.Logger {
+	log, _ := ctx.Value(loggerKey).(*zap.Logger)
 	return log
 }

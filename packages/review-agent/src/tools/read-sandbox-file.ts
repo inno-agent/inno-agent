@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { getSandboxClient } from "../services/sandbox-client"
+import { sandboxRunIdFromContext } from "../services/sandbox-run"
 
 export const readSandboxFile = createTool({
   id: "read-sandbox-file",
@@ -12,9 +13,10 @@ export const readSandboxFile = createTool({
     content: z.string(),
     exists: z.boolean(),
   }),
-  execute: async ({ path }) => {
+  execute: async ({ path }, context) => {
+    const runId = sandboxRunIdFromContext(context?.requestContext)
     const client = getSandboxClient()
-    const result = await client.readFile(path)
+    const result = await client.readFile(runId, path)
     return {
       content: result.content,
       exists: result.exists,

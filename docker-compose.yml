@@ -454,9 +454,7 @@ services:
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: issue-consumer
-      ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
-      CODEGEN_MODEL: ${CODEGEN_MODEL:-qwen2.5-coder:1.5b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       IDENTITY_URL: http://identity:8081
@@ -465,6 +463,13 @@ services:
       REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
+      # Codegen agent (Mastra) — REQUIRED. Points at the review-agent service's
+      # /codegen endpoint; the single-shot generator has been removed. The agent
+      # runs the agentic loop and carries the issue author's delegated token to
+      # the orchestrator (per-user attribution + onboarding gate).
+      CODEGEN_AGENT_URL: ${CODEGEN_AGENT_URL:-http://review-agent:4100}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in review-agent.
+      CODEGEN_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
     networks:
       - innoagent
     depends_on:
@@ -487,11 +492,17 @@ services:
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Direct Ollama bypasses orchestrator + arch-router (~200-500ms saved per review).
-      # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # The agents call the orchestrator's /v1/chat/completions, carrying the
+      # PR/issue author's delegated token as the bearer (per-user attribution +
+      # onboarding gate). They no longer talk to Ollama directly.
       ORCHESTRATOR_URL: http://orchestrator:8080
       REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      # Codegen may use a larger model than review — the agentic loop needs it.
+      # Falls back to REVIEW_MODEL when unset. Point at e.g. qwen2.5-coder:32b.
+      CODEGEN_MODEL: ${CODEGEN_MODEL:-}
+      # Multi-step agentic codegen budget. Coupled: below the issue-consumer Go
+      # client timeout (1000s) and the token freshness threshold (20m).
+      CODEGEN_TIMEOUT_MS: ${CODEGEN_TIMEOUT_MS:-900000}
       REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
       SANDBOX_URL: http://sandbox:8080
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}

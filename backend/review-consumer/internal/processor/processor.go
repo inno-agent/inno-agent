@@ -95,11 +95,11 @@ func New(
 }
 
 func (p *Processor) Process(ctx context.Context, data []byte) Result {
-	// Use enriched logger from context (with correlation_id/trace_id) if available.
-	log := logger.FromContext(ctx)
-	if log == nil {
-		log = p.logger
-	}
+	// Use enriched logger from context (with correlation_id/trace_id) if
+	// available, else the processor's own. FromContext would return a no-op
+	// logger here, silently dropping every line for callers outside the
+	// consumer path.
+	log := logger.FromContextOr(ctx, p.logger)
 
 	var env event.Envelope
 	if err := json.Unmarshal(data, &env); err != nil {

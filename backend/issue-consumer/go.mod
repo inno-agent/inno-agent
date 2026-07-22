@@ -3,6 +3,7 @@ module github.com/inno-agent/inno-agent/backend/issue-consumer
 go 1.26.0
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/inno-agent/inno-agent/backend/pkg/telemetry v0.0.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1

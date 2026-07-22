@@ -208,6 +208,23 @@ export class GitFlameClient {
     }
   }
 
+  // getIssue fetches an issue's title and body. GitFlame returns the body as
+  // either a plain string or a rich-text JSON array (the same quirk as PR
+  // bodies). parseIssueBody coerces both to plain text.
+  async getIssue(
+    owner: string,
+    repo: string,
+    issueNumber: number,
+  ): Promise<{ title: string; body: string }> {
+    const issue = await this.requestWithRetry<{ title: string; body: unknown }>(
+      `/api/v1/repos/${owner}/${repo}/issues/${issueNumber}`
+    )
+    return {
+      title: typeof issue.title === "string" ? issue.title : "",
+      body: parseIssueBody(issue.body),
+    }
+  }
+
   async getRepoArchive(owner: string, repo: string, ref: string): Promise<Uint8Array> {
     const url = `${this.baseUrl}/api/v1/repos/${owner}/${repo}/archive/${encodeURIComponent(ref)}.tar.gz`
     const resp = await fetch(url, {
@@ -219,5 +236,37 @@ export class GitFlameClient {
     }
     const buf = await resp.arrayBuffer()
     return new Uint8Array(buf)
+  }
+}
+
+// parseIssueBody converts a GitFlame issue body field to plain text.
+// The API may return a plain string, null, or rich-text JSON blocks
+// (array of {type, content, text} or a single such object). Mirrors the
+// Go issue-consumer gitflame.ParseIssueBody so both sides agree on text.
+export function parseIssueBody(raw: unknown): string {
+  if (raw === null || raw === undefined) return ""
+  if (typeof raw === "string") return raw
+
+  if (Array.isArray(raw)) {
+    const parts: string[] = []
+    for (const b of raw as any[]) {
+      const content = typeof b?.content === "string" ? b.content : ""
+      const text = typeof b?.text === "string" ? b.text : ""
+      if (content) parts.push(content)
+      else if (text) parts.push(text)
+    }
+    if (parts.length > 0) return parts.join("\n")
+  }
+
+  if (typeof raw === "object") {
+    const obj = raw as { content?: string; text?: string }
+    if (obj.content) return obj.content
+    if (obj.text) return obj.text
+  }
+
+  try {
+    return JSON.stringify(raw)
+  } catch {
+    return String(raw)
   }
 }

@@ -88,7 +88,7 @@ func main() {
 	var reviewer domain.Reviewer
 	if cfg.ReviewAgentURL != "" {
 		mastraClient := mastra.NewClient(cfg.ReviewAgentURL, cfg.ReviewAgentToken)
-		reviewer = review.NewMastraReviewer(mastraClient, log)
+		reviewer = review.NewMastraReviewer(mastraClient, tokenSrc, log)
 		log.Info("using Mastra review agent", zap.String("url", cfg.ReviewAgentURL))
 	} else {
 		llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)

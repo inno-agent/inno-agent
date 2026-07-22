@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -22,6 +23,21 @@ var sandboxToken string
 // workspaceDir is the root for exec cwd and file read/write. Overridable via
 // SANDBOX_WORKDIR (defaults to /workspace, which the container image creates).
 var workspaceDir = "/workspace"
+
+// runIDRE constrains run_id to a flat, filesystem-safe token. Anything else —
+// slashes, dots, spaces — is rejected, so a run_id can never escape workspaceDir.
+var runIDRE = regexp.MustCompile(`^[a-zA-Z0-9-]{1,64}$`)
+
+// runDir resolves the per-run workspace directory from the request's run_id.
+// It writes a 400 and returns ok=false on a missing or malformed id.
+func runDir(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := r.URL.Query().Get("run_id")
+	if !runIDRE.MatchString(id) {
+		jsonError(w, "invalid or missing run_id", http.StatusBadRequest)
+		return "", false
+	}
+	return filepath.Join(workspaceDir, id), true
+}
 
 // maxArchiveBytes caps the total decompressed size accepted by /populate,
 // guarding against decompression bombs.
@@ -81,12 +97,21 @@ func main() {
 		workspaceDir = wd
 	}
 
+	go func() {
+		const ttl = time.Hour
+		for {
+			reapStaleRuns(ttl)
+			time.Sleep(10 * time.Minute)
+		}
+	}()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/exec", handleExec)
 	mux.HandleFunc("/write", handleWrite)
 	mux.HandleFunc("/read", handleRead)
 	mux.HandleFunc("/populate", handlePopulate)
+	mux.HandleFunc("/workspace", handleDeleteWorkspace)
 	mux.HandleFunc("/health", handleHealth)
 
 	port := os.Getenv("SANDBOX_PORT")
@@ -119,6 +144,16 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir, ok := runDir(w, r)
+	if !ok {
+		return
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		jsonError(w, fmt.Sprintf("failed to create run dir: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	var req ExecRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -144,7 +179,7 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", req.Command)
-	cmd.Dir = workspaceDir
+	cmd.Dir = dir
 
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -181,6 +216,11 @@ func handleWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir, ok := runDir(w, r)
+	if !ok {
+		return
+	}
+
 	var req WriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -199,10 +239,10 @@ func handleWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filepath.Join(workspaceDir, cleanPath)
+	fullPath := filepath.Join(dir, cleanPath)
 
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	parentDir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
 		jsonError(w, fmt.Sprintf("failed to create directory: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -226,6 +266,11 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir, ok := runDir(w, r)
+	if !ok {
+		return
+	}
+
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		jsonError(w, "path is required", http.StatusBadRequest)
@@ -238,7 +283,7 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fullPath := filepath.Join(workspaceDir, cleanPath)
+	fullPath := filepath.Join(dir, cleanPath)
 
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
@@ -253,7 +298,7 @@ func handleRead(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(ReadResponse{Content: string(data), Exists: true})
 }
 
-// handlePopulate resets the workspace and extracts a gzip tarball (POST body)
+// handlePopulate resets the per-run workspace and extracts a gzip tarball (POST body)
 // into it. Gitea/gitflame archives nest everything under a single top-level
 // directory, which is stripped so files land at the workspace root.
 func handlePopulate(w http.ResponseWriter, r *http.Request) {
@@ -267,6 +312,11 @@ func handlePopulate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir, ok := runDir(w, r)
+	if !ok {
+		return
+	}
+
 	gz, err := gzip.NewReader(r.Body)
 	if err != nil {
 		jsonError(w, "invalid gzip", http.StatusBadRequest)
@@ -274,15 +324,15 @@ func handlePopulate(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = gz.Close() }()
 
-	// Reset the workspace so stale files from a previous review don't linger.
+	// Reset the per-run workspace so stale files from a previous review don't linger.
 	// Clear the CONTENTS, not the dir itself: the server runs non-root and cannot
-	// recreate /workspace (its parent is root-owned).
-	if err := clearDir(workspaceDir); err != nil {
+	// recreate the per-run dir (its parent may be root-owned).
+	if err := clearDir(dir); err != nil {
 		jsonError(w, fmt.Sprintf("reset workspace: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	root := filepath.Clean(workspaceDir)
+	root := filepath.Clean(dir)
 	tr := tar.NewReader(gz)
 	var written int64
 	var count int
@@ -345,6 +395,53 @@ func handlePopulate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]int{"files": count})
+}
+
+func handleDeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !authorized(r) {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	dir, ok := runDir(w, r)
+	if !ok {
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		jsonError(w, fmt.Sprintf("remove run dir: %v", err), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// reapStaleRuns removes per-run workspace directories whose mtime is older than
+// ttl. A run that dies before its DELETE (timeout, panic) would otherwise leak
+// its directory and eventually fill the disk. It logs each removal — silent
+// cleanup reads as "disk is fine" when it is not.
+func reapStaleRuns(ttl time.Duration) {
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-ttl)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		p := filepath.Join(workspaceDir, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			log.Printf("reaper: failed to remove %s: %v", p, err)
+			continue
+		}
+		log.Printf("reaper: removed stale run dir %s (age > %s)", p, ttl)
+	}
 }
 
 // clearDir removes everything inside dir without removing dir itself, so a

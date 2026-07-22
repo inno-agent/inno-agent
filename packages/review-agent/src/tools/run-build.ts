@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { getSandboxClient } from "../services/sandbox-client"
+import { sandboxRunIdFromContext } from "../services/sandbox-run"
 
 export const runBuild = createTool({
   id: "run-build",
@@ -14,7 +15,8 @@ export const runBuild = createTool({
     stderr: z.string(),
     durationMs: z.number(),
   }),
-  execute: async ({ language }) => {
+  execute: async ({ language }, context) => {
+    const runId = sandboxRunIdFromContext(context?.requestContext)
     const client = getSandboxClient()
 
     let cmd: string
@@ -29,7 +31,7 @@ export const runBuild = createTool({
       cmd = "if [ -f go.mod ]; then go build ./...; elif [ -f package.json ]; then npm run build 2>/dev/null || npx tsc --noEmit; else echo 'No build system detected'; exit 1; fi"
     }
 
-    const result = await client.exec(cmd, 120)
+    const result = await client.exec(runId, cmd, 120)
 
     return {
       success: result.exit_code === 0,

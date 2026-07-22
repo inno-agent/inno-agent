@@ -362,6 +362,11 @@ services:
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+      # Bounds a single /v1/chat/completions call to the LLM runtime. Was never
+      # wired through here despite existing since P1 — the orchestrator silently
+      # ran on its 180s code default regardless of what was set in the env file.
+      LLM_COMPLETIONS_TIMEOUT: ${LLM_COMPLETIONS_TIMEOUT:-180s}
+      LLM_MAX_BODY_BYTES: ${LLM_MAX_BODY_BYTES:-10485760}
     depends_on:
       jaeger:
         condition: service_started

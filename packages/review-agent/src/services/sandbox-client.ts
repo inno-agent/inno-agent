@@ -35,12 +35,12 @@ export class SandboxClient {
     return this.token ? { ...extra, Authorization: `Bearer ${this.token}` } : { ...extra }
   }
 
-  async exec(command: string, timeoutSeconds = 60): Promise<ExecResult> {
+  async exec(runId: string, command: string, timeoutSeconds = 60): Promise<ExecResult> {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
     try {
-      const resp = await fetch(`${this.baseUrl}/exec`, {
+      const resp = await fetch(`${this.baseUrl}/exec?run_id=${encodeURIComponent(runId)}`, {
         method: "POST",
         headers: this.authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ command, timeout: timeoutSeconds }),
@@ -58,8 +58,8 @@ export class SandboxClient {
     }
   }
 
-  async writeFile(path: string, content: string): Promise<WriteResult> {
-    const resp = await fetch(`${this.baseUrl}/write`, {
+  async writeFile(runId: string, path: string, content: string): Promise<WriteResult> {
+    const resp = await fetch(`${this.baseUrl}/write?run_id=${encodeURIComponent(runId)}`, {
       method: "POST",
       headers: this.authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ path, content }),
@@ -73,8 +73,8 @@ export class SandboxClient {
     return resp.json() as Promise<WriteResult>
   }
 
-  async readFile(path: string): Promise<ReadResult> {
-    const resp = await fetch(`${this.baseUrl}/read?path=${encodeURIComponent(path)}`, {
+  async readFile(runId: string, path: string): Promise<ReadResult> {
+    const resp = await fetch(`${this.baseUrl}/read?run_id=${encodeURIComponent(runId)}&path=${encodeURIComponent(path)}`, {
       headers: this.authHeaders(),
     })
 
@@ -97,8 +97,8 @@ export class SandboxClient {
     }
   }
 
-  async populate(archive: Uint8Array): Promise<{ files: number }> {
-    const resp = await fetch(`${this.baseUrl}/populate`, {
+  async populate(runId: string, archive: Uint8Array): Promise<{ files: number }> {
+    const resp = await fetch(`${this.baseUrl}/populate?run_id=${encodeURIComponent(runId)}`, {
       method: "POST",
       headers: this.authHeaders({ "Content-Type": "application/gzip" }),
       body: archive,
@@ -108,6 +108,17 @@ export class SandboxClient {
       throw new Error(`Sandbox populate failed: ${resp.status} ${text}`)
     }
     return resp.json() as Promise<{ files: number }>
+  }
+
+  async deleteWorkspace(runId: string): Promise<void> {
+    const resp = await fetch(`${this.baseUrl}/workspace?run_id=${encodeURIComponent(runId)}`, {
+      method: "DELETE",
+      headers: this.authHeaders(),
+    })
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "")
+      throw new Error(`Sandbox delete failed: ${resp.status} ${text}`)
+    }
   }
 }
 

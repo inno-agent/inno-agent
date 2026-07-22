@@ -11,7 +11,7 @@ describe("SandboxClient auth", () => {
     })
     vi.stubGlobal("fetch", fetchMock)
     const c = new SandboxClient({ baseUrl: "http://sandbox:8080", timeout: 1000, token: "tok" })
-    await c.exec("echo hi")
+    await c.exec("run-123", "echo hi")
     const init = fetchMock.mock.calls[0][1]
     expect(init.headers["Authorization"]).toBe("Bearer tok")
   })
@@ -23,7 +23,7 @@ describe("SandboxClient auth", () => {
     })
     vi.stubGlobal("fetch", fetchMock)
     const c = new SandboxClient({ baseUrl: "http://sandbox:8080", timeout: 1000, token: "" })
-    await c.exec("echo hi")
+    await c.exec("run-123", "echo hi")
     const init = fetchMock.mock.calls[0][1]
     expect(init.headers["Authorization"]).toBeUndefined()
   })
@@ -35,8 +35,8 @@ describe("SandboxClient populate", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ files: 5 }) })
     vi.stubGlobal("fetch", fetchMock)
     const c = new SandboxClient({ baseUrl: "http://sandbox:8080", timeout: 1000, token: "tok" })
-    const res = await c.populate(new Uint8Array([1, 2, 3]))
-    expect(fetchMock.mock.calls[0][0]).toBe("http://sandbox:8080/populate")
+    const res = await c.populate("run-123", new Uint8Array([1, 2, 3]))
+    expect(fetchMock.mock.calls[0][0]).toContain("http://sandbox:8080/populate?run_id=run-123")
     const init = fetchMock.mock.calls[0][1]
     expect(init.method).toBe("POST")
     expect(init.headers["Authorization"]).toBe("Bearer tok")

@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { getSandboxClient } from "../services/sandbox-client"
+import { sandboxRunIdFromContext } from "../services/sandbox-run"
 
 export const searchCode = createTool({
   id: "search-code",
@@ -14,7 +15,8 @@ export const searchCode = createTool({
     results: z.array(z.string()),
     count: z.number(),
   }),
-  execute: async ({ query, path, filePattern }) => {
+  execute: async ({ query, path, filePattern }, context) => {
+    const runId = sandboxRunIdFromContext(context?.requestContext)
     const client = getSandboxClient()
 
     let cmd = `rg -n "${query.replace(/"/g, '\\"')}"`
@@ -25,7 +27,7 @@ export const searchCode = createTool({
       cmd += ` ${path}`
     }
 
-    const result = await client.exec(cmd, 30)
+    const result = await client.exec(runId, cmd, 30)
     const lines = result.stdout.split("\n").filter(l => l.trim())
 
     return {

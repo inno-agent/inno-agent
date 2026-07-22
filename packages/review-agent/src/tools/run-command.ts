@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { getSandboxClient } from "../services/sandbox-client"
+import { sandboxRunIdFromContext } from "../services/sandbox-run"
 
 export const runCommand = createTool({
   id: "run-command",
@@ -15,9 +16,10 @@ export const runCommand = createTool({
     exitCode: z.number(),
     durationMs: z.number(),
   }),
-  execute: async ({ command, timeout }) => {
+  execute: async ({ command, timeout }, context) => {
+    const runId = sandboxRunIdFromContext(context?.requestContext)
     const client = getSandboxClient()
-    const result = await client.exec(command, timeout || 60)
+    const result = await client.exec(runId, command, timeout || 60)
     return {
       stdout: result.stdout,
       stderr: result.stderr,

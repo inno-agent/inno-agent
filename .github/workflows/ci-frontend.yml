@@ -42,7 +42,7 @@ jobs:
         working-directory: frontend/review-front
         run: npx playwright install --with-deps chromium
 
-      - name: Run e2e tests
+      - name: Run integration test
         working-directory: frontend/review-front
         run: npm run test:integration
 

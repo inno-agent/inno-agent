@@ -75,7 +75,7 @@ func main() {
 	logger.Info("using Mastra codegen agent with per-user LLM token attribution",
 		zap.String("url", cfg.CodegenAgentURL))
 
-	proc := processor.New(genService, gitFlameClient, gitFlameClient, gitFlameClient, logger,
+	proc := processor.New(genService, gitFlameClient, gitFlameClient, logger,
 		cfg.BotGitFlameUsername, cfg.OnboardingURL)
 	consumer := konsumer.NewConsumer(cfg.KafkaBrokers, cfg.KafkaTopic, cfg.KafkaGroup, proc, logger)
 

@@ -31,23 +31,13 @@ func (f *fakeGenerator) Generate(_ context.Context, _ domain.IssueRef) (*domain.
 	return f.result, f.err
 }
 
-type fakePusher struct {
-	branches  []string
+type fakePRCreator struct {
 	reviewers []string
 	prIndex   int64
-	err       error
 	prErr     error
 }
 
-func (f *fakePusher) PushFiles(_ context.Context, _ domain.IssueRef, branch string, _ []domain.GeneratedFile, _ string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.branches = append(f.branches, branch)
-	return nil
-}
-
-func (f *fakePusher) CreatePullRequest(_ context.Context, _ domain.IssueRef, _ string, _, _ string, reviewers []string) (int64, error) {
+func (f *fakePRCreator) CreatePullRequest(_ context.Context, _ domain.IssueRef, _ string, _, _ string, reviewers []string) (int64, error) {
 	if f.prErr != nil {
 		return 0, f.prErr
 	}
@@ -71,8 +61,8 @@ func (f *fakePoster) PostIssueComment(_ context.Context, _ domain.IssueRef, body
 	return nil
 }
 
-func newProc(gen domain.Generator, publisher *fakePusher, poster domain.CommentPoster) *processor.Processor {
-	return processor.New(gen, publisher, publisher, poster, zap.NewNop(), testBotUsername, testOnboardingURL)
+func newProc(gen domain.Generator, prCreator *fakePRCreator, poster domain.CommentPoster) *processor.Processor {
+	return processor.New(gen, prCreator, poster, zap.NewNop(), testBotUsername, testOnboardingURL)
 }
 
 func makeEnvelope(action, deliveryID string) []byte {
@@ -108,7 +98,7 @@ func TestProcess_WrongAction_Skip(t *testing.T) {
 	data, _ := json.Marshal(env)
 
 	gen := &fakeGenerator{}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
@@ -127,7 +117,7 @@ func TestProcess_NotAssignedToBot_Skip(t *testing.T) {
 	data, _ := json.Marshal(env)
 
 	gen := &fakeGenerator{}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
@@ -141,25 +131,23 @@ func TestProcess_NotAssignedToBot_Skip(t *testing.T) {
 func TestProcess_Assigned_Done(t *testing.T) {
 	data := makeEnvelope("assigned", "del-1")
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Summary: "added endpoint",
-		Files:   []domain.GeneratedFile{{Path: "health.go", Content: "package main"}},
+		Branch:       "innoagent-issue-7",
+		Summary:      "added endpoint",
+		ChangedFiles: []domain.ChangedFile{{Path: "health.go", Status: "A"}},
 	}}
-	pusher := &fakePusher{}
+	prCreator := &fakePRCreator{}
 	poster := &fakePoster{}
-	p := newProc(gen, pusher, poster)
+	p := newProc(gen, prCreator, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Done {
 		t.Fatalf("expected Done, got %v", result)
 	}
-	if len(pusher.branches) != 1 || pusher.branches[0] != "innoagent-issue-7" {
-		t.Fatalf("unexpected branches: %v", pusher.branches)
-	}
 	if len(poster.posted) != 1 {
 		t.Fatalf("expected 1 comment, got %d", len(poster.posted))
 	}
-	if len(pusher.reviewers) != 1 || pusher.reviewers[0] != "alice" {
-		t.Fatalf("expected alice as reviewer, got %v", pusher.reviewers)
+	if len(prCreator.reviewers) != 1 || prCreator.reviewers[0] != "alice" {
+		t.Fatalf("expected alice as reviewer, got %v", prCreator.reviewers)
 	}
 }
 
@@ -169,11 +157,12 @@ func TestProcess_Assigned_Done(t *testing.T) {
 func TestProcess_PRCreationPermanentError_DoneWithFailureComment(t *testing.T) {
 	data := makeEnvelope("assigned", "del-pr-fail")
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+		Branch:       "innoagent-issue-7",
+		ChangedFiles: []domain.ChangedFile{{Path: "a.go", Status: "A"}},
 	}}
-	pusher := &fakePusher{prErr: fmt.Errorf("500: %w", domain.ErrPermanent)}
+	prCreator := &fakePRCreator{prErr: fmt.Errorf("500: %w", domain.ErrPermanent)}
 	poster := &fakePoster{}
-	p := newProc(gen, pusher, poster)
+	p := newProc(gen, prCreator, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Done {
@@ -203,26 +192,28 @@ func TestProcess_Assigned_ReviewerIsIssueCreatorNotSender(t *testing.T) {
 	env := event.Envelope{DeliveryID: "del-creator", EventType: "issues", Payload: payload}
 	data, _ := json.Marshal(env)
 
-	pusher := &fakePusher{}
+	prCreator := &fakePRCreator{}
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+		Branch:       "innoagent-issue-8",
+		ChangedFiles: []domain.ChangedFile{{Path: "a.go", Status: "A"}},
 	}}
-	p := newProc(gen, pusher, &fakePoster{})
+	p := newProc(gen, prCreator, &fakePoster{})
 
 	if result := p.Process(context.Background(), data); result != processor.Done {
 		t.Fatalf("expected Done, got %v", result)
 	}
-	if len(pusher.reviewers) != 1 || pusher.reviewers[0] != "creator" {
-		t.Fatalf("expected creator as reviewer, got %v", pusher.reviewers)
+	if len(prCreator.reviewers) != 1 || prCreator.reviewers[0] != "creator" {
+		t.Fatalf("expected creator as reviewer, got %v", prCreator.reviewers)
 	}
 }
 
 func TestProcess_Dedup_ByDeliveryID(t *testing.T) {
 	data := makeEnvelope("assigned", "del-2")
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+		Branch:       "innoagent-issue-7",
+		ChangedFiles: []domain.ChangedFile{{Path: "a.go", Status: "A"}},
 	}}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 
 	r1 := p.Process(context.Background(), data)
 	r2 := p.Process(context.Background(), data)
@@ -239,7 +230,7 @@ func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
 	data := makeEnvelope("assigned", "del-3")
 	gen := &fakeGenerator{err: domain.ErrNotOnboarded}
 	poster := &fakePoster{}
-	p := newProc(gen, &fakePusher{}, poster)
+	p := newProc(gen, &fakePRCreator{}, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Skip {
@@ -253,7 +244,7 @@ func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
 func TestProcess_GenerationTransient_Retries(t *testing.T) {
 	data := makeEnvelope("assigned", "del-4")
 	gen := &fakeGenerator{err: fmt.Errorf("llm down")}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Transient {
@@ -261,32 +252,13 @@ func TestProcess_GenerationTransient_Retries(t *testing.T) {
 	}
 }
 
-func TestProcess_PushPermanentError_Skip(t *testing.T) {
-	data := makeEnvelope("assigned", "del-5")
-	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
-	}}
-	pusher := &fakePusher{err: fmt.Errorf("403: %w", domain.ErrPermanent)}
-	poster := &fakePoster{}
-	p := newProc(gen, pusher, poster)
-
-	result := p.Process(context.Background(), data)
-	if result != processor.Skip {
-		t.Fatalf("expected Skip, got %v", result)
-	}
-	// A permanent failure that isn't going to be retried must still tell the
-	// user — silently skipping leaves them with no idea anything happened.
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 failure comment posted, got %d", len(poster.posted))
-	}
-}
-
 func TestProcess_OpenedWithAssignee_Done(t *testing.T) {
 	data := makeEnvelope("opened", "del-6")
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "main.go", Content: "package main"}},
+		Branch:       "innoagent-issue-7",
+		ChangedFiles: []domain.ChangedFile{{Path: "main.go", Status: "A"}},
 	}}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Done {
@@ -316,9 +288,10 @@ func TestProcess_GitFlameUIPayload_Done(t *testing.T) {
 	data, _ := json.Marshal(env)
 
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "health.go", Content: "package main"}},
+		Branch:       "innoagent-issue-12",
+		ChangedFiles: []domain.ChangedFile{{Path: "health.go", Status: "A"}},
 	}}
-	p := newProc(gen, &fakePusher{}, &fakePoster{})
+	p := newProc(gen, &fakePRCreator{}, &fakePoster{})
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Done {
@@ -330,7 +303,7 @@ func TestProcess_NotOnboarded_PostCommentTransientFail_Transient(t *testing.T) {
 	data := makeEnvelope("assigned", "del-7")
 	gen := &fakeGenerator{err: domain.ErrNotOnboarded}
 	poster := &fakePoster{err: fmt.Errorf("network: %w", domain.ErrTransient)}
-	p := newProc(gen, &fakePusher{}, poster)
+	p := newProc(gen, &fakePRCreator{}, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Transient {
@@ -339,7 +312,7 @@ func TestProcess_NotOnboarded_PostCommentTransientFail_Transient(t *testing.T) {
 }
 
 func TestProcess_UndecodablePayload_Skip(t *testing.T) {
-	p := newProc(&fakeGenerator{}, &fakePusher{}, &fakePoster{})
+	p := newProc(&fakeGenerator{}, &fakePRCreator{}, &fakePoster{})
 	result := p.Process(context.Background(), []byte("not json"))
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
@@ -350,7 +323,7 @@ func TestProcess_GenerationPermanentError_Skip(t *testing.T) {
 	data := makeEnvelope("assigned", "del-8")
 	gen := &fakeGenerator{err: fmt.Errorf("401: %w", domain.ErrPermanent)}
 	poster := &fakePoster{}
-	p := newProc(gen, &fakePusher{}, poster)
+	p := newProc(gen, &fakePRCreator{}, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Skip {
@@ -364,10 +337,11 @@ func TestProcess_GenerationPermanentError_Skip(t *testing.T) {
 func TestProcess_PostCommentError_Transient(t *testing.T) {
 	data := makeEnvelope("assigned", "del-9")
 	gen := &fakeGenerator{result: &domain.GenerationResult{
-		Files: []domain.GeneratedFile{{Path: "a.go", Content: "x"}},
+		Branch:       "innoagent-issue-7",
+		ChangedFiles: []domain.ChangedFile{{Path: "a.go", Status: "A"}},
 	}}
 	poster := &fakePoster{err: errors.New("network error")}
-	p := newProc(gen, &fakePusher{}, poster)
+	p := newProc(gen, &fakePRCreator{}, poster)
 
 	result := p.Process(context.Background(), data)
 	if result != processor.Transient {

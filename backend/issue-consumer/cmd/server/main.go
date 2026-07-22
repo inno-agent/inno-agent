@@ -72,11 +72,8 @@ func main() {
 	var genService domain.Generator
 	if cfg.CodegenAgentURL != "" {
 		mastraClient := mastra.NewClient(cfg.CodegenAgentURL, cfg.CodegenAgentToken)
-		genService = mastra.NewGenerator(mastraClient, logger)
-		// See the CodegenAgentURL doc comment in internal/config: the Mastra
-		// path calls the LLM with no per-user delegated token, unlike the
-		// single-shot fallback below.
-		logger.Info("using Mastra codegen agent (no per-user LLM token attribution)",
+		genService = mastra.NewGenerator(mastraClient, tokenSrc, logger)
+		logger.Info("using Mastra codegen agent with per-user LLM token attribution",
 			zap.String("url", cfg.CodegenAgentURL))
 	} else {
 		llmClient := llm.NewOrchestratorClient(cfg.OrchestratorURL)

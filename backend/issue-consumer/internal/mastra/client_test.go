@@ -34,7 +34,7 @@ func TestClient_Generate_SendsBearerAndTrimsURL(t *testing.T) {
 	c := NewClient(srv.URL+"/", "secret-xyz")
 	out, err := c.Generate(context.Background(), domain.IssueRef{
 		Owner: "o", Repo: "r", Index: 7, Title: "t", Body: "b",
-	})
+	}, "")
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestClient_Generate_NoFilesIsPermanentError(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "")
-	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1})
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "")
 	if err == nil {
 		t.Fatal("expected error for no files")
 	}
@@ -80,7 +80,7 @@ func TestClient_Generate_4xxIsPermanent(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "")
-	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1})
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "")
 	if err == nil {
 		t.Fatal("expected error for 400")
 	}
@@ -96,7 +96,7 @@ func TestClient_Generate_504IsTransient(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "")
-	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1})
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "")
 	if err == nil {
 		t.Fatal("expected error for 504")
 	}
@@ -133,4 +133,85 @@ func isTransient(err error) bool {
 		e = u.Unwrap()
 	}
 	return false
+}
+
+func TestGenerateSendsDelegatedTokenSeparateFromAuth(t *testing.T) {
+	var gotAuth, gotDelegated string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotDelegated = r.Header.Get("X-Delegated-Token")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(codegenResponse{
+			Summary: "s",
+			Files: []codegenFile{
+				{Path: "a.py", Content: "b"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "shared-secret")
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "user-token")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if gotAuth != "Bearer shared-secret" {
+		t.Errorf("Authorization = %q, want the shared secret", gotAuth)
+	}
+	if gotDelegated != "user-token" {
+		t.Errorf("X-Delegated-Token = %q, want user-token", gotDelegated)
+	}
+}
+
+func TestGenerateOmitsDelegatedHeaderWhenTokenEmpty(t *testing.T) {
+	var present bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, present = r.Header["X-Delegated-Token"]
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(codegenResponse{
+			Summary: "s",
+			Files: []codegenFile{
+				{Path: "a.py", Content: "b"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "shared-secret")
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if present {
+		t.Error("X-Delegated-Token sent despite empty token")
+	}
+}
+
+func TestGenerateClassifies401AsTransient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`unauthorized`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "shared-secret")
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "expired")
+	if !isTransient(err) {
+		t.Fatalf("err = %v, want ErrTransient (an expired delegated token is retryable)", err)
+	}
+}
+
+func TestGenerateClassifies403AsPermanent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`forbidden`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "shared-secret")
+	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "valid")
+	if !isPermanent(err) {
+		t.Fatalf("err = %v, want ErrPermanent (token valid, model/quota refused)", err)
+	}
 }

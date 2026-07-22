@@ -65,7 +65,7 @@ type codegenResponse struct {
 // The Mastra service fetches repo context (AGENTS.md, README.md) and runs the
 // code-generator agent itself; this client only forwards the issue ref plus
 // whatever title/body the webhook already carried.
-func (c *Client) Generate(ctx context.Context, ref domain.IssueRef) (*domain.GenerationResult, error) {
+func (c *Client) Generate(ctx context.Context, ref domain.IssueRef, delegatedToken string) (*domain.GenerationResult, error) {
 	payload := codegenRequest{
 		Owner:         ref.Owner,
 		Repo:          ref.Repo,
@@ -92,6 +92,12 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Gen
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 
+	// The delegated user token rides in its own header: Authorization already
+	// carries the shared service secret (actor), this carries the subject.
+	if delegatedToken != "" {
+		req.Header.Set("X-Delegated-Token", delegatedToken)
+	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("mastra: request failed: %w: %w", domain.ErrTransient, err)
@@ -101,6 +107,12 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef) (*domain.Gen
 	if resp.StatusCode != http.StatusOK {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		msg := fmt.Sprintf("mastra: status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+
+		// 401 almost always means an expired delegated token; a retry mints a
+		// fresh one, so treat it as transient rather than dropping the task.
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("%s: %w", msg, domain.ErrTransient)
+		}
 
 		// 408/429 are 4xx but describe load, not a bad request: retry them.
 		// Classifying 429 as permanent silently drops the issue on rate limit.

@@ -3,6 +3,7 @@ import { Hono } from "hono"
 import { mastra } from "./mastra/index"
 import { z } from "zod"
 import { randomUUID } from "crypto"
+import { requestContextFromHeaders, hasDelegatedToken } from "./services/delegated-token"
 
 // ─── Hono typed context ─────────────────────────────────────────────────────
 
@@ -191,6 +192,13 @@ app.post("/review", async (c) => {
 
   const { owner, repo, pullNumber, headSha } = parsed.data
 
+  const requestContext = requestContextFromHeaders((n) => c.req.header(n))
+  if (!hasDelegatedToken(requestContext)) {
+    // The consumer always sends X-Delegated-Token on the success path; its
+    // absence is a contract violation, not something a retry fixes.
+    return c.json({ error: "missing X-Delegated-Token" }, 400)
+  }
+
   // Check cache first
   const cacheKey = `${owner}/${repo}#${pullNumber}@${headSha}`
   const cached = getCachedReview(cacheKey)
@@ -210,6 +218,7 @@ app.post("/review", async (c) => {
     // Fix 7: Rate limiting
     const resultPromise = runSlot(() => run.start({
       inputData: { owner, repo, pullNumber, headSha },
+      requestContext,
     }))
 
     const result = await withTimeout(resultPromise, REVIEW_TIMEOUT_MS, "Review") as any
@@ -255,6 +264,13 @@ app.post("/codegen", async (c) => {
     return c.json({ error: "Invalid request", details: parsed.error }, 400)
   }
 
+  const requestContext = requestContextFromHeaders((n) => c.req.header(n))
+  if (!hasDelegatedToken(requestContext)) {
+    // The consumer always sends X-Delegated-Token on the success path; its
+    // absence is a contract violation, not something a retry fixes.
+    return c.json({ error: "missing X-Delegated-Token" }, 400)
+  }
+
   const { owner, repo, issueNumber } = parsed.data
 
   console.log(`[${requestId}] Starting codegen for ${owner}/${repo}#${issueNumber}`)
@@ -263,7 +279,7 @@ app.post("/codegen", async (c) => {
     const workflow = mastra.getWorkflow("codegenPipeline")
     const run = await workflow.createRun()
 
-    const resultPromise = runSlot(() => run.start({ inputData: parsed.data }))
+    const resultPromise = runSlot(() => run.start({ inputData: parsed.data, requestContext }))
 
     const result = await withTimeout(resultPromise, CODEGEN_TIMEOUT_MS, "Codegen") as any
 

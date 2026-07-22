@@ -51,15 +51,16 @@ type codegenRequest struct {
 	Body          string `json:"body,omitempty"`
 }
 
-type codegenFile struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
+type codegenChangedFile struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
 }
 
 type codegenResponse struct {
-	Summary  string        `json:"summary"`
-	Files    []codegenFile `json:"files"`
-	Verified bool          `json:"verified"`
+	Summary      string               `json:"summary"`
+	Branch       string               `json:"branch"`
+	Verified     bool                 `json:"verified"`
+	ChangedFiles []codegenChangedFile `json:"changedFiles"`
 }
 
 // Generate calls the Mastra /codegen endpoint and returns the generated files.
@@ -151,24 +152,22 @@ func (c *Client) Generate(ctx context.Context, ref domain.IssueRef, delegatedTok
 		return nil, fmt.Errorf("mastra: decode: %w: %w", domain.ErrTransient, err)
 	}
 
-	files := make([]domain.GeneratedFile, 0, len(result.Files))
-	for _, f := range result.Files {
+	if result.Branch == "" {
+		return nil, fmt.Errorf("mastra: codegen returned no branch: %w", domain.ErrPermanent)
+	}
+
+	changed := make([]domain.ChangedFile, 0, len(result.ChangedFiles))
+	for _, f := range result.ChangedFiles {
 		if f.Path == "" {
 			continue
 		}
-		files = append(files, domain.GeneratedFile{
-			Path:    f.Path,
-			Content: f.Content,
-		})
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("mastra: codegen returned no files: %w", domain.ErrPermanent)
+		changed = append(changed, domain.ChangedFile{Path: f.Path, Status: f.Status})
 	}
 
 	return &domain.GenerationResult{
-		Files:    files,
-		Summary:  result.Summary,
-		Verified: result.Verified,
+		Branch:       result.Branch,
+		ChangedFiles: changed,
+		Summary:      result.Summary,
+		Verified:     result.Verified,
 	}, nil
 }

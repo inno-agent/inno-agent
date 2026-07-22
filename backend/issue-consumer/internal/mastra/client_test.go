@@ -24,8 +24,9 @@ func TestClient_Generate_SendsBearerAndTrimsURL(t *testing.T) {
 
 		_ = json.NewEncoder(w).Encode(codegenResponse{
 			Summary: "ok",
-			Files: []codegenFile{
-				{Path: "main.py", Content: "print('hi')"},
+			Branch:  "innoagent-issue-7",
+			ChangedFiles: []codegenChangedFile{
+				{Path: "main.py", Status: "A"},
 			},
 		})
 	}))
@@ -38,8 +39,11 @@ func TestClient_Generate_SendsBearerAndTrimsURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(out.Files) != 1 || out.Files[0].Path != "main.py" {
-		t.Fatalf("files = %+v", out.Files)
+	if out.Branch != "innoagent-issue-7" {
+		t.Fatalf("branch = %q", out.Branch)
+	}
+	if len(out.ChangedFiles) != 1 || out.ChangedFiles[0].Path != "main.py" {
+		t.Fatalf("changedFiles = %+v", out.ChangedFiles)
 	}
 	if out.Summary != "ok" {
 		t.Fatalf("summary = %q", out.Summary)
@@ -55,18 +59,18 @@ func TestClient_Generate_SendsBearerAndTrimsURL(t *testing.T) {
 	}
 }
 
-func TestClient_Generate_NoFilesIsPermanentError(t *testing.T) {
+func TestClient_Generate_NoBranchIsPermanentError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(codegenResponse{Summary: "empty", Files: nil})
+		_ = json.NewEncoder(w).Encode(codegenResponse{Summary: "empty", Branch: ""})
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "")
 	_, err := c.Generate(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 1}, "")
 	if err == nil {
-		t.Fatal("expected error for no files")
+		t.Fatal("expected error for no branch")
 	}
-	// 200 with empty files is a permanent error (the agent produced nothing usable).
+	// 200 with no branch is a permanent error (the agent never pushed anything).
 	if !isPermanent(err) {
 		t.Fatalf("expected permanent error, got: %v", err)
 	}
@@ -143,8 +147,9 @@ func TestGenerateSendsDelegatedTokenSeparateFromAuth(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(codegenResponse{
 			Summary: "s",
-			Files: []codegenFile{
-				{Path: "a.py", Content: "b"},
+			Branch:  "innoagent-issue-1",
+			ChangedFiles: []codegenChangedFile{
+				{Path: "a.py", Status: "A"},
 			},
 		})
 	}))
@@ -171,8 +176,9 @@ func TestGenerateOmitsDelegatedHeaderWhenTokenEmpty(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(codegenResponse{
 			Summary: "s",
-			Files: []codegenFile{
-				{Path: "a.py", Content: "b"},
+			Branch:  "innoagent-issue-1",
+			ChangedFiles: []codegenChangedFile{
+				{Path: "a.py", Status: "A"},
 			},
 		})
 	}))

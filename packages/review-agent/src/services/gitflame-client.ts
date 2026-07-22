@@ -35,6 +35,27 @@ export class GitFlameClient {
     this.maxRetries = 3
   }
 
+  // getAuthenticatedCloneUrl builds a clone URL with the bot token embedded as
+  // basic-auth credentials, in the x-access-token:<token>@ form GitFlame's
+  // Gitea-compatible smart-HTTP endpoint accepts. Used by codegen's real git
+  // clone/push instead of the archive-snapshot + Contents-API dance.
+  getAuthenticatedCloneUrl(owner: string, repo: string): string {
+    const u = new URL(this.baseUrl)
+    u.username = "x-access-token"
+    u.password = this.token
+    u.pathname = `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}.git`
+    return u.toString()
+  }
+
+  // redactToken strips the bot token out of arbitrary text (git command
+  // output, error messages) before it can reach a log line or, worse, a
+  // public issue comment. git clone/fetch errors routinely echo the remote
+  // URL — which contains this token — verbatim.
+  redactToken(text: string): string {
+    if (!this.token) return text
+    return text.split(this.token).join("***")
+  }
+
   private async requestWithRetry<T>(path: string, retries = this.maxRetries): Promise<T> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {

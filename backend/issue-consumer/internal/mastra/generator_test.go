@@ -52,8 +52,9 @@ func TestGeneratorSkipsClientWhenNotOnboarded(t *testing.T) {
 func TestGeneratorForwardsToken(t *testing.T) {
 	client := &countingGenerateClient{resp: &domain.GenerationResult{
 		Summary: "test",
-		Files: []domain.GeneratedFile{
-			{Path: "main.py", Content: "print('hi')"},
+		Branch:  "innoagent-issue-1",
+		ChangedFiles: []domain.ChangedFile{
+			{Path: "main.py", Status: "A"},
 		},
 	}}
 	src := &stubTokenSource{token: "user-token"}

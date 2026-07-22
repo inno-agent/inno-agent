@@ -292,10 +292,11 @@ app.post("/codegen", async (c) => {
 
     if (result.status === "success") {
       const out = result.result
-      console.log(`[${requestId}] Codegen completed: ${out.files?.length || 0} files (verified: ${out.verified === true})`)
+      console.log(`[${requestId}] Codegen completed: branch ${out.branch}, ${out.changedFiles?.length || 0} files (verified: ${out.verified === true})`)
       return c.json({
         summary: out.summary || "",
-        files: out.files || [],
+        branch: out.branch || "",
+        changedFiles: out.changedFiles || [],
         verified: out.verified === true,
       })
     }

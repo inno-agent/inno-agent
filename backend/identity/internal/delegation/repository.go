@@ -31,6 +31,20 @@ func (r *Repository) Grant(ctx context.Context, userID, clientID string) error {
 	return nil
 }
 
+// Revoke marks the grant for (userID, clientID) as revoked. A no-op — zero
+// rows affected, not an error — if no matching grant exists or it is already
+// revoked, so callers can retry unconditionally after a partial failure.
+func (r *Repository) Revoke(ctx context.Context, userID, clientID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE delegation_grants SET revoked_at = now()
+		WHERE user_id = $1 AND client_id = $2
+	`, userID, clientID)
+	if err != nil {
+		return fmt.Errorf("delegation: revoke: %w", err)
+	}
+	return nil
+}
+
 // HasValidGrant reports whether an active, non-expired grant exists for (userID, clientID).
 func (r *Repository) HasValidGrant(ctx context.Context, userID, clientID string) (bool, error) {
 	var exists bool

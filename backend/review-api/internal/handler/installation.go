@@ -17,11 +17,14 @@ import (
 type InstallationStore interface {
 	Upsert(ctx context.Context, gitflameUsername, userID string) error
 	GetGitFlameUsername(ctx context.Context, userID string) (string, error)
+	Delete(ctx context.Context, userID string) error
 }
 
-// DelegationGranter creates delegation grants in identity on behalf of a user.
+// DelegationGranter creates and revokes delegation grants in identity on
+// behalf of a user.
 type DelegationGranter interface {
 	GrantDelegation(ctx context.Context, userToken, clientID string) error
+	RevokeDelegation(ctx context.Context, userToken, clientID string) error
 }
 
 type installationRequest struct {
@@ -118,4 +121,37 @@ func (h *InstallationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, installationResponse{GitFlameUsername: username})
+}
+
+// Erase handles DELETE /api/v1/installations/me. Revokes the delegation grant
+// first, then deletes the installations row. Order matters: if revoke fails,
+// nothing has changed and the caller can retry with no cleanup needed: if
+// revoke succeeds but delete fails, HasValidGrant already returns false for
+// this user, so the mapping row being briefly stale is safe rather than a
+// live dangling permission. Both underlying operations are idempotent, so a
+// retry after either failure — or a call with nothing currently linked —
+// completes cleanly.
+func (h *InstallationHandler) Erase(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	userToken := middleware.TokenFromContext(ctx)
+	if err := h.grantor.RevokeDelegation(ctx, userToken, h.reviewClientID); err != nil {
+		h.logger.Error("revoke delegation", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+
+	if err := h.store.Delete(ctx, userID); err != nil {
+		h.logger.Error("delete installation", zap.Error(err))
+		writeError(w, http.StatusInternalServerError, "internal")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

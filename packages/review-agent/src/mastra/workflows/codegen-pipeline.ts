@@ -150,7 +150,10 @@ async function verify(runId: string): Promise<{ ok: boolean; output: string }> {
   const exec = getSandboxClient()
   const build = await exec.exec(
     runId,
-    "if [ -f go.mod ]; then go build ./...; elif [ -f package.json ]; then npm run build 2>/dev/null || npx tsc --noEmit; else echo 'no build system'; fi",
+    // go mod tidy before build: keeps go.sum in sync with newly imported
+    // packages deterministically, instead of depending on the model to know
+    // to run it after seeing a "missing go.sum entry" build error.
+    "if [ -f go.mod ]; then go mod tidy && go build ./...; elif [ -f package.json ]; then npm run build 2>/dev/null || npx tsc --noEmit; else echo 'no build system'; fi",
     180,
   )
   if (build.exit_code !== 0) {
@@ -174,9 +177,12 @@ async function verify(runId: string): Promise<{ ok: boolean; output: string }> {
 // this makes that distinguishable from the logs alone.
 function summarizeGenerate(label: string, result: { text?: string; toolCalls?: unknown[] }): void {
   const calls = Array.isArray(result.toolCalls) ? result.toolCalls : []
+  // toolName/args live under .payload (ToolCallChunk/AgentRunToolCall shape),
+  // not on the call object itself — reading them directly silently prints
+  // blank names.
   const names = calls
-    .map((c) => (c as { toolName?: string; args?: { path?: string } }))
-    .map((c) => (c.args?.path ? `${c.toolName}(${c.args.path})` : c.toolName))
+    .map((c) => (c as { payload?: { toolName?: string; args?: { path?: string } } }).payload)
+    .map((p) => (p?.args?.path ? `${p.toolName}(${p.args.path})` : p?.toolName))
     .join(", ")
   console.log(
     `[codegen] ${label}: ${calls.length} tool call(s)${names ? ` [${names}]` : ""}, ` +

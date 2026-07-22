@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -193,7 +194,10 @@ func (c *Client) CreatePullRequest(
 		_ = c.addPullRequestReviewers(ctx, ref, prIndex, reviewers)
 	}
 
-	_ = c.linkPullRequestToIssue(ctx, ref, prIndex)
+	if linkErr := c.linkPullRequestToIssue(ctx, ref, prIndex); linkErr != nil {
+		log.Printf("gitflame: link pull request #%d to issue %s/%s#%d failed: %v",
+			prIndex, ref.Owner, ref.Repo, ref.Index, linkErr)
+	}
 
 	return prIndex, nil
 }

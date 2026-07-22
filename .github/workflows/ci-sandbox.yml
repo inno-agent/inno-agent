@@ -1,0 +1,61 @@
+name: CI Sandbox
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "sandbox/**"
+      - ".github/workflows/ci-sandbox.yml"
+  push:
+    branches: [main]
+    paths:
+      - "sandbox/**"
+      - ".github/workflows/ci-sandbox.yml"
+
+concurrency:
+  group: ci-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sandbox
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: sandbox/go.mod
+
+      - name: Test and build
+        run: |
+          go mod download
+          go test -race ./...
+          go build ./...
+
+      - name: Format check
+        run: |
+          fmt_out="$(gofmt -l .)"
+          if [ -n "$fmt_out" ]; then
+            echo "gofmt found unformatted files:"
+            echo "$fmt_out"
+            exit 1
+          fi
+
+  docker-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: sandbox
+          file: sandbox/Dockerfile
+          push: false

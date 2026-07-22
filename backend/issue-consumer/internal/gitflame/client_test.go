@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/domain"
@@ -147,5 +150,111 @@ func TestCreatePullRequest_NotConfigured(t *testing.T) {
 	}
 	if !errors.Is(err, domain.ErrPermanent) {
 		t.Fatalf("error %v is not domain.ErrPermanent", err)
+	}
+}
+
+// linkPullRequestToIssue's PATCH is a full-replace, not a merge (confirmed
+// from a real GitFlame network trace): it must round-trip every editable
+// field it read via GET, or a "harmless" dependency link silently wipes the
+// issue's title/body/assignees/labels/milestone. This is the load-bearing
+// assertion — every field below must come back unchanged except dependencies.
+func TestLinkPullRequestToIssue_PreservesFieldsAndMergesDependencies(t *testing.T) {
+	var gotPatch map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"title": "Add DELETE /tasks/{id} and a completion toggle",
+				"body": [{"id": 2208, "body": "<p>desc</p>", "mime": "text", "size": 1, "name": "", "type": "text"}],
+				"assignees": [{"login": "innoagent"}],
+				"labels": [{"id": 3}],
+				"milestone": null,
+				"dependencies": [{"id": 5700, "number": 5, "title": "old dep", "state": "open"}]
+			}`))
+		case http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			if err := json.Unmarshal(body, &gotPatch); err != nil {
+				t.Fatalf("PATCH body not JSON: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "test-token")
+	err := c.linkPullRequestToIssue(context.Background(), domain.IssueRef{Owner: "askarr", Repo: "pyfile", Index: 6}, 7)
+	if err != nil {
+		t.Fatalf("linkPullRequestToIssue: %v", err)
+	}
+
+	if gotPatch["title"] != "Add DELETE /tasks/{id} and a completion toggle" {
+		t.Errorf("title changed: %v", gotPatch["title"])
+	}
+	if gotPatch["milestone"] != float64(0) {
+		t.Errorf("milestone = %v, want 0 (null milestone round-trips to 0)", gotPatch["milestone"])
+	}
+	assignees, _ := gotPatch["assignees"].([]any)
+	if len(assignees) != 1 || assignees[0] != "innoagent" {
+		t.Errorf("assignees = %v, want [innoagent]", gotPatch["assignees"])
+	}
+	labels, _ := gotPatch["labels"].([]any)
+	if len(labels) != 1 || labels[0] != float64(3) {
+		t.Errorf("labels = %v, want [3]", gotPatch["labels"])
+	}
+	body, _ := gotPatch["body"].([]any)
+	if len(body) != 1 {
+		t.Fatalf("body = %v, want 1 block", gotPatch["body"])
+	}
+	block, _ := body[0].(map[string]any)
+	if _, hasID := block["id"]; hasID {
+		t.Error("body block still has response-only id field")
+	}
+	if block["body"] != "<p>desc</p>" {
+		t.Errorf("body text changed: %v", block["body"])
+	}
+
+	deps, _ := gotPatch["dependencies"].([]any)
+	got := map[float64]bool{}
+	for _, d := range deps {
+		got[d.(float64)] = true
+	}
+	if !got[5] || !got[7] || len(got) != 2 {
+		t.Errorf("dependencies = %v, want [5, 7]", deps)
+	}
+}
+
+// Re-linking an already-linked PR (issue reassignment retries the whole run)
+// must not duplicate the dependency entry.
+func TestLinkPullRequestToIssue_AlreadyLinked_NoDuplicate(t *testing.T) {
+	var gotPatch map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"title": "t", "body": [], "assignees": [], "labels": [], "milestone": null,
+				"dependencies": [{"id": 5737, "number": 7, "title": "already linked", "state": "open"}]
+			}`))
+		case http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &gotPatch)
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "test-token")
+	if err := c.linkPullRequestToIssue(context.Background(), domain.IssueRef{Owner: "o", Repo: "r", Index: 6}, 7); err != nil {
+		t.Fatalf("linkPullRequestToIssue: %v", err)
+	}
+
+	deps, _ := gotPatch["dependencies"].([]any)
+	if len(deps) != 1 || deps[0] != float64(7) {
+		t.Errorf("dependencies = %v, want exactly [7] (no duplicate)", deps)
 	}
 }

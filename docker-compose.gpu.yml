@@ -5,7 +5,7 @@ services:
     image: ollama/ollama:0.30.11
     restart: unless-stopped
     ports:
-      - "${GPU_SERVER_PORT}:11434"
+      - "${GPU_SERVER_PORT:-11434}:11434"
     volumes:
       - ./.ollama:/root/.ollama
     environment:
@@ -22,6 +22,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    volumes:
+      - ./.vllm-cache:/root/.cache/huggingface
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    command: >
+      --model Qwen/Qwen2.5-Coder-32B-Instruct
+      --served-model-name qwen2.5-coder-32b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --max-model-len 32768
+      --gpu-memory-utilization 0.9
+      --trust-remote-code
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
     deploy:
       resources:
         reservations:

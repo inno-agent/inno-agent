@@ -19,24 +19,36 @@ type RouteInfo struct {
 }
 
 type AIOrchestrator struct {
-	provider       llm.Provider
+	ollamaProvider llm.Provider
+	vllmProvider   llm.Provider
 	routerProvider llm.Provider
+	vllmModels     map[string]bool
 	routes         []RouteInfo
 	models         []string
 	logger         *zap.Logger
 }
 
-func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string, logger *zap.Logger) *AIOrchestrator {
+func New(ollamaProvider llm.Provider, vllmProvider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string, vllmModels map[string]bool, logger *zap.Logger) *AIOrchestrator {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	return &AIOrchestrator{
-		provider:       provider,
+		ollamaProvider: ollamaProvider,
+		vllmProvider:   vllmProvider,
 		routerProvider: routerProvider,
+		vllmModels:     vllmModels,
 		routes:         routes,
 		models:         models,
 		logger:         logger,
 	}
+}
+
+// selectProvider returns the appropriate provider for the given model.
+func (o *AIOrchestrator) selectProvider(modelName string) llm.Provider {
+	if o.vllmModels[modelName] {
+		return o.vllmProvider
+	}
+	return o.ollamaProvider
 }
 
 func (o *AIOrchestrator) route(ctx context.Context, messages []llm.Message) string {
@@ -126,10 +138,12 @@ func (o *AIOrchestrator) resolveModel(ctx context.Context, messages []llm.Messag
 
 func (o *AIOrchestrator) Ask(ctx context.Context, messages []llm.Message, modelName string) (string, error) {
 	resolved := o.resolveModel(ctx, messages, modelName)
-	return o.provider.Chat(ctx, messages, resolved)
+	provider := o.selectProvider(resolved)
+	return provider.Chat(ctx, messages, resolved)
 }
 
 func (o *AIOrchestrator) AskStream(ctx context.Context, messages []llm.Message, modelName string) (<-chan string, error) {
 	resolved := o.resolveModel(ctx, messages, modelName)
-	return o.provider.Stream(ctx, messages, resolved)
+	provider := o.selectProvider(resolved)
+	return provider.Stream(ctx, messages, resolved)
 }

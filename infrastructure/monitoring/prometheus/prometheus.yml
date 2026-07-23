@@ -74,6 +74,12 @@ scrape_configs:
           layer: ai
           env: local
       - targets:
+          - http://vllm:8000/health
+        labels:
+          service: vllm
+          layer: ai
+          env: local
+      - targets:
           - http://authentik-server:9000/-/health/live/
         labels:
           service: authentik-server

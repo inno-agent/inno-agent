@@ -48,6 +48,7 @@ func main() {
 	log.Info(
 		"starting InnoAgent orchestrator",
 		zap.String("ollama_base_url", cfg.BaseURL),
+		zap.String("vllm_base_url", cfg.VLLMBaseURL),
 		zap.String("model", cfg.Model),
 		zap.String("api_port", cfg.ServerPort),
 	)
@@ -57,9 +58,17 @@ func main() {
 		log.Fatal("failed to load catalog", zap.Error(err))
 	}
 
-	provider := llm.NewQwenProvider(
+	// Ollama provider for lightweight models (Fast, General)
+	ollamaProvider := llm.NewQwenProvider(
 		cfg.BaseURL,
 		llm.WithModel(cfg.Model),
+		llm.WithAPIKey(cfg.APIKey),
+	)
+
+	// vLLM provider for code model (Qwen2.5-Coder-32B)
+	vllmProvider := llm.NewQwenProvider(
+		cfg.VLLMBaseURL+"/v1",
+		llm.WithModel("qwen2.5-coder-32b"),
 		llm.WithAPIKey(cfg.APIKey),
 	)
 
@@ -78,7 +87,12 @@ func main() {
 		}
 	}
 
-	orch := orchestrator.New(provider, routerProvider, routes, cfg.Models, log)
+	// vLLM code model IDs that should be routed to vLLM instead of Ollama
+	vllmModels := map[string]bool{
+		"qwen2.5-coder-32b": true,
+	}
+
+	orch := orchestrator.New(ollamaProvider, vllmProvider, routerProvider, routes, cfg.Models, vllmModels, log)
 	identityClient := auth.NewClient(cfg.IdentityURL)
 
 	telemetry.Init("orchestrator")

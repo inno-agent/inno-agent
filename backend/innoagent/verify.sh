@@ -6,8 +6,10 @@ cd "$(dirname "$0")"
 source .env 2>/dev/null || true
 
 OLLAMA_PORT="${OLLAMA_PORT:-11434}"
+VLLM_PORT="${VLLM_PORT:-8000}"
 API_PORT="${API_PORT:-8080}"
 MODEL_NAME="${MODEL_NAME:-qwen2.5:0.5b}"
+CODE_MODEL="${CODE_MODEL:-qwen2.5-coder-32b}"
 
 PASS=0
 FAIL=0
@@ -52,7 +54,34 @@ except Exception:
 fi
 
 echo ""
-echo "--- [3] Orchestrator health ---"
+echo "--- [3] vLLM health (Code model) ---"
+if curl -sf "http://localhost:${VLLM_PORT}/health" > /dev/null 2>&1; then
+  ok "vLLM is responding on port ${VLLM_PORT}"
+else
+  fail "vLLM not reachable at http://localhost:${VLLM_PORT}/health"
+fi
+
+echo ""
+echo "--- [4] vLLM model availability ---"
+VLLM_MODELS=$(curl -sf "http://localhost:${VLLM_PORT}/v1/models" 2>/dev/null || echo "{}")
+if echo "$VLLM_MODELS" | grep -q "\"${CODE_MODEL}\""; then
+  ok "Code model '${CODE_MODEL}' is present in vLLM"
+else
+  fail "Code model '${CODE_MODEL}' NOT found in vLLM"
+  info "Available models:"
+  echo "$VLLM_MODELS" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for m in d.get('data', []):
+        print('    -', m.get('id','?'))
+except Exception:
+    print('    (could not parse model list)')
+"
+fi
+
+echo ""
+echo "--- [5] Orchestrator health ---"
 HEALTH=$(curl -sf "http://localhost:${API_PORT}/health" 2>/dev/null || echo "")
 if [ -n "$HEALTH" ]; then
   ok "Orchestrator /health responded"
@@ -84,7 +113,8 @@ echo "============================================"
 if [ "$FAIL" -gt 0 ]; then
   echo ""
   echo "Troubleshooting tips:"
-  echo "  docker compose logs innoagent-ollama"
+  echo "  docker compose logs ollama"
+  echo "  docker compose logs vllm"
   echo "  docker compose logs orchestrator"
   exit 1
 fi

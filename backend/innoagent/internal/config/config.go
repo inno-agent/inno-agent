@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	BaseURL     string
+	VLLMBaseURL string
 	APIKey      string
 	Models      []string
 	Model       string
@@ -33,6 +34,11 @@ func Load() Config {
 	}
 
 	apiKey := os.Getenv("OLLAMA_API_KEY")
+
+	vllmBaseURL := os.Getenv("VLLM_BASE_URL")
+	if vllmBaseURL == "" {
+		vllmBaseURL = "http://vllm:8000"
+	}
 
 	// LLM_MODELS is the single source of truth for which models exist. The first
 	// entry is the default (used when a request omits the model).
@@ -61,6 +67,7 @@ func Load() Config {
 
 	return Config{
 		BaseURL:     baseURL,
+		VLLMBaseURL: vllmBaseURL,
 		APIKey:      apiKey,
 		Models:      models,
 		Model:       models[0],

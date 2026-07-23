@@ -304,7 +304,7 @@ services:
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_API_KEY: ""
-      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
       OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
     entrypoint: ["sh", "/scripts/ollama-pull.sh"]
@@ -330,7 +330,7 @@ services:
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
       OLLAMA_RETRY_MAX: ${OLLAMA_RETRY_MAX:-3}
     entrypoint: ["sh", "/scripts/ollama-pull.sh"]
@@ -343,6 +343,42 @@ services:
       retries: 3
       start_period: 120s
     restart: "no"
+
+  # ─── vLLM (Code model — heavy GPU inference for PR review) ────────────────
+  vllm:
+    profiles: ["local"]
+    image: vllm/vllm-openai:latest
+    restart: unless-stopped
+    networks:
+      - innoagent
+    volumes:
+      - ./.vllm-cache:/root/.cache/huggingface
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    command: >
+      --model Qwen/Qwen2.5-Coder-32B-Instruct
+      --served-model-name qwen2.5-coder-32b
+      --host 0.0.0.0
+      --port 8000
+      --dtype auto
+      --max-model-len 32768
+      --gpu-memory-utilization 0.9
+      --trust-remote-code
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ─── AI Orchestrator ──────────────────────────────────────────────────────
   orchestrator:
@@ -358,9 +394,10 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
-      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b qwen2.5-coder-32b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
     depends_on:
       jaeger:
@@ -415,7 +452,7 @@ services:
       KAFKA_GROUP: review-consumer
       ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
-      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder-32b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       # Service credentials auth: bot authenticates as itself via identity.
@@ -456,7 +493,7 @@ services:
       KAFKA_GROUP: issue-consumer
       ORCHESTRATOR_URL: http://orchestrator:8080
       ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
-      CODEGEN_MODEL: ${CODEGEN_MODEL:-qwen2.5-coder:1.5b}
+      CODEGEN_MODEL: ${CODEGEN_MODEL:-qwen2.5-coder-32b}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
       IDENTITY_URL: http://identity:8081
@@ -487,11 +524,11 @@ services:
     environment:
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
       GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
-      # Direct Ollama bypasses orchestrator + arch-router (~200-500ms saved per review).
-      # Falls back to orchestrator if OLLAMA_BASE_URL is empty.
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      # Direct vLLM bypasses orchestrator + arch-router (~200-500ms saved per review).
+      # Falls back to orchestrator if VLLM_BASE_URL is empty.
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
       ORCHESTRATOR_URL: http://orchestrator:8080
-      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder-32b}
       REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
       SANDBOX_URL: http://sandbox:8080
       SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}

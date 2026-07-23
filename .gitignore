@@ -17,4 +17,7 @@ infrastructure/nginx/certs/*.pem
 # Локальные модели ollama (bind-mount, переживают down -v)
 .ollama/
 
+# vLLM model cache (bind-mount, переживают down -v)
+.vllm-cache/
+
 .gocache/

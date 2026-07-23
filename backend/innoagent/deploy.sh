@@ -15,7 +15,7 @@ else
 fi
 
 echo "[2/4] Pulling latest base images..."
-docker compose pull innoagent-ollama
+docker compose pull ollama vllm 2>/dev/null || docker compose pull ollama
 
 echo "[3/4] Rebuilding orchestrator image..."
 docker compose build --no-cache orchestrator

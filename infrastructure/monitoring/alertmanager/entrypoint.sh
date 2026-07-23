@@ -13,7 +13,9 @@ case "$TELEGRAM_CHAT_ID" in
 esac
 
 mkdir -p /alertmanager/data
-chown -R nobody:nobody /alertmanager/data
+if ! chown -R nobody:nobody /alertmanager/data 2>/dev/null; then
+  echo "warning: could not chown /alertmanager/data — continuing (volume may already have correct ownership)" >&2
+fi
 
 sed \
   -e "s|__TELEGRAM_BOT_TOKEN__|${TELEGRAM_BOT_TOKEN}|g" \

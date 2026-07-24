@@ -94,11 +94,11 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}:${{ steps.sha.outputs.short }}
 
-  deploy:
+  deploy-dev:
     needs: build-and-push
     runs-on: [self-hosted, agr01]
     concurrency:
-      group: deploy-production
+      group: deploy-dev
       cancel-in-progress: false
     permissions:
       contents: read
@@ -124,7 +124,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy
+      - name: Deploy dev
         env:
           TAG: ${{ steps.sha.outputs.short }}
-        run: ./scripts/prod.sh
+        run: ./scripts/dev.sh

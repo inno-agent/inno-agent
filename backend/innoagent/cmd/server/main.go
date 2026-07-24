@@ -39,6 +39,66 @@ type HealthResponse struct {
 	BaseURL string `json:"base_url"`
 }
 
+// OpenAI-compatible types for /v1/chat/completions endpoint
+type OpenAIChatRequest struct {
+	Model    string           `json:"model"`
+	Messages []OpenAIMessage  `json:"messages"`
+	Stream   bool             `json:"stream"`
+}
+
+type OpenAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type OpenAIChatResponse struct {
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Choices []OpenAIChoice `json:"choices"`
+	Model   string         `json:"model"`
+	Usage   OpenAIUsage    `json:"usage"`
+}
+
+type OpenAIChoice struct {
+	Index        int          `json:"index"`
+	Message      OpenAIMessage `json:"message"`
+	FinishReason string       `json:"finish_reason"`
+}
+
+type OpenAIUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+type OpenAIChatChunkResponse struct {
+	ID      string              `json:"id"`
+	Object  string              `json:"object"`
+	Choices []OpenAIChunkChoice `json:"choices"`
+	Model   string              `json:"model"`
+}
+
+type OpenAIChunkChoice struct {
+	Index        int              `json:"index"`
+	Delta        OpenAIChunkDelta `json:"delta"`
+	FinishReason *string          `json:"finish_reason"`
+}
+
+type OpenAIChunkDelta struct {
+	Role    string `json:"role,omitempty"`
+	Content string `json:"content,omitempty"`
+}
+
+type OpenAIErrorResponse struct {
+	Error OpenAIError `json:"error"`
+}
+
+type OpenAIError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    any    `json:"code,omitempty"`
+}
+
 func main() {
 	cfg := config.Load()
 
@@ -127,6 +187,112 @@ func main() {
 			Model:   cfg.Model,
 			BaseURL: cfg.BaseURL,
 		})
+	})
+
+	// ─── OpenAI-compatible /v1/chat/completions endpoint ────────────────────────
+	// Returns responses in OpenAI format so Mastra and other OpenAI clients can
+	// use the orchestrator directly (instead of bypassing to vLLM).
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		token := auth.Bearer(r)
+		if token == "" {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		if _, err := identityClient.Validate(r.Context(), token); err != nil {
+			if errors.Is(err, auth.ErrUnauthorized) {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			} else {
+				http.Error(w, `{"error":"identity unavailable"}`, http.StatusBadGateway)
+			}
+			return
+		}
+
+		var req OpenAIChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+
+		if len(req.Messages) == 0 {
+			http.Error(w, `{"error":"messages field is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Convert OpenAI messages to our internal format
+		messages := make([]llm.Message, len(req.Messages))
+		for i, m := range req.Messages {
+			messages[i] = llm.Message{Role: m.Role, Content: m.Content}
+		}
+
+		modelName := req.Model
+		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		defer cancel()
+
+		if req.Stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("X-Accel-Buffering", "no")
+
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, `{"error":"streaming not supported"}`, http.StatusInternalServerError)
+				return
+			}
+
+			ch, err := orch.AskStream(ctx, messages, modelName)
+			if err != nil {
+				data, _ := json.Marshal(OpenAIErrorResponse{Error: OpenAIError{Message: err.Error()}})
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+					log.Error("failed to write error response", zap.Error(err))
+				}
+				flusher.Flush()
+				return
+			}
+
+			for chunk := range ch {
+				chunkResp := OpenAIChatChunkResponse{
+					ID:    "chatcmpl-stream",
+					Model: modelName,
+					Choices: []OpenAIChunkChoice{{
+						Index: 0,
+						Delta: OpenAIChunkDelta{Content: chunk},
+					}},
+				}
+				data, _ := json.Marshal(chunkResp)
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+					log.Error("failed to write chunk", zap.Error(err))
+				}
+				flusher.Flush()
+			}
+			if _, err := fmt.Fprintf(w, "data: [DONE]\n\n"); err != nil {
+				log.Error("failed to write DONE signal", zap.Error(err))
+			}
+			flusher.Flush()
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		answer, err := orch.Ask(ctx, messages, modelName)
+		if err != nil {
+			log.Error("orchestrator error", zap.Error(err))
+			http.Error(w, `{"error":"model inference failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		resp := OpenAIChatResponse{
+			ID:      "chatcmpl-" + fmt.Sprintf("%d", time.Now().UnixNano()),
+			Object:  "chat.completion",
+			Model:   modelName,
+			Choices: []OpenAIChoice{{Index: 0, Message: OpenAIMessage{Role: "assistant", Content: answer}, FinishReason: "stop"}},
+			Usage:   OpenAIUsage{PromptTokens: 0, CompletionTokens: 0, TotalTokens: 0},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	mux.HandleFunc("/v1/chat", func(w http.ResponseWriter, r *http.Request) {

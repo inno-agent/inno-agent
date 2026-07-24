@@ -39,6 +39,7 @@ func (m *mockProvider) Chat(ctx context.Context, messages []llm.Message, modelNa
 }
 
 func (m *mockProvider) Stream(ctx context.Context, messages []llm.Message, modelName string) (<-chan string, error) {
+	m.lastChatModel = modelName
 	ch := make(chan string, 1)
 	go func() {
 		ch <- "stream-chunk"
@@ -364,5 +365,144 @@ func TestResolveModel_AutoEmptyMessagesFallsBack(t *testing.T) {
 	}
 	if len(routerProvider.lastMessages) != 0 {
 		t.Fatalf("router must not be called on empty messages, got %d messages", len(routerProvider.lastMessages))
+	}
+}
+
+// ─── Integration tests for dual-provider routing ──────────────────────────────
+
+func TestDualProvider_CodeModelRoutesToVLLM(t *testing.T) {
+	ollamaProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5:0.5b": "fast answer",
+		},
+	}
+	vllmProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5-coder-32b": "code answer",
+		},
+	}
+	routerProvider := &mockProvider{}
+
+	orch := New(ollamaProvider, vllmProvider, routerProvider, defaultRoutes(), defaultModels(), defaultVLLMModels(), testLogger())
+
+	answer, err := orch.Ask(context.Background(), []llm.Message{
+		{Role: "user", Content: "review this PR"},
+	}, "qwen2.5-coder-32b")
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if answer != "code answer" {
+		t.Fatalf("want 'code answer' from vLLM, got %q", answer)
+	}
+	// Verify vLLM provider was called, not Ollama
+	if vllmProvider.lastChatModel != "qwen2.5-coder-32b" {
+		t.Fatalf("vLLM provider should have been called, got model %q", vllmProvider.lastChatModel)
+	}
+	if ollamaProvider.lastChatModel != "" {
+		t.Fatalf("Ollama provider should NOT have been called for code model, got %q", ollamaProvider.lastChatModel)
+	}
+}
+
+func TestDualProvider_FastModelRoutesToOllama(t *testing.T) {
+	ollamaProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5:0.5b": "fast answer",
+		},
+	}
+	vllmProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5-coder-32b": "code answer",
+		},
+	}
+	routerProvider := &mockProvider{}
+
+	orch := New(ollamaProvider, vllmProvider, routerProvider, defaultRoutes(), defaultModels(), defaultVLLMModels(), testLogger())
+
+	answer, err := orch.Ask(context.Background(), []llm.Message{
+		{Role: "user", Content: "hello"},
+	}, "qwen2.5:0.5b")
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if answer != "fast answer" {
+		t.Fatalf("want 'fast answer' from Ollama, got %q", answer)
+	}
+	// Verify Ollama provider was called, not vLLM
+	if ollamaProvider.lastChatModel != "qwen2.5:0.5b" {
+		t.Fatalf("Ollama provider should have been called, got model %q", ollamaProvider.lastChatModel)
+	}
+	if vllmProvider.lastChatModel != "" {
+		t.Fatalf("vLLM provider should NOT have been called for fast model, got %q", vllmProvider.lastChatModel)
+	}
+}
+
+func TestDualProvider_AutoRoutesCodeToVLLM(t *testing.T) {
+	ollamaProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5:0.5b":       "fast answer",
+			"qwen2.5-coder-32b":  "code answer from ollama (wrong)",
+		},
+	}
+	vllmProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"qwen2.5-coder-32b": "code answer from vLLM",
+		},
+	}
+	routerProvider := &mockProvider{
+		chatResponses: map[string]string{
+			"fauxpaslife/arch-router:1.5b": `{"route": "qwen2.5-coder-32b"}`,
+		},
+	}
+
+	orch := New(ollamaProvider, vllmProvider, routerProvider, defaultRoutes(), defaultModels(), defaultVLLMModels(), testLogger())
+
+	answer, err := orch.Ask(context.Background(), []llm.Message{
+		{Role: "user", Content: "review this code for bugs"},
+	}, "auto")
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	// Router picks code model, orchestrator routes to vLLM
+	if answer != "code answer from vLLM" {
+		t.Fatalf("want 'code answer from vLLM', got %q", answer)
+	}
+	if vllmProvider.lastChatModel != "qwen2.5-coder-32b" {
+		t.Fatalf("vLLM should handle code model, got %q", vllmProvider.lastChatModel)
+	}
+}
+
+func TestDualProvider_StreamCodeModelViaVLLM(t *testing.T) {
+	ollamaProvider := &mockProvider{
+		chatResponses: map[string]string{},
+	}
+	vllmProvider := &mockProvider{
+		chatResponses: map[string]string{},
+	}
+	routerProvider := &mockProvider{}
+
+	orch := New(ollamaProvider, vllmProvider, routerProvider, defaultRoutes(), defaultModels(), defaultVLLMModels(), testLogger())
+
+	ch, err := orch.AskStream(context.Background(), []llm.Message{
+		{Role: "user", Content: "review this PR"},
+	}, "qwen2.5-coder-32b")
+	if err != nil {
+		t.Fatalf("AskStream: %v", err)
+	}
+
+	// Consume the stream
+	var chunks []string
+	for chunk := range ch {
+		chunks = append(chunks, chunk)
+	}
+	if len(chunks) == 0 {
+		t.Fatal("expected at least one chunk from stream")
+	}
+
+	// Verify vLLM was used for streaming, not Ollama
+	if vllmProvider.lastChatModel != "qwen2.5-coder-32b" {
+		t.Fatalf("vLLM should handle streaming for code model, got %q", vllmProvider.lastChatModel)
+	}
+	if ollamaProvider.lastChatModel != "" {
+		t.Fatalf("Ollama provider should NOT have been called for streaming code model, got %q", ollamaProvider.lastChatModel)
 	}
 }

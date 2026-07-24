@@ -73,8 +73,18 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "id": 4,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(rate(orchestrator_http_requests_total{env=~\"$env\", path=~\"/v1/chat|/v1/models\"}[5m])) by (path)", "legendFormat": "{{path}}", "refId": "A" }],
+      "targets": [{ "expr": "sum(rate(orchestrator_http_requests_total{env=~\"$env\", path=~\"/v1/chat|/v1/chat/completions|/v1/models\"}[5m])) by (path)", "legendFormat": "{{path}}", "refId": "A" }],
       "title": "Orchestrator LLM traffic",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "probe_duration_seconds{service=\"vllm\", env=~\"$env\"}", "legendFormat": "vllm probe", "refId": "A" }],
+      "title": "vLLM probe latency",
       "type": "timeseries"
     },
     {
@@ -83,7 +93,7 @@
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
       "id": 5,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(orchestrator_http_request_duration_seconds_bucket{env=~\"$env\", path=~\"/v1/chat|/v1/models\"}[5m])) by (le, path))", "legendFormat": "{{path}}", "refId": "A" }],
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(orchestrator_http_request_duration_seconds_bucket{env=~\"$env\", path=~\"/v1/chat|/v1/chat/completions|/v1/models\"}[5m])) by (le, path))", "legendFormat": "{{path}}", "refId": "A" }],
       "title": "Orchestrator LLM latency p95",
       "type": "timeseries"
     }

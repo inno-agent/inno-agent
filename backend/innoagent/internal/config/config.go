@@ -11,6 +11,7 @@ type Config struct {
 	VLLMBaseURL string
 	APIKey      string
 	Models      []string
+	VLLMModels  []string
 	Model       string
 	RouterModel string
 	ServerPort  string
@@ -38,6 +39,11 @@ func Load() Config {
 	vllmBaseURL := os.Getenv("VLLM_BASE_URL")
 	if vllmBaseURL == "" {
 		vllmBaseURL = "http://vllm:8000"
+	}
+
+	vllmModels := strings.Fields(os.Getenv("VLLM_MODELS"))
+	if len(vllmModels) == 0 {
+		vllmModels = []string{"qwen2.5-coder-32b"}
 	}
 
 	// LLM_MODELS is the single source of truth for which models exist. The first
@@ -70,6 +76,7 @@ func Load() Config {
 		VLLMBaseURL: vllmBaseURL,
 		APIKey:      apiKey,
 		Models:      models,
+		VLLMModels:  vllmModels,
 		Model:       models[0],
 		RouterModel: routerModel,
 		ServerPort:  serverPort,

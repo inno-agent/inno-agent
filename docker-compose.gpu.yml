@@ -46,8 +46,11 @@ services:
       --port 8000
       --dtype auto
       --max-model-len 32768
-      --gpu-memory-utilization 0.9
+      --gpu-memory-utilization 0.92
       --trust-remote-code
+      --max-num-seqs 64
+      --max-num-batched-tokens 32768
+      --enforce-eager
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 30s

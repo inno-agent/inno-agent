@@ -87,9 +87,10 @@ func main() {
 		}
 	}
 
-	// vLLM code model IDs that should be routed to vLLM instead of Ollama
-	vllmModels := map[string]bool{
-		"qwen2.5-coder-32b": true,
+	// Build vLLM model map from config (VLLM_MODELS env var)
+	vllmModels := make(map[string]bool, len(cfg.VLLMModels))
+	for _, m := range cfg.VLLMModels {
+		vllmModels[m] = true
 	}
 
 	orch := orchestrator.New(ollamaProvider, vllmProvider, routerProvider, routes, cfg.Models, vllmModels, log)

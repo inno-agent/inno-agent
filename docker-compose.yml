@@ -362,8 +362,11 @@ services:
       --port 8000
       --dtype auto
       --max-model-len 32768
-      --gpu-memory-utilization 0.9
+      --gpu-memory-utilization 0.92
       --trust-remote-code
+      --max-num-seqs 64
+      --max-num-batched-tokens 32768
+      --enforce-eager
     ports:
       - "${VLLM_PORT:-8000}:8000"
     healthcheck:
@@ -395,9 +398,10 @@ services:
       LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
+      VLLM_MODELS: ${VLLM_MODELS:-qwen2.5-coder-32b}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
-      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b qwen2.5-coder-32b}
+      LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder-32b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
     depends_on:
       jaeger:

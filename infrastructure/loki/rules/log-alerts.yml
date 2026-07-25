@@ -1,0 +1,37 @@
+# Log-based alerts evaluated by Loki ruler → Alertmanager → Telegram.
+# Requires promtail job "docker" (container stdout) and zap JSON logs from Go services.
+groups:
+  - name: application-logs
+    interval: 1m
+    rules:
+      - alert: LogPanicOrFatal
+        expr: |
+          sum by (service, env) (
+            count_over_time(
+              {job="docker"}
+              |~ `(?i)("level":"(panic|fatal)"|\b(panic|fatal)\b)`
+              [5m]
+            )
+          ) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Panic/fatal log on {{ $labels.service }}"
+          description: "At least one panic or fatal log line in the last 5m (service={{ $labels.service }}, env={{ $labels.env }})."
+
+      - alert: LogWarnBurst
+        expr: |
+          sum by (service, env) (
+            count_over_time(
+              {job="docker"}
+              |~ `(?i)("level":"warn"|console\.warn|\bWARN\b)`
+              [5m]
+            )
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Warn log burst on {{ $labels.service }}"
+          description: "More than 10 warn lines in 5m (service={{ $labels.service }}, env={{ $labels.env }})."

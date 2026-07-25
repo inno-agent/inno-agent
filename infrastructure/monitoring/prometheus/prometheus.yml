@@ -85,6 +85,37 @@ scrape_configs:
           service: frontend
           layer: frontend
           env: local
+      - targets:
+          - http://review-agent:4100/health
+        labels:
+          service: review-agent
+          layer: backend
+          env: local
+      - targets:
+          - http://jaeger:16686/
+        labels:
+          service: jaeger
+          layer: infra
+          env: local
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+  - job_name: blackbox-edge
+    metrics_path: /probe
+    params:
+      module: [http_edge]
+    static_configs:
+      - targets:
+          - http://proxy:80/
+        labels:
+          service: proxy
+          layer: infra
+          env: local
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target

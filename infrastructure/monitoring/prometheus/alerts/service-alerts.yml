@@ -105,14 +105,3 @@ groups:
         annotations:
           summary: "Slow issue processing in issue-consumer"
           description: "p95 successful issue processing exceeded 5 minutes (env={{ $labels.env }})."
-
-  - name: watchdog
-    rules:
-      - alert: Watchdog
-        expr: vector(1)
-        for: 0s
-        labels:
-          severity: info
-        annotations:
-          summary: "Watchdog тестовый алерт"
-          description: "Если вы видите это сообщение, весь пайплайн работает!"

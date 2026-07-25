@@ -3,7 +3,7 @@ import { Pencil } from 'lucide-react'
 import { Button } from '@shared/ui/button'
 import { SettingsRow, SettingsSectionTitle } from '@libs/settings/ui/rows/SettingsRow'
 import { deleteAccount } from '@libs/settings/api/settingsApi'
-import styles from './AccountTab.module.css'
+import styles from './AccountTab.module.scss'
 
 interface AccountTabProps {
     email: string
@@ -26,12 +26,12 @@ export const AccountTab = ({ email, onLogout }: AccountTabProps) => {
             <SettingsSectionTitle>Аккаунт</SettingsSectionTitle>
 
             <SettingsRow label="Электронная почта">
-                <span className={styles.value}>{email}</span>
+                <span className={styles['account-tab__value']}>{email}</span>
             </SettingsRow>
 
             <SettingsRow label="Аватар">
-                <button className={styles.avatarEdit}>
-                    <Pencil className={styles.avatarEditIcon} />
+                <button className={styles['account-tab__avatar-edit']}>
+                    <Pencil className={styles['account-tab__avatar-edit-icon']} />
                 </button>
             </SettingsRow>
 
@@ -43,7 +43,7 @@ export const AccountTab = ({ email, onLogout }: AccountTabProps) => {
 
             <SettingsRow label="Удалить аккаунт">
                 {confirmingDelete ? (
-                    <div className={styles.confirmGroup}>
+                    <div className={styles['account-tab__confirm-group']}>
                         <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(false)}>
                             Отмена
                         </Button>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@shared/ui/select'
-import styles from './SettingsRow.module.css'
+import styles from './SettingsRow.module.scss'
 
 interface SettingsRowProps {
     label: string
@@ -10,10 +10,10 @@ interface SettingsRowProps {
 
 export const SettingsRow = ({ label, description, children }: SettingsRowProps) => {
     return (
-        <div className={styles.row}>
-            <div className={styles.labelGroup}>
-                <span className={styles.label}>{label}</span>
-                {description && <span className={styles.description}>{description}</span>}
+        <div className={styles['settings-row']}>
+            <div className={styles['settings-row__label-group']}>
+                <span className={styles['settings-row__label']}>{label}</span>
+                {description && <span className={styles['settings-row__description']}>{description}</span>}
             </div>
             {children}
         </div>
@@ -21,9 +21,9 @@ export const SettingsRow = ({ label, description, children }: SettingsRowProps) 
 }
 
 export const SettingsSectionTitle = ({ children }: { children: ReactNode }) => (
-    <div className={styles.section}>
-        <div className={styles.sectionTitle}>{children}</div>
-        <div className={styles.sectionDivider} />
+    <div className={styles['settings-section']}>
+        <div className={styles['settings-section__title']}>{children}</div>
+        <div className={styles['settings-section__divider']} />
     </div>
 )
 

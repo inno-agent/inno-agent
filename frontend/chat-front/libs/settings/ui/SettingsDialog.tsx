@@ -6,7 +6,7 @@ import type { SettingsTab } from '@libs/settings/model/types'
 import { GeneralTab } from './tabs/GeneralTab'
 import { AccountTab } from './tabs/AccountTab'
 import { PersonalizationTab } from './tabs/PersonalizationTab'
-import styles from './SettingsDialog.module.css'
+import styles from './SettingsDialog.module.scss'
 
 interface SettingsDialogProps {
     open: boolean
@@ -36,30 +36,30 @@ export const SettingsDialog = ({ open, onOpenChange, email, onLogout }: Settings
             <DialogContent
                 showCloseButton={false}
                 overlayClassName="backdrop-blur-sm"
-                className={styles.content}
+                className={styles['settings-dialog__content']}
             >
-                <div className={styles.header}>
-                    <span className={styles.title}>{t('settings')}</span>
-                    <button className={styles.close} onClick={() => onOpenChange(false)}>
+                <div className={styles['settings-dialog__header']}>
+                    <span className={styles['settings-dialog__title']}>{t('settings')}</span>
+                    <button className={styles['settings-dialog__close']} onClick={() => onOpenChange(false)}>
                         <X />
                     </button>
                 </div>
 
-                <div className={styles.body}>
-                    <nav className={styles.tabs}>
+                <div className={styles['settings-dialog__body']}>
+                    <nav className={styles['settings-dialog__tabs']}>
                         {tabs.map(({ id, label, icon: Icon }) => (
                             <button
                                 key={id}
-                                className={[styles.tab, activeTab === id ? styles.tabActive : ''].join(' ')}
+                                className={[styles['settings-dialog__tab'], activeTab === id ? styles['settings-dialog__tab--active'] : ''].join(' ')}
                                 onClick={() => setActiveTab(id)}
                             >
-                                <Icon className={styles.tabIcon} />
+                                <Icon className={styles['settings-dialog__tab-icon']} />
                                 {label}
                             </button>
                         ))}
                     </nav>
 
-                    <div className={styles.panel}>
+                    <div className={styles['settings-dialog__panel']}>
                         {activeTab === 'general' && <GeneralTab />}
                         {activeTab === 'account' && <AccountTab email={email} onLogout={onLogout} />}
                         {activeTab === 'personalization' && <PersonalizationTab />}

@@ -1,5 +1,7 @@
-# Log-based alerts evaluated by Loki ruler → Alertmanager → Telegram.
-# Requires promtail job "docker" (container stdout) and zap JSON logs from Go services.
+# Log-based alerts: Loki ruler → Alertmanager → Telegram.
+# Mount: /etc/loki/rules/fake/*.yml (tenant "fake" = single-tenant default).
+# Requires promtail job "docker". Uses | json | level= to avoid false positives
+# from unstructured log lines (e.g. Loki mentioning "fatal" in file paths).
 groups:
   - name: application-logs
     interval: 1m
@@ -8,8 +10,9 @@ groups:
         expr: |
           sum by (service, env) (
             count_over_time(
-              {job="docker"}
-              |~ `(?i)("level":"(panic|fatal)"|\b(panic|fatal)\b)`
+              {job="docker", service!~"loki|promtail|prometheus|grafana|alertmanager"}
+              | json
+              | level=~"panic|fatal"
               [5m]
             )
           ) > 0
@@ -24,8 +27,9 @@ groups:
         expr: |
           sum by (service, env) (
             count_over_time(
-              {job="docker"}
-              |~ `(?i)("level":"warn"|console\.warn|\bWARN\b)`
+              {job="docker", service!~"loki|promtail|prometheus|grafana|alertmanager"}
+              | json
+              | level="warn"
               [5m]
             )
           ) > 10

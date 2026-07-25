@@ -606,7 +606,7 @@ services:
     command: -config.file=/etc/loki/loki-config.yaml
     volumes:
       - ./infrastructure/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
-      - ./infrastructure/loki/rules:/loki/rules:ro
+      - ./infrastructure/loki/rules/fake/log-alerts.yml:/etc/loki/rules/fake/log-alerts.yml:ro
       - loki-data:/loki
     networks:
       - innoagent

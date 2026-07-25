@@ -4,6 +4,11 @@ name: inno-agent
 networks:
   innoagent:
     name: innoagent
+  # Isolated network for the exec sandbox. Deliberately separate from innoagent
+  # so the sandbox cannot reach postgres/identity/orchestrator/gitflame. Only
+  # review-agent bridges both networks.
+  sandbox-net:
+    name: sandbox-net
 
 # ─── Volumes ────────────────────────────────────────────────────────────────
 volumes:
@@ -153,6 +158,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       AUTH_JWT_PRIVATE_KEY_PATH: /run/secrets/identity_rsa_key
       AUTH_DATABASE_DSN: postgresql://identity:${IDENTITY_PG_PASSWORD}@postgres:5432/inno_auth?sslmode=disable
       OIDC_ISSUER: "${AUTH_ISSUER_URL:-https://auth.localhost}/application/o/inno-agent/"
@@ -172,6 +178,8 @@ services:
         condition: service_completed_successfully
       authentik-server:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Chat API DB migrations ────────────────────────────────────────────────
   chat-api-migrate:
@@ -198,6 +206,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       DATABASE_URL: postgresql://chat:${CHAT_PG_PASSWORD}@postgres:5432/llm_chat?sslmode=disable
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: http://identity:8081
@@ -210,6 +219,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Review API DB migrations ────────────────────────────────────────────
@@ -239,6 +250,7 @@ services:
       - "127.0.0.1:8001:8001"
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       ORCHESTRATOR_URL: http://orchestrator:8080
       AUTH_SERVICE_URL: ${REVIEW_AUTH_SERVICE_URL-http://identity:8081}
       GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
@@ -254,6 +266,8 @@ services:
       identity:
         condition: service_started
       orchestrator:
+        condition: service_started
+      jaeger:
         condition: service_started
 
   # ─── Ollama (LLM runtime) — local profile only ───────────────────────────
@@ -341,12 +355,21 @@ services:
       - innoagent
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       LLM_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}/v1
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       API_PORT: "8080"
       IDENTITY_URL: http://identity:8081
       LLM_MODELS: ${LLM_MODELS:-qwen2.5:0.5b llama3.2:1b qwen2.5-coder:1.5b}
       ROUTER_MODEL: ${ROUTER_MODEL:-fauxpaslife/arch-router:1.5b}
+      # Bounds a single /v1/chat/completions call to the LLM runtime. Was never
+      # wired through here despite existing since P1 — the orchestrator silently
+      # ran on its 180s code default regardless of what was set in the env file.
+      LLM_COMPLETIONS_TIMEOUT: ${LLM_COMPLETIONS_TIMEOUT:-180s}
+      LLM_MAX_BODY_BYTES: ${LLM_MAX_BODY_BYTES:-10485760}
+    depends_on:
+      jaeger:
+        condition: service_started
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
   frontend:
@@ -391,6 +414,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
       KAFKA_GROUP: review-consumer
@@ -406,6 +430,51 @@ services:
       REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
       BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
       ONBOARDING_URL: ${ONBOARDING_URL:-}
+      REVIEW_AGENT_URL: ${REVIEW_AGENT_URL:-}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in the review-agent service.
+      REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
+    networks:
+      - innoagent
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      review-api-migrate:
+        condition: service_completed_successfully
+      orchestrator:
+        condition: service_started
+      identity:
+        condition: service_started
+      jaeger:
+        condition: service_started
+
+  # ─── Issue Consumer (webhook-driven issue code generator) ────────────────
+  issue-consumer:
+    build:
+      context: ./backend
+      dockerfile: issue-consumer/Dockerfile
+    image: ghcr.io/inno-agent/issue-consumer:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      METRICS_ENV: local
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: gitflame.events
+      KAFKA_GROUP: issue-consumer
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      IDENTITY_URL: http://identity:8081
+      REVIEW_DATABASE_DSN: postgresql://review:${REVIEW_PG_PASSWORD}@postgres:5432/inno_review?sslmode=disable
+      REVIEW_SERVICE_CLIENT_ID: ${REVIEW_SERVICE_CLIENT_ID:-review-consumer}
+      REVIEW_SERVICE_CLIENT_SECRET: ${REVIEW_SERVICE_CLIENT_SECRET}
+      BOT_GITFLAME_USERNAME: ${BOT_GITFLAME_USERNAME:-}
+      ONBOARDING_URL: ${ONBOARDING_URL:-}
+      # Codegen agent (Mastra) — REQUIRED. Points at the review-agent service's
+      # /codegen endpoint; the single-shot generator has been removed. The agent
+      # runs the agentic loop and carries the issue author's delegated token to
+      # the orchestrator (per-user attribution + onboarding gate).
+      CODEGEN_AGENT_URL: ${CODEGEN_AGENT_URL:-http://review-agent:4100}
+      # Shared secret; MUST match REVIEW_AGENT_AUTH_TOKEN in review-agent.
+      CODEGEN_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
     networks:
       - innoagent
     depends_on:
@@ -418,6 +487,68 @@ services:
       identity:
         condition: service_started
 
+  # ─── Review Agent (Mastra agent service) ─────────────────────────────────
+  review-agent:
+    build:
+      context: ./packages/review-agent
+      dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-agent:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      GITFLAME_BASE_URL: ${GITFLAME_BASE_URL:-}
+      GITFLAME_TOKEN: ${GITFLAME_TOKEN:-}
+      # The agents call the orchestrator's /v1/chat/completions, carrying the
+      # PR/issue author's delegated token as the bearer (per-user attribution +
+      # onboarding gate). They no longer talk to Ollama directly.
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen2.5-coder:1.5b}
+      # Codegen may use a larger model than review — the agentic loop needs it.
+      # Falls back to REVIEW_MODEL when unset. Point at e.g. qwen2.5-coder:32b.
+      CODEGEN_MODEL: ${CODEGEN_MODEL:-}
+      # Multi-step agentic codegen budget. Coupled: below the issue-consumer Go
+      # client timeout (1000s) and the token freshness threshold (20m).
+      CODEGEN_TIMEOUT_MS: ${CODEGEN_TIMEOUT_MS:-900000}
+      REVIEW_AGENT_AUTH_TOKEN: ${REVIEW_AGENT_AUTH_TOKEN:-}
+      SANDBOX_URL: http://sandbox:8080
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+      SERVER_PORT: "4100"
+    networks:
+      - innoagent
+      - sandbox-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      orchestrator:
+        condition: service_started
+      sandbox:
+        condition: service_started
+
+  # ─── Review Sandbox (isolated command execution for the review agent) ─────
+  # Runs build/test/lint commands the review agent decides to invoke. Kept OFF
+  # the innoagent network so a prompt-injected command cannot reach internal
+  # services. Requires SANDBOX_TOKEN (bearer) for every /exec /write /read call.
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    image: ghcr.io/inno-agent/review-sandbox:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+      SANDBOX_PORT: "8080"
+    networks:
+      - sandbox-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 256
+
   # ─── Review Webhook (Slice 3: webhook → Kafka producer) ──────────────────
   review-webhook:
     build:
@@ -427,6 +558,7 @@ services:
     restart: unless-stopped
     environment:
       METRICS_ENV: local
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317
       SERVER_PORT: "8002"
       KAFKA_BROKERS: redpanda:9092
       KAFKA_TOPIC: gitflame.events
@@ -436,6 +568,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      jaeger:
+        condition: service_started
 
   # ─── Review Frontend ──────────────────────────────────────────────────────
   review-front:
@@ -446,6 +580,24 @@ services:
     restart: unless-stopped
     networks:
       - innoagent
+
+  # ─── Jaeger (Distributed Tracing) ─────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+    networks:
+      - innoagent
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ─── Loki (Log Aggregation) ──────────────────────────────────────────────
   loki:
@@ -484,6 +636,7 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     restart: unless-stopped
+    user: "0:0"
     entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}

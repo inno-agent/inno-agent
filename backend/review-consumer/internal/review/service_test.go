@@ -12,10 +12,11 @@ import (
 )
 
 type fakeSource struct {
-	diff      string
-	diffErr   error
-	files     map[string]string
-	fileFound map[string]bool
+	diff        string
+	diffErr     error
+	files       map[string]string
+	fileFound   map[string]bool
+	description string
 }
 
 func (f *fakeSource) GetPRDiff(_ context.Context, _ domain.PRRef) (string, error) {
@@ -28,6 +29,10 @@ func (f *fakeSource) GetRawFile(_ context.Context, _ domain.PRRef, path string) 
 	}
 	content, ok := f.files[path]
 	return content, ok, nil
+}
+
+func (f *fakeSource) GetPRDescription(_ context.Context, _ domain.PRRef) (string, error) {
+	return f.description, nil
 }
 
 type fakeLLM struct {

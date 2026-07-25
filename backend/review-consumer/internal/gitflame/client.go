@@ -46,6 +46,53 @@ type fileDiff struct {
 	IsBinary bool   `json:"is_binary"`
 }
 
+type prDetails struct {
+	Body string `json:"body"`
+}
+
+func (c *Client) GetPRDescription(ctx context.Context, ref domain.PRRef) (string, error) {
+	if c.baseURL == "" || c.token == "" {
+		return "", nil
+	}
+
+	prURL := fmt.Sprintf(
+		"%s/api/v1/repos/%s/%s/pulls/%d",
+		strings.TrimRight(c.baseURL, "/"),
+		url.PathEscape(ref.Owner),
+		url.PathEscape(ref.Repo),
+		ref.Index,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, prURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("gitflame: build PR request: %w", err)
+	}
+	req.Header.Set("Authorization", "token "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("gitflame: PR request failed: %w: %w", domain.ErrTransient, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		// Non-fatal: description is nice-to-have, not critical
+		return "", nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		return "", nil
+	}
+
+	var pr prDetails
+	if err := json.Unmarshal(body, &pr); err != nil {
+		return "", nil
+	}
+
+	return strings.TrimSpace(pr.Body), nil
+}
+
 func (c *Client) GetPRDiff(ctx context.Context, ref domain.PRRef) (string, error) {
 	if c.baseURL == "" || c.token == "" {
 		return "", fmt.Errorf("gitflame: not configured")

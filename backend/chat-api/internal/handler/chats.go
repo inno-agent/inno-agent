@@ -11,6 +11,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 // ChatHandler handles HTTP requests for chat listing.
@@ -44,7 +45,7 @@ func (h *ChatHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	chats, total, err := h.service.ListChats(ctx, userID, limit, offset)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).Error("failed to list chats", zap.Error(err))
+		logger.FromContext(ctx).Error("failed to list chats", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to list chats")
 		return
 	}
@@ -76,7 +77,7 @@ func (h *ChatHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "access denied")
 			return
 		}
-		middleware.LoggerFromContext(ctx).Error("failed to delete chat", zap.Error(err))
+		logger.FromContext(ctx).Error("failed to delete chat", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to delete chat")
 		return
 	}

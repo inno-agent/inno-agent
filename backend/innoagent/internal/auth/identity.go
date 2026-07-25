@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"innoagent/internal/correlation"
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 )
 
 type Client struct {
@@ -36,7 +36,7 @@ func (c *Client) Validate(ctx context.Context, token string) (string, error) {
 		return "", fmt.Errorf("auth: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	correlation.SetHeader(ctx, req)
+	tracing.PropagateOutbound(ctx, req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

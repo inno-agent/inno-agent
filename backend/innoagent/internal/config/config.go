@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -14,6 +16,14 @@ type Config struct {
 	RouterModel string
 	ServerPort  string
 	IdentityURL string
+
+	// CompletionsTimeout bounds a single /v1/chat/completions call to the
+	// runtime. Agentic calls run longer than chat ones, so this is expected to
+	// need raising.
+	CompletionsTimeout time.Duration
+	// MaxBodyBytes caps request and response bodies. Opaque passthrough buffers
+	// both whole in memory, so an unbounded cap is an unbounded allocation.
+	MaxBodyBytes int64
 }
 
 func Load() Config {
@@ -59,6 +69,20 @@ func Load() Config {
 		identityURL = "http://identity:8081"
 	}
 
+	completionsTimeout := 180 * time.Second
+	if v := os.Getenv("LLM_COMPLETIONS_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			completionsTimeout = d
+		}
+	}
+
+	var maxBodyBytes int64 = 10 << 20
+	if v := os.Getenv("LLM_MAX_BODY_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			maxBodyBytes = n
+		}
+	}
+
 	return Config{
 		BaseURL:     baseURL,
 		APIKey:      apiKey,
@@ -67,5 +91,8 @@ func Load() Config {
 		RouterModel: routerModel,
 		ServerPort:  serverPort,
 		IdentityURL: identityURL,
+
+		CompletionsTimeout: completionsTimeout,
+		MaxBodyBytes:       maxBodyBytes,
 	}
 }

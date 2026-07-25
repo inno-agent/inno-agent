@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 func setupDB(t *testing.T) *pgxpool.Pool {
@@ -29,7 +29,7 @@ func TestSoftDeleteChat(t *testing.T) {
 	pool := setupDB(t)
 	repo := NewChatRepo(pool)
 
-	ctx := middleware.WithLogger(context.Background(), zap.NewNop())
+	ctx := logger.WithLogger(context.Background(), zap.NewNop())
 	userID := "test-user-delete"
 	title := "Chat to delete"
 

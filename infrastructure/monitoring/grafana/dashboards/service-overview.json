@@ -19,7 +19,17 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": 10,
-  "links": [],
+  "links": [
+    { "asDropdown": true, "icon": "dashboard", "includeVars": true, "keepTime": true, "tags": [], "targetBlank": false, "title": "Dashboards", "type": "dashboards" },
+    { "icon": "dashboard", "keepTime": true, "title": "Chat API", "type": "link", "url": "/d/inno-chat-api" },
+    { "icon": "dashboard", "keepTime": true, "title": "Review API", "type": "link", "url": "/d/inno-review-api" },
+    { "icon": "dashboard", "keepTime": true, "title": "Review Pipeline", "type": "link", "url": "/d/inno-review-pipeline" },
+    { "icon": "dashboard", "keepTime": true, "title": "Orchestrator", "type": "link", "url": "/d/inno-orchestrator" },
+    { "icon": "dashboard", "keepTime": true, "title": "AI / Ollama", "type": "link", "url": "/d/inno-ai-interview" },
+    { "icon": "dashboard", "keepTime": true, "title": "Identity", "type": "link", "url": "/d/inno-identity" },
+    { "icon": "dashboard", "keepTime": true, "title": "Kafka", "type": "link", "url": "/d/inno-kafka-health" },
+    { "icon": "dashboard", "keepTime": true, "title": "Postgres", "type": "link", "url": "/d/inno-postgres-overview" }
+  ],
   "panels": [
     {
       "datasource": {
@@ -667,6 +677,7 @@
         },
         "definition": "label_values(probe_success, env)",
         "includeAll": true,
+        "allValue": ".*",
         "label": "env",
         "multi": true,
         "name": "env",
@@ -689,6 +700,7 @@
         },
         "definition": "label_values(probe_success{env=~\"$env\"}, layer)",
         "includeAll": true,
+        "allValue": ".*",
         "label": "layer",
         "multi": true,
         "name": "layer",
@@ -711,6 +723,7 @@
         },
         "definition": "label_values(probe_success{env=~\"$env\", layer=~\"$layer\"}, service)",
         "includeAll": true,
+        "allValue": ".*",
         "label": "service",
         "multi": true,
         "name": "service",

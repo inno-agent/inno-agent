@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/tracing"
 	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/domain"
 )
 
@@ -57,6 +58,7 @@ func (c *OrchestratorClient) Chat(ctx context.Context, messages []domain.LLMMess
 		return "", fmt.Errorf("llm client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	tracing.PropagateOutbound(ctx, req)
 	if tok := tokenFromContext(ctx); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
 	}

@@ -60,3 +60,14 @@ func (r *Repository) GetGitFlameUsername(ctx context.Context, userID string) (st
 	}
 	return username, nil
 }
+
+// Delete removes the installation row for userID. A no-op — zero rows
+// affected, not an error — if no row exists, so callers can retry
+// unconditionally after a partial failure.
+func (r *Repository) Delete(ctx context.Context, userID string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM installations WHERE user_id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("installation: delete: %w", err)
+	}
+	return nil
+}

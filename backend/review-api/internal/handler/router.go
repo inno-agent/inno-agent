@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
@@ -13,14 +12,11 @@ import (
 // installH and inviteH may be nil when the review database is not configured
 // (dev mode); in that case the /installations and /invitations/accept routes
 // are not registered.
-func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string, logger *zap.Logger) {
-	r.Use(middleware.CorrelationID)
-	r.Use(middleware.Logger(logger))
-	r.Use(middleware.RequestLogger())
+func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *InstallationHandler, inviteH *InviteHandler, authServiceURL string) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Correlation-ID")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
@@ -42,6 +38,7 @@ func RegisterRoutes(r chi.Router, reviewH *ReviewHandler, installH *Installation
 		if installH != nil {
 			r.Post("/installations", installH.Create)
 			r.Get("/installations/me", installH.Get)
+			r.Delete("/installations/me", installH.Erase)
 		}
 		if inviteH != nil {
 			r.Post("/invitations/accept", inviteH.AcceptInvite)

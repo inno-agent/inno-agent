@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { acceptGitFlameInvite, getLinkedGitFlameUsername, linkGitFlameUsername } from '@/api/consent'
+import { acceptGitFlameInvite, eraseGitFlameLink, getLinkedGitFlameUsername, linkGitFlameUsername } from '@/api/consent'
 import styles from '@/styles/OnboardingPage.module.scss'
 
 type Status = 'checking' | 'idle' | 'loading' | 'linked' | 'taken' | 'error'
@@ -8,6 +8,8 @@ type InviteStatus = 'idle' | 'loading' | 'accepted' | 'error'
 export default function OnboardingPage() {
     const [username, setUsername] = useState('')
     const [status, setStatus] = useState<Status>('idle')
+    const [erasing, setErasing] = useState(false)
+    const [eraseError, setEraseError] = useState(false)
 
     const [repoName, setRepoName] = useState('')
     const [inviteStatus, setInviteStatus] = useState<InviteStatus>('idle')
@@ -48,6 +50,20 @@ export default function OnboardingPage() {
             } else {
                 setStatus('error')
             }
+        }
+    }
+
+    async function unlink() {
+        setErasing(true)
+        setEraseError(false)
+        try {
+            await eraseGitFlameLink()
+            setStatus('idle')
+            setUsername('')
+        } catch {
+            setEraseError(true)
+        } finally {
+            setErasing(false)
         }
     }
 
@@ -95,6 +111,12 @@ export default function OnboardingPage() {
             {status === 'linked' && (
                 <div className={`result ${styles['onboarding-result']}`}>
                     Account linked. The bot can now review PRs on your behalf.
+                    <button onClick={unlink} disabled={erasing}>
+                        {erasing ? 'Unlinking…' : 'Unlink account'}
+                    </button>
+                    {eraseError && (
+                        <div className="error">Something went wrong. Please try again.</div>
+                    )}
                 </div>
             )}
 

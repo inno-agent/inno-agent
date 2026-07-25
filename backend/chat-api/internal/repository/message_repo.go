@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
-	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 // MessageRepo is the PostgreSQL implementation of domain.MessageRepository.
@@ -42,7 +42,7 @@ const (
 
 // Create inserts a new message row and returns the created Message.
 func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUID, role domain.Role, content string) (*domain.Message, error) {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "message_repo"),
 		zap.String("operation", "Create"),
 		zap.String("user_id", userID),
@@ -62,7 +62,7 @@ func (r *MessageRepo) Create(ctx context.Context, userID string, chatID uuid.UUI
 
 // ListByChat returns a paginated list of messages for the given chat, scoped to the user.
 func (r *MessageRepo) ListByChat(ctx context.Context, userID string, chatID uuid.UUID, limit, offset int) ([]domain.Message, int, error) {
-	log := middleware.LoggerFromContext(ctx).With(
+	log := logger.FromContext(ctx).With(
 		zap.String("component", "message_repo"),
 		zap.String("operation", "ListByChat"),
 		zap.String("user_id", userID),

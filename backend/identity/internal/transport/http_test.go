@@ -210,12 +210,22 @@ func (s *stubSvcVerifier) Verify(_ context.Context, _, _ string) error { return 
 type fakeDelegationStore struct {
 	grantExists bool
 	grantErr    error
+	revokeErr   error
+	revokedFor  string // "userID:clientID" of the last Revoke call, for assertions
 }
 
 func (f *fakeDelegationStore) Grant(_ context.Context, _, _ string) error { return nil }
 
 func (f *fakeDelegationStore) HasValidGrant(_ context.Context, _, _ string) (bool, error) {
 	return f.grantExists, f.grantErr
+}
+
+func (f *fakeDelegationStore) Revoke(_ context.Context, userID, clientID string) error {
+	if f.revokeErr != nil {
+		return f.revokeErr
+	}
+	f.revokedFor = userID + ":" + clientID
+	return nil
 }
 
 // --- makeRouter helper ---
@@ -529,4 +539,74 @@ func TestHTTP_TokenExchange_NoGrant_403(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "grant_required", resp["error"])
+}
+
+func TestDelegationRevoke_MissingToken_401(t *testing.T) {
+	r := makeRouter(t, &stubSvcVerifier{}, &fakeDelegationStore{})
+
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/delegation-revoke",
+		strings.NewReader(`{"client_id":"review-consumer"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDelegationRevoke_Success_204(t *testing.T) {
+	iss := makeTestIssuer(t)
+	userTok, err := iss.Issue("regular-user-id")
+	require.NoError(t, err)
+
+	store := &fakeDelegationStore{}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		&stubSvcVerifier{}, time.Hour,
+		store, 15*time.Minute,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/delegation-revoke",
+		strings.NewReader(`{"client_id":"review-consumer"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+userTok)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if store.revokedFor != "regular-user-id:review-consumer" {
+		t.Fatalf("expected Revoke called for regular-user-id:review-consumer, got %q", store.revokedFor)
+	}
+}
+
+func TestDelegationRevoke_StoreError_500(t *testing.T) {
+	iss := makeTestIssuer(t)
+	userTok, err := iss.Issue("regular-user-id")
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	transport.RegisterHTTPRoutes(
+		r, &stubProvider{}, &stubUserSvc{}, iss, 30*time.Minute,
+		transport.OIDCEndpoints{}, newMemRefreshStore(), 7*24*time.Hour,
+		&stubSvcVerifier{}, time.Hour,
+		&fakeDelegationStore{revokeErr: errors.New("db down")}, 15*time.Minute,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/identity/v1/delegation-revoke",
+		strings.NewReader(`{"client_id":"review-consumer"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+userTok)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
 }

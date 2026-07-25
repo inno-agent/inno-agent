@@ -1,7 +1,5 @@
 # Log-based alerts: Loki ruler → Alertmanager → Telegram.
-# Mount: /etc/loki/rules/fake/*.yml (tenant "fake" = single-tenant default).
-# Requires promtail job "docker". Uses | json | level= to avoid false positives
-# from unstructured log lines (e.g. Loki mentioning "fatal" in file paths).
+# Allowlist app services only — never alert on observability stack (loki, promtail, …).
 groups:
   - name: application-logs
     interval: 1m
@@ -10,24 +8,26 @@ groups:
         expr: |
           sum by (service, env) (
             count_over_time(
-              {job="docker", service!~"loki|promtail|prometheus|grafana|alertmanager"}
+              {job="docker", service=~"chat-api|identity|orchestrator|review-api|review-webhook|review-consumer|issue-consumer|review-agent|review-front|frontend"}
               | json
               | level=~"panic|fatal"
               [5m]
             )
           ) > 0
-        for: 0m
+        for: 1m
         labels:
           severity: critical
+          alert_source: logs
         annotations:
-          summary: "Panic/fatal log on {{ $labels.service }}"
-          description: "At least one panic or fatal log line in the last 5m (service={{ $labels.service }}, env={{ $labels.env }})."
+          summary: "{{ $labels.service }} — {{ $value }} panic/fatal за 5 мин ({{ $labels.env }})"
+          action: "docker compose logs {{ $labels.service }} --since 15m 2>&1 | grep -iE 'panic|fatal|\"level\":\"fatal\"|\"level\":\"panic\"'"
+          loki_query: '{job="docker",service="{{ $labels.service }}"} | json | level=~"panic|fatal"'
 
       - alert: LogWarnBurst
         expr: |
           sum by (service, env) (
             count_over_time(
-              {job="docker", service!~"loki|promtail|prometheus|grafana|alertmanager"}
+              {job="docker", service=~"chat-api|identity|orchestrator|review-api|review-webhook|review-consumer|issue-consumer|review-agent|review-front|frontend"}
               | json
               | level="warn"
               [5m]
@@ -36,6 +36,8 @@ groups:
         for: 5m
         labels:
           severity: warning
+          alert_source: logs
         annotations:
-          summary: "Warn log burst on {{ $labels.service }}"
-          description: "More than 10 warn lines in 5m (service={{ $labels.service }}, env={{ $labels.env }})."
+          summary: "{{ $labels.service }} — {{ $value }} warn за 5 мин ({{ $labels.env }})"
+          action: "docker compose logs {{ $labels.service }} --since 15m 2>&1 | grep -iE 'warn|\"level\":\"warn\"'"
+          loki_query: '{job="docker",service="{{ $labels.service }}"} | json | level="warn"'

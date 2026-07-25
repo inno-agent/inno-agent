@@ -1,5 +1,6 @@
 # Log-based alerts: Loki ruler → Alertmanager → Telegram.
-# Allowlist app services only — never alert on observability stack (loki, promtail, …).
+# Use JSON substring match — promtail may index stream label level=info even when
+# the log line contains "level":"fatal" (| json | level= filter then misses it).
 groups:
   - name: application-logs
     interval: 1m
@@ -9,8 +10,7 @@ groups:
           sum by (service, env) (
             count_over_time(
               {job="docker", service=~"chat-api|identity|orchestrator|review-api|review-webhook|review-consumer|issue-consumer|review-agent|review-front|frontend"}
-              | json
-              | level=~"panic|fatal"
+              |~ "\"level\":\"(panic|fatal)\""
               [5m]
             )
           ) > 0
@@ -21,15 +21,14 @@ groups:
         annotations:
           summary: "{{ $labels.service }} — {{ $value }} panic/fatal за 5 мин ({{ $labels.env }})"
           action: "docker compose logs {{ $labels.service }} --since 15m 2>&1 | grep -iE 'panic|fatal|\"level\":\"fatal\"|\"level\":\"panic\"'"
-          loki_query: '{job="docker",service="{{ $labels.service }}"} | json | level=~"panic|fatal"'
+          loki_query: '{job="docker",service="{{ $labels.service }}"} |~ "\"level\":\"(panic|fatal)\""'
 
       - alert: LogWarnBurst
         expr: |
           sum by (service, env) (
             count_over_time(
               {job="docker", service=~"chat-api|identity|orchestrator|review-api|review-webhook|review-consumer|issue-consumer|review-agent|review-front|frontend"}
-              | json
-              | level="warn"
+              |~ "\"level\":\"warn\""
               [5m]
             )
           ) > 10
@@ -40,4 +39,4 @@ groups:
         annotations:
           summary: "{{ $labels.service }} — {{ $value }} warn за 5 мин ({{ $labels.env }})"
           action: "docker compose logs {{ $labels.service }} --since 15m 2>&1 | grep -iE 'warn|\"level\":\"warn\"'"
-          loki_query: '{job="docker",service="{{ $labels.service }}"} | json | level="warn"'
+          loki_query: '{job="docker",service="{{ $labels.service }}"} |~ "\"level\":\"warn\""'

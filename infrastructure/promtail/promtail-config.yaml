@@ -72,8 +72,5 @@ scrape_configs:
       - cri: {}
       - json:
           expressions:
-            level: level
             msg: msg
           source: content
-      - labels:
-          level:

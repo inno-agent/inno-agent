@@ -1,0 +1,29 @@
+.account-tab {
+    &__value {
+        font-size: 14px;
+        color: var(--muted-foreground);
+    }
+
+    &__avatar-edit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--color-text-primary);
+        color: var(--color-bg-elevated);
+        border: none;
+        cursor: pointer;
+    }
+
+    &__avatar-edit-icon {
+        width: 14px;
+        height: 14px;
+    }
+
+    &__confirm-group {
+        display: flex;
+        gap: 8px;
+    }
+}

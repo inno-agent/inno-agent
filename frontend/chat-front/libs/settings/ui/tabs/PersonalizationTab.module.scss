@@ -1,0 +1,49 @@
+.personalization-tab {
+    &__field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--color-muted);
+    }
+
+    &__field-label {
+        font-size: 14px;
+        color: var(--color-text-primary);
+    }
+
+    &__field-hint {
+        font-size: 13px;
+        color: var(--muted-foreground);
+    }
+
+    &__link {
+        color: var(--color-text-primary);
+        text-decoration: underline;
+    }
+
+    &__input,
+    &__textarea {
+        background: var(--color-bg-main);
+        border: 1px solid var(--color-muted);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        color: var(--color-text-primary);
+        font-family: inherit;
+
+        &::placeholder {
+            color: var(--muted-foreground);
+        }
+
+        &:focus {
+            outline: none;
+            border-color: var(--ring);
+        }
+    }
+
+    &__textarea {
+        resize: vertical;
+        min-height: 72px;
+    }
+}

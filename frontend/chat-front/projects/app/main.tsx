@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { routeTree } from './routeTree.gen'
 import '@libs/settings/model/i18n'
-import './index.css'
+import './styles/tailwind.css'
+import './styles/global.scss'
 
 const router = createRouter({ routeTree })
 

@@ -1,0 +1,44 @@
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+
+    &__label-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    &__label {
+        font-size: 14px;
+        color: var(--color-text-primary);
+    }
+
+    &__description {
+        font-size: 13px;
+        color: var(--muted-foreground);
+        max-width: 360px;
+    }
+}
+
+.settings-section {
+    margin-bottom: 8px;
+
+    &:not(:first-child) {
+        margin-top: 20px;
+    }
+
+    &__title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        padding-bottom: 12px;
+    }
+
+    &__divider {
+        height: 1px;
+        background: var(--color-muted);
+    }
+}

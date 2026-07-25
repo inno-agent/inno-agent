@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import styles from './Sidebar.module.css'
+import styles from './Sidebar.module.scss'
 import Avatar from './ui/Avatar'
 import ChatListItem from './ui/ChatListItem'
 import Plus from '@images/icons/plus.svg?react'
@@ -125,19 +125,19 @@ export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
 
     return (
         <>
-            {isOpen && <div className={styles.overlay} onClick={onClose} />}
-            <aside className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ''}`}>
+            {isOpen && <div className={styles['sidebar__overlay']} onClick={onClose} />}
+            <aside className={`${styles.sidebar} ${isOpen ? styles['sidebar--open'] : ''}`}>
 
-                <div className={styles.header}>
-                    <Logo className={styles.logoIcon} />
-                    <span className={styles.logo}>INNOAGENT</span>
+                <div className={styles['sidebar__header']}>
+                    <Logo className={styles['sidebar__logo-icon']} />
+                    <span className={styles['sidebar__logo']}>INNOAGENT</span>
                 </div>
 
-                <div className={styles.divider} />
+                <div className={styles['sidebar__divider']} />
 
-                <nav className={styles.nav}>
+                <nav className={styles['sidebar__nav']}>
                     <button
-                        className={styles.navItem}
+                        className={styles['sidebar__nav-item']}
                         onClick={() =>
                             handleNavigate(() =>
                                 navigate({
@@ -147,27 +147,27 @@ export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
                             )
                         }
                     >
-                        <span className={styles.navIcon}><Plus /></span>
+                        <span className={styles['sidebar__nav-icon']}><Plus /></span>
                         {t('sidebar.newChat')}
                     </button>
-                    <button className={styles.navItem}>
-                        <span className={styles.navIcon}><Loop /></span>
+                    <button className={styles['sidebar__nav-item']}>
+                        <span className={styles['sidebar__nav-icon']}><Loop /></span>
                         {t('sidebar.searchChat')}
                     </button>
-                    <button className={styles.navItem}>
-                        <span className={styles.navIcon}><Folder /></span>
+                    <button className={styles['sidebar__nav-item']}>
+                        <span className={styles['sidebar__nav-icon']}><Folder /></span>
                         {t('sidebar.projects')}
                     </button>
                 </nav>
 
-                <div className={styles.divider} />
+                <div className={styles['sidebar__divider']} />
 
-                <div className={styles.chatList}>
-                    <span className={styles.sectionTitle}>{t('sidebar.recent')}</span>
-                    {isLoading && <span className={styles.sectionTitle}>{t('sidebar.loading')}</span>}
-                    {!isLoading && errorMessage && <span className={styles.sectionTitle}>{errorMessage}</span>}
+                <div className={styles['sidebar__chat-list']}>
+                    <span className={styles['sidebar__section-title']}>{t('sidebar.recent')}</span>
+                    {isLoading && <span className={styles['sidebar__section-title']}>{t('sidebar.loading')}</span>}
+                    {!isLoading && errorMessage && <span className={styles['sidebar__section-title']}>{errorMessage}</span>}
                     {!isLoading && !errorMessage && chats.length === 0 && (
-                        <span className={styles.sectionTitle}>{t('sidebar.noChats')}</span>
+                        <span className={styles['sidebar__section-title']}>{t('sidebar.noChats')}</span>
                     )}
                     {!isLoading &&
                         !errorMessage &&
@@ -190,20 +190,20 @@ export const Sidebar = ({ isOpen = true, onClose }: SidebarProps) => {
                         ))}
                 </div>
 
-                <div className={styles.divider} />
+                <div className={styles['sidebar__divider']} />
 
                 <Popover open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
                     <PopoverTrigger asChild>
                         <div
-                            className={styles.profile}
+                            className={styles['sidebar__profile']}
                             role="button"
                             tabIndex={0}
                             onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.currentTarget.click()}
                         >
                             <Avatar name={profileName} />
-                            <span className={styles.profileName}>{profileName}</span>
+                            <span className={styles['sidebar__profile-name']}>{profileName}</span>
                             <button
-                                className={styles.profileMenu}
+                                className={styles['sidebar__profile-menu']}
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <ThreePoints />

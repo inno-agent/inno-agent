@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import styles from './ChatListItem.module.css'
+import styles from './ChatListItem.module.scss'
 import ThreePoints from '@images/icons/three_points.svg?react'
 import {
     DropdownMenu,
@@ -28,7 +28,7 @@ interface ChatListItemProps {
 
 const ChatListItem = ({ chatId, title, isActive, onClick, onDelete }: ChatListItemProps) => {
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-    const className = [styles.item, isActive ? styles.itemActive : ''].join(' ')
+    const className = [styles['chat-list-item'], isActive ? styles['chat-list-item--active'] : ''].join(' ')
 
     const handleDelete = () => {
         setIsDeleteDialogOpen(false)
@@ -44,11 +44,11 @@ const ChatListItem = ({ chatId, title, isActive, onClick, onDelete }: ChatListIt
                 tabIndex={0}
                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick?.()}
             >
-                <span className={styles.title}>{title}</span>
+                <span className={styles['chat-list-item__title']}>{title}</span>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button
-                            className={styles.menu}
+                            className={styles['chat-list-item__menu']}
                             onClick={(e) => e.stopPropagation()}
                             aria-label="Меню"
                         >

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/inno-agent/inno-agent/backend/review-webhook/internal/config"
@@ -189,6 +190,34 @@ func TestKeyFallbackOwnerLogin(t *testing.T) {
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", rr.Code)
+	}
+	if pub.key != "owner/repo" {
+		t.Errorf("key: want %q, got %q", "owner/repo", pub.key)
+	}
+}
+
+func TestFormEncodedPayload(t *testing.T) {
+	pub := &fakePublisher{}
+	h := newHandler(defaultCfg(), pub)
+
+	inner := `{"repository":{"full_name":"owner/repo"},"action":"assigned","number":3}`
+	formBody := "payload=" + url.QueryEscape(inner)
+	req := httptest.NewRequest(http.MethodPost, "/hooks/gitflame", bytes.NewBufferString(formBody))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-GitFlame-Event", "issues")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rr.Code)
+	}
+
+	var env webhook.Envelope
+	if err := json.Unmarshal(pub.value, &env); err != nil {
+		t.Fatalf("could not unmarshal envelope: %v", err)
+	}
+	if string(env.Payload) != inner {
+		t.Errorf("payload mismatch: want %q, got %q", inner, string(env.Payload))
 	}
 	if pub.key != "owner/repo" {
 		t.Errorf("key: want %q, got %q", "owner/repo", pub.key)

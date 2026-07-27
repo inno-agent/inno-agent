@@ -4,7 +4,10 @@ use (
 	./chat-api
 	./identity
 	./innoagent
+	./issue-consumer
+	./pkg/logger
 	./pkg/telemetry
+	./pkg/tracing
 	./review-api
 	./review-consumer
 	./review-webhook

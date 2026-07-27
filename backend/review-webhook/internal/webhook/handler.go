@@ -2,10 +2,11 @@ package webhook
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -61,7 +62,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.WebhookAuthorization != "" {
 		got := r.Header.Get(h.cfg.WebhookAuthHeader)
 		want := h.cfg.WebhookAuthorization
-		if subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
+		if !authorizationMatches(got, want) {
+			h.logger.Warn(
+				"webhook rejected: authorization "+authorizationStatus(got, want),
+				zap.String("delivery_id", firstHeader(
+					r,
+					h.cfg.WebhookDeliveryHeader,
+					"X-GitFlame-Delivery",
+					"X-Gitea-Delivery",
+					"X-GitHub-Delivery",
+				)),
+				zap.String("event_type", firstHeader(
+					r,
+					h.cfg.WebhookEventHeader,
+					"X-GitFlame-Event",
+					"X-Gitea-Event",
+					"X-GitHub-Event",
+				)),
+			)
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
@@ -69,18 +87,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	key := extractKey(body)
 
-	// Use the raw body as-is if it is valid JSON; otherwise encode it as a
-	// JSON string so the Envelope itself is always valid JSON.
-	payload := json.RawMessage(body)
-	if !json.Valid(body) {
-		encoded, _ := json.Marshal(string(body))
-		payload = json.RawMessage(encoded)
-	}
+	payload := extractPayload(body, r.Header.Get("Content-Type"))
 
 	envelope := Envelope{
-		DeliveryID: r.Header.Get(h.cfg.WebhookDeliveryHeader),
-		EventType:  r.Header.Get(h.cfg.WebhookEventHeader),
-		Payload:    payload,
+		DeliveryID: firstHeader(
+			r,
+			h.cfg.WebhookDeliveryHeader,
+			"X-GitFlame-Delivery",
+			"X-Gitea-Delivery",
+			"X-GitHub-Delivery",
+		),
+		EventType: firstHeader(
+			r,
+			h.cfg.WebhookEventHeader,
+			"X-GitFlame-Event",
+			"X-GitFlame-Event-Type",
+			"X-Gitea-Event",
+			"X-Gitea-Event-Type",
+			"X-GitHub-Event",
+			"X-GitHub-Event-Type",
+		),
+		Payload: payload,
 	}
 
 	value, err := json.Marshal(envelope)
@@ -96,14 +123,60 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.logger.Info(
+		"webhook published",
+		zap.String("event_type", envelope.EventType),
+		zap.String("delivery_id", envelope.DeliveryID),
+		zap.String("key", key),
+	)
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func extractPayload(body []byte, contentType string) json.RawMessage {
+	body = bytesTrimSpace(body)
+	if len(body) == 0 {
+		return json.RawMessage("{}")
+	}
+
+	if json.Valid(body) && (body[0] == '{' || body[0] == '[') {
+		return json.RawMessage(body)
+	}
+
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "application/x-www-form-urlencoded") || strings.Contains(string(body), "payload=") {
+		if values, err := url.ParseQuery(string(body)); err == nil {
+			if p := strings.TrimSpace(values.Get("payload")); p != "" {
+				if json.Valid([]byte(p)) {
+					return json.RawMessage(p)
+				}
+			}
+		}
+	}
+
+	encoded, _ := json.Marshal(string(body))
+	return json.RawMessage(encoded)
+}
+
+func firstHeader(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if v := strings.TrimSpace(r.Header.Get(name)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func bytesTrimSpace(b []byte) []byte {
+	return []byte(strings.TrimSpace(string(b)))
 }
 
 // extractKey does a best-effort parse to get "owner/repo" from the payload.
 // On any failure it returns an empty string — events are never dropped over a key.
 func extractKey(body []byte) string {
+	payload := extractPayload(body, "")
 	var p repoKeyPayload
-	if err := json.Unmarshal(body, &p); err != nil {
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return ""
 	}
 	if p.Repository.FullName != "" {

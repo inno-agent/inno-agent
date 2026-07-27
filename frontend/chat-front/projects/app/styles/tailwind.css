@@ -1,0 +1,158 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "tw-shimmer";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+    --font-sans:
+        "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@theme inline {
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+    --radius: 0.625rem;
+    --background: oklch(0.145 0 0);
+    --foreground: #EDEDED;
+    --card: #353535;
+    --card-foreground: #EDEDED;
+    --popover: #353535;
+    --popover-foreground: #EDEDED;
+    --primary: #EDEDED;
+    --primary-foreground: #353535;
+    --secondary: #282828;
+    --secondary-foreground: #EDEDED;
+    --muted: #282828;
+    --muted-foreground: #888888;
+    --accent: #353535;
+    --accent-foreground: #EDEDED;
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: #888888;
+    --input: #282828;
+    --ring: #888888;
+    --sidebar: #282828;
+    --sidebar-foreground: #EDEDED;
+    --sidebar-primary: #353535;
+    --sidebar-primary-foreground: #EDEDED;
+    --sidebar-accent: #353535;
+    --sidebar-accent-foreground: #EDEDED;
+    --sidebar-border: #888888;
+    --sidebar-ring: #888888;
+    --color-bg-main: #18181b;
+    --color-text-primary: #EDEDED;
+    --color-bg-elevated: #353535;
+
+    --font-sans:
+        "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+    color-scheme: dark;
+}
+
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: #EDEDED;
+    --card: #353535;
+    --card-foreground: #EDEDED;
+    --popover: #353535;
+    --popover-foreground: #EDEDED;
+    --primary: #EDEDED;
+    --primary-foreground: #353535;
+    --secondary: #282828;
+    --secondary-foreground: #EDEDED;
+    --muted: #282828;
+    --muted-foreground: #888888;
+    --accent: #353535;
+    --accent-foreground: #EDEDED;
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: #888888;
+    --input: #282828;
+    --ring: #888888;
+    --sidebar: #282828;
+    --sidebar-foreground: #EDEDED;
+    --sidebar-primary: #353535;
+    --sidebar-primary-foreground: #EDEDED;
+    --sidebar-accent: #282828;
+    --sidebar-accent-foreground: #EDEDED;
+    --sidebar-border: #888888;
+    --sidebar-ring: #888888;
+}
+
+.light {
+    --background: #E8E8E8;
+    --foreground: #282828;
+    --card: #DBDBDB;
+    --card-foreground: #282828;
+    --popover: #DBDBDB;
+    --popover-foreground: #282828;
+    --primary: #282828;
+    --primary-foreground: #EDEDED;
+    --secondary: #DBDBDB;
+    --secondary-foreground: #282828;
+    --muted: #DBDBDB;
+    --muted-foreground: #888888;
+    --accent: #353535;
+    --accent-foreground: #EDEDED;
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: #888888;
+    --input: #EDEDED;
+    --ring: #888888;
+    --sidebar: #E8E8E8;
+    --sidebar-foreground: #282828;
+    --sidebar-primary: #DBDBDB;
+    --sidebar-primary-foreground: #282828;
+    --sidebar-accent: #DBDBDB;
+    --sidebar-accent-foreground: #282828;
+    --sidebar-border: #888888;
+    --sidebar-ring: #888888;
+    --color-bg-main: #E8E8E8;
+    --color-text-primary: #282828;
+    --color-bg-elevated: #DBDBDB;
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+    }
+}

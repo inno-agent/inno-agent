@@ -26,6 +26,15 @@ export async function getLinkedGitFlameUsername(): Promise<string | null> {
 }
 
 /**
+ * Unlinks the caller's GitFlame account: revokes the bot's delegation grant
+ * and removes the gitflame_username mapping. Safe to call even if nothing is
+ * currently linked.
+ */
+export async function eraseGitFlameLink(): Promise<void> {
+    await apiClient.delete('/installations/me')
+}
+
+/**
  * Confirms the bot's pending collaborator invitation on a repo, so it can be
  * assigned as a PR reviewer without logging into the bot's GitFlame account by hand.
  * The repo owner is resolved server-side from the caller's own linked account.

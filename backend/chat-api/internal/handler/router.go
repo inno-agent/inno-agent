@@ -4,16 +4,12 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"go.uber.org/zap"
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
 )
 
 // RegisterRoutes mounts all API routes and middleware onto the given router.
-func RegisterRoutes(r chi.Router, chatH *ChatHandler, msgH *MessageHandler, streamH *StreamHandler, authServiceURL string, logger *zap.Logger) {
-	r.Use(middleware.CorrelationID)
-	r.Use(middleware.Logger(logger))
-	r.Use(middleware.RequestLogger())
+func RegisterRoutes(r chi.Router, chatH *ChatHandler, msgH *MessageHandler, streamH *StreamHandler, authServiceURL string) {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")

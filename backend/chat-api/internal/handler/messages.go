@@ -10,6 +10,7 @@ import (
 
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/domain"
 	"github.com/inno-agent/inno-agent/backend/chat-api/internal/middleware"
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 )
 
 // MessageHandler handles HTTP requests for chat message history.
@@ -28,7 +29,7 @@ func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
 
 	chatID, err := uuid.Parse(chi.URLParam(r, "chat_id"))
 	if err != nil {
-		middleware.LoggerFromContext(ctx).Error("invalid chat_id", zap.Error(err))
+		logger.FromContext(ctx).Error("invalid chat_id", zap.Error(err))
 		writeError(w, http.StatusBadRequest, "invalid chat_id")
 		return
 	}
@@ -50,7 +51,7 @@ func (h *MessageHandler) ListByChat(w http.ResponseWriter, r *http.Request) {
 
 	messages, total, err := h.service.GetHistory(ctx, userID, chatID, limit, offset)
 	if err != nil {
-		middleware.LoggerFromContext(ctx).Error("failed to get history", zap.Error(err))
+		logger.FromContext(ctx).Error("failed to get history", zap.Error(err))
 		writeError(w, http.StatusInternalServerError, "failed to get history")
 		return
 	}

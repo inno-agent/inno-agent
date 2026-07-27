@@ -24,6 +24,7 @@ type AIOrchestrator struct {
 	routes         []RouteInfo
 	models         []string
 	logger         *zap.Logger
+	completer      Completer
 }
 
 func New(provider llm.Provider, routerProvider llm.Provider, routes []RouteInfo, models []string, logger *zap.Logger) *AIOrchestrator {

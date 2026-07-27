@@ -41,6 +41,8 @@ jobs:
               - 'backend/go.work.sum'
               - 'backend/.golangci.yml'
               - 'backend/pkg/telemetry/**'
+              - 'backend/pkg/logger/**'
+              - 'backend/pkg/tracing/**'
             workflow:
               - '.github/workflows/ci-backend.yml'
             docker-compose:
@@ -51,6 +53,8 @@ jobs:
               - 'backend/identity/**'
             innoagent:
               - 'backend/innoagent/**'
+            issue-consumer:
+              - 'backend/issue-consumer/**'
             review-api:
               - 'backend/review-api/**'
             review-consumer:
@@ -68,12 +72,13 @@ jobs:
           CHAT_API: ${{ steps.filter.outputs.chat-api }}
           IDENTITY: ${{ steps.filter.outputs.identity }}
           INNOAGENT: ${{ steps.filter.outputs.innoagent }}
+          ISSUE_CONSUMER: ${{ steps.filter.outputs.issue-consumer }}
           REVIEW_API: ${{ steps.filter.outputs.review-api }}
           REVIEW_CONSUMER: ${{ steps.filter.outputs.review-consumer }}
           REVIEW_WEBHOOK: ${{ steps.filter.outputs.review-webhook }}
         run: |
-          all_modules='["chat-api","identity","innoagent","review-api","review-consumer","review-webhook","pkg/telemetry"]'
-          all_services=(identity chat-api review-api innoagent review-consumer review-webhook)
+          all_modules='["chat-api","identity","innoagent","issue-consumer","review-api","review-consumer","review-webhook","pkg/telemetry","pkg/logger","pkg/tracing"]'
+          all_services=(identity chat-api review-api innoagent issue-consumer review-consumer review-webhook)
 
           to_docker_matrix() {
             printf '%s\n' "$@" | jq -R . | jq -s -c 'map(select(length > 0)) | map({service: ., dockerfile: ("backend/" + . + "/Dockerfile")})'
@@ -94,6 +99,7 @@ jobs:
           [ "$CHAT_API" = "true" ] && modules+=("chat-api")
           [ "$IDENTITY" = "true" ] && modules+=("identity")
           [ "$INNOAGENT" = "true" ] && modules+=("innoagent")
+          [ "$ISSUE_CONSUMER" = "true" ] && modules+=("issue-consumer")
           [ "$REVIEW_API" = "true" ] && modules+=("review-api")
           [ "$REVIEW_CONSUMER" = "true" ] && modules+=("review-consumer")
           [ "$REVIEW_WEBHOOK" = "true" ] && modules+=("review-webhook")
@@ -103,6 +109,7 @@ jobs:
           [ "$CHAT_API" = "true" ] && docker+=("chat-api")
           [ "$REVIEW_API" = "true" ] && docker+=("review-api")
           [ "$INNOAGENT" = "true" ] && docker+=("innoagent")
+          [ "$ISSUE_CONSUMER" = "true" ] && docker+=("issue-consumer")
           [ "$REVIEW_CONSUMER" = "true" ] && docker+=("review-consumer")
           [ "$REVIEW_WEBHOOK" = "true" ] && docker+=("review-webhook")
 

@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/inno-agent/inno-agent/backend/pkg/logger"
 	"github.com/inno-agent/inno-agent/backend/review-api/internal/domain"
-	"github.com/inno-agent/inno-agent/backend/review-api/internal/middleware"
 )
 
 const reviewSystemPrompt = `You are a senior software engineer performing pull request review.
@@ -48,7 +48,7 @@ func NewReviewService(diffProvider domain.DiffProvider, llm domain.LLMProvider) 
 // ReviewPR returns an AI-generated markdown review for the given pull request.
 // When diff is non-empty it is used directly; otherwise the diff is fetched via DiffProvider.
 func (s *ReviewService) ReviewPR(ctx context.Context, prID string, diff string, modelName string) (string, error) {
-	log := middleware.LoggerFromContext(ctx).With(zap.String("layer", "service"))
+	log := logger.FromContext(ctx).With(zap.String("layer", "service"))
 
 	prID = strings.TrimSpace(prID)
 	if prID == "" {

@@ -31,6 +31,7 @@ type LLMProvider interface {
 type SourceProvider interface {
 	GetPRDiff(ctx context.Context, ref PRRef) (string, error)
 	GetRawFile(ctx context.Context, ref PRRef, path string) (content string, found bool, err error)
+	GetPRDescription(ctx context.Context, ref PRRef) (string, error)
 }
 
 type CommentPoster interface {

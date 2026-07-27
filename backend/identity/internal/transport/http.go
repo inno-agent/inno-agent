@@ -40,6 +40,7 @@ type ServiceClientVerifier interface {
 type DelegationStore interface {
 	Grant(ctx context.Context, userID, clientID string) error
 	HasValidGrant(ctx context.Context, userID, clientID string) (bool, error)
+	Revoke(ctx context.Context, userID, clientID string) error
 }
 
 // OIDCEndpoints describes the public IdP coordinates handed to the browser.
@@ -97,6 +98,7 @@ func RegisterHTTPRoutes(
 	r.POST("/identity/v1/revoke", revokeHandler(refreshRepo))
 	r.POST("/identity/v1/service-token", serviceTokenHandler(iss, svcVerifier, serviceTokenExpiry))
 	r.POST("/identity/v1/delegation-grant", delegationGrantHandler(iss, delegations))
+	r.POST("/identity/v1/delegation-revoke", delegationRevokeHandler(iss, delegations))
 	r.POST("/identity/v1/token", tokenExchangeHandler(iss, delegations, delegateExpiry))
 }
 
@@ -299,6 +301,46 @@ func delegationGrantHandler(iss *issuer.Issuer, delegations DelegationStore) gin
 		}
 
 		if err := delegations.Grant(c.Request.Context(), claims.UserID, req.ClientID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
+			return
+		}
+
+		c.Status(http.StatusNoContent)
+	}
+}
+
+// delegationRevokeHandler revokes a standing grant: "client X may no longer act
+// on behalf of this user". Mirrors delegationGrantHandler's auth and request
+// shape exactly; only the store call differs.
+// Auth: user Bearer token. Body: {"client_id": "<service to revoke>"}
+func delegationRevokeHandler(iss *issuer.Issuer, delegations DelegationStore) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing_token"})
+			return
+		}
+		rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+
+		claims, err := iss.Verify(rawToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			return
+		}
+		if strings.HasPrefix(claims.UserID, "svc:") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "user_token_required"})
+			return
+		}
+
+		var req struct {
+			ClientID string `json:"client_id" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request"})
+			return
+		}
+
+		if err := delegations.Revoke(c.Request.Context(), claims.UserID, req.ClientID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal"})
 			return
 		}

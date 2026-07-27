@@ -10,7 +10,7 @@ common:
   storage:
     filesystem:
       chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
+      rules_directory: /etc/loki/rules
   replication_factor: 1
   ring:
     kvstore:
@@ -41,3 +41,19 @@ limits_config:
 compactor:
   working_directory: /loki/compactor
   compaction_interval: 10m
+
+# https://grafana.com/docs/loki/latest/alert/#ruler-storage
+# Local storage reads rule files from disk (tenant subdir required; use "fake"
+# for single-tenant). rule_path must be a separate writable scratch directory.
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  rule_path: /loki/ruler-scratch
+  alertmanager_url: http://alertmanager:9093
+  enable_api: true
+  enable_alertmanager_v2: true
+  ring:
+    kvstore:
+      store: inmemory

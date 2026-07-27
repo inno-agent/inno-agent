@@ -17,11 +17,30 @@ receivers:
         send_resolved: true
         parse_mode: HTML
         message: |
-          {{ if eq .Status "firing" }}❗️ <b>FIRING</b> ❗️{{ else }}✅ <b>RESOLVED</b>{{ end }}
-          <b>{{ .CommonLabels.alertname }}</b>
-          {{ range .Alerts }}
-          <b>Summary:</b> {{ .Annotations.summary }}
-          <b>Description:</b> {{ .Annotations.description }}
+          {{ if eq .Status "firing" }}🔴 <b>{{ .CommonLabels.alertname }}</b>{{ else }}✅ <b>RESOLVED</b> · {{ .CommonLabels.alertname }}{{ end }}
+          {{ range .Alerts -}}
+          {{ if .Labels.service -}}
+          <b>Сервис:</b> {{ .Labels.service }}{{ if .Labels.env }} · {{ .Labels.env }}{{ end }}
+          {{ end -}}
+          {{ if .Annotations.summary -}}
+          {{ .Annotations.summary }}
+          {{ end -}}
+          {{ if .Annotations.action -}}
+          
+          <b>Команда на сервере:</b>
+          <pre>{{ .Annotations.action }}</pre>
+          {{ end -}}
+          {{ if .Annotations.loki_query -}}
+          
+          <b>Loki (Grafana → Explore):</b>
+          <pre>{{ .Annotations.loki_query }}</pre>
+          {{ end -}}
+          {{ if and (not .Annotations.action) .Annotations.description -}}
+          
+          {{ .Annotations.description }}
+          {{ end -}}
+          {{ if .Labels.severity -}}
+          
           <b>Severity:</b> {{ .Labels.severity }}
-          <b>Service:</b> {{ .Labels.service }}
+          {{ end -}}
           {{ end }}

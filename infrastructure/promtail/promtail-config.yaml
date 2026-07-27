@@ -18,6 +18,7 @@ scrape_configs:
         labels:
           job: nginx
           service: proxy
+          env: local
           __path__: /var/log/nginx/access_json.log
     pipeline_stages:
       - json:
@@ -45,3 +46,31 @@ scrape_configs:
           method: method
           status: status
           service: proxy
+
+  # Docker container stdout/stderr → Loki (Go zap JSON + plain-text Node logs).
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        regex: 'inno-agent'
+        action: keep
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        regex: ''
+        action: drop
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      - target_label: job
+        replacement: docker
+      - target_label: env
+        replacement: local
+    pipeline_stages:
+      - cri: {}
+      - json:
+          expressions:
+            msg: msg
+          source: content

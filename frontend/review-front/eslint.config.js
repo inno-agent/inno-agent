@@ -27,5 +27,10 @@ export default tseslint.config(
         languageOptions: {
             globals: globals.node,
         },
+        rules: {
+            'react-hooks/rules-of-hooks': 'off',
+            'react-hooks/exhaustive-deps': 'off',
+            'react-refresh/only-export-components': 'off',
+        },
     },
 )

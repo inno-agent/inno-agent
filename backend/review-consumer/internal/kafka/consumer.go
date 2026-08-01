@@ -122,6 +122,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 				return result
 			},
 			func() bool { return c.commit(ctx, msg) },
+			func() { c.processor.NotifyGaveUp(ctx, msg.Value) },
 		) {
 			return nil
 		}
@@ -142,14 +143,17 @@ func (c *Consumer) commit(ctx context.Context, msg kafka.Message) (cancelled boo
 
 // processWithRetry runs process(), retrying Transient results with capped
 // exponential backoff. On a non-transient result, or after maxTransientRetries
-// (poison message), it commits via commit(). Returns true if the context was
-// cancelled. process/commit are injected so this is unit-testable without Kafka.
+// (poison message), it commits via commit(). When giving up on poison it calls
+// giveUp() so the user can be notified. Returns true if the context was
+// cancelled. process/commit/giveUp are injected so this is unit-testable
+// without Kafka.
 func (c *Consumer) processWithRetry(
 	ctx context.Context,
 	offset int64,
 	partition int,
 	process func() processor.Result,
 	commit func() bool,
+	giveUp func(),
 ) (cancelled bool) {
 	backoff := retryInitial
 	attempts := 0
@@ -167,6 +171,7 @@ func (c *Consumer) processWithRetry(
 				zap.Int64("offset", offset),
 				zap.Int("partition", partition),
 			)
+			giveUp()
 			return commit()
 		}
 

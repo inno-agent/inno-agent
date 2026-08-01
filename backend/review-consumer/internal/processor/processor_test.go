@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -143,8 +144,15 @@ func TestProcess_ReviewRequest_Done(t *testing.T) {
 		t.Fatalf("expected Done, got %v", result)
 	}
 
-	if len(poster.posted) != 1 || poster.posted[0] != "# Review" {
-		t.Fatalf("unexpected posted comments: %v", poster.posted)
+	// "started" comment + review comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 posted comments (started + review), got %d: %v", len(poster.posted), poster.posted)
+	}
+	if poster.posted[0] == "" {
+		t.Fatal("started comment should not be empty")
+	}
+	if poster.posted[1] != "# Review" {
+		t.Fatalf("expected review comment second, got: %v", poster.posted[1])
 	}
 
 	if len(poster.removedReviewers) != 1 || poster.removedReviewers[0] != testBotUsername {
@@ -165,8 +173,9 @@ func TestProcess_RemoveReviewerFails_StillDone(t *testing.T) {
 		t.Fatalf("expected Done even when reviewer removal fails, got %v", result)
 	}
 
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected exactly 1 posted comment, got %d", len(poster.posted))
+	// "started" comment + review comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected exactly 2 posted comments (started + review), got %d", len(poster.posted))
 	}
 }
 
@@ -222,6 +231,34 @@ func TestProcess_ReviewError_Transient(t *testing.T) {
 	}
 }
 
+func TestProcess_TransientError_PostsErrorCommentOnce(t *testing.T) {
+	// On the first transient failure, an error comment is posted (in addition
+	// to the "started" comment). On a retry with the same dedup key, the error
+	// comment must NOT be posted again.
+	data := makeEnvelope("del-350")
+	reviewer := &fakeReviewer{err: errors.New("llm unavailable")}
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
+
+	r1 := p.Process(context.Background(), data)
+	if r1 != processor.Transient {
+		t.Fatalf("first: expected Transient, got %v", r1)
+	}
+	// "started" + error notification = 2 comments
+	if len(poster.posted) != 2 {
+		t.Fatalf("first: expected 2 comments (started + error), got %d: %v", len(poster.posted), poster.posted)
+	}
+
+	r2 := p.Process(context.Background(), data)
+	if r2 != processor.Transient {
+		t.Fatalf("second: expected Transient, got %v", r2)
+	}
+	// Retry posts "started" again but NOT the error comment again = 3 total
+	if len(poster.posted) != 3 {
+		t.Fatalf("second: expected 3 total comments (started+error, started), got %d: %v", len(poster.posted), poster.posted)
+	}
+}
+
 func TestProcess_PostCommentError_Transient(t *testing.T) {
 	data := makeEnvelope("del-400")
 	reviewer := &fakeReviewer{result: "# Review"}
@@ -246,11 +283,37 @@ func TestProcess_UndecodablePayload_Skip(t *testing.T) {
 func TestProcess_ReviewPermanentError_Skip(t *testing.T) {
 	data := makeEnvelope("del-500")
 	reviewer := &fakeReviewer{err: fmt.Errorf("status 401: %w", domain.ErrPermanent)}
-	p := newProc(reviewer, &fakePoster{})
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
 	result := p.Process(context.Background(), data)
 
 	if result != processor.Skip {
 		t.Fatalf("expected Skip for permanent review error, got %v", result)
+	}
+
+	// "started" comment + error comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments (started + error), got %d: %v", len(poster.posted), poster.posted)
+	}
+	if poster.posted[1] == "" {
+		t.Fatal("error comment should not be empty")
+	}
+}
+
+func TestProcess_ReviewPermanentError_ContainsErrorMessage(t *testing.T) {
+	data := makeEnvelope("del-550")
+	reviewErr := fmt.Errorf("cannot access AI model: status 401: %w", domain.ErrPermanent)
+	reviewer := &fakeReviewer{err: reviewErr}
+	poster := &fakePoster{}
+	p := newProc(reviewer, poster)
+	p.Process(context.Background(), data)
+
+	if len(poster.posted) < 2 {
+		t.Fatalf("expected at least 2 comments, got %d", len(poster.posted))
+	}
+	errorComment := poster.posted[1]
+	if !strings.Contains(errorComment, "cannot access AI model") {
+		t.Fatalf("error comment should contain the error details, got: %s", errorComment)
 	}
 }
 
@@ -276,12 +339,13 @@ func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
 		t.Fatalf("expected Skip for not-onboarded, got %v", result)
 	}
 
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 comment posted (not-onboarded notice), got %d", len(poster.posted))
+	// "started" comment + not-onboarded comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments posted (started + not-onboarded notice), got %d", len(poster.posted))
 	}
 
-	if len(poster.posted[0]) == 0 {
-		t.Fatal("posted comment should not be empty")
+	if len(poster.posted[1]) == 0 {
+		t.Fatal("not-onboarded comment should not be empty")
 	}
 }
 
@@ -315,4 +379,28 @@ func TestProcess_DedupBoundedSet_EvictsOldest(t *testing.T) {
 	if r2 != processor.Skip {
 		t.Fatalf("dedup: want Skip, got %v", r2)
 	}
+}
+
+func TestNotifyGaveUp_PostsComment(t *testing.T) {
+	data := makeEnvelope("del-giveup")
+	poster := &fakePoster{}
+	p := newProc(&fakeReviewer{}, poster)
+
+	p.NotifyGaveUp(context.Background(), data)
+
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 comment from NotifyGaveUp, got %d", len(poster.posted))
+	}
+	if poster.posted[0] == "" {
+		t.Fatal("gave-up comment should not be empty")
+	}
+}
+
+func TestNotifyGaveUp_GarbageInput_NoPanic(t *testing.T) {
+	p := newProc(&fakeReviewer{}, &fakePoster{})
+
+	// Should not panic on undecodable input.
+	p.NotifyGaveUp(context.Background(), []byte("not json"))
+
+	p.NotifyGaveUp(context.Background(), []byte(`{"delivery_id":"x","event_type":"pull_request","payload":"not-json"}`))
 }

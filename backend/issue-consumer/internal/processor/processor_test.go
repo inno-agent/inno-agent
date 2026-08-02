@@ -143,8 +143,9 @@ func TestProcess_Assigned_Done(t *testing.T) {
 	if result != processor.Done {
 		t.Fatalf("expected Done, got %v", result)
 	}
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 comment, got %d", len(poster.posted))
+	// "started" comment + success comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments (started + success), got %d: %v", len(poster.posted), poster.posted)
 	}
 	if len(prCreator.reviewers) != 1 || prCreator.reviewers[0] != "alice" {
 		t.Fatalf("expected alice as reviewer, got %v", prCreator.reviewers)
@@ -168,11 +169,12 @@ func TestProcess_PRCreationPermanentError_DoneWithFailureComment(t *testing.T) {
 	if result != processor.Done {
 		t.Fatalf("expected Done, got %v", result)
 	}
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 comment, got %d", len(poster.posted))
+	// "started" comment + success comment (with PR failure note)
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments (started + success-with-PR-failure), got %d", len(poster.posted))
 	}
-	if !strings.Contains(poster.posted[0], "Pull request creation failed") {
-		t.Fatalf("comment does not mention the PR failure:\n%s", poster.posted[0])
+	if !strings.Contains(poster.posted[1], "Pull request creation failed") {
+		t.Fatalf("comment does not mention the PR failure:\n%s", poster.posted[1])
 	}
 }
 
@@ -236,8 +238,9 @@ func TestProcess_NotOnboarded_PostsCommentAndSkips(t *testing.T) {
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
 	}
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 comment, got %d", len(poster.posted))
+	// "started" comment + not-onboarded comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments (started + not-onboarded), got %d", len(poster.posted))
 	}
 }
 
@@ -329,8 +332,9 @@ func TestProcess_GenerationPermanentError_Skip(t *testing.T) {
 	if result != processor.Skip {
 		t.Fatalf("expected Skip, got %v", result)
 	}
-	if len(poster.posted) != 1 {
-		t.Fatalf("expected 1 failure comment posted, got %d", len(poster.posted))
+	// "started" comment + failure comment
+	if len(poster.posted) != 2 {
+		t.Fatalf("expected 2 comments (started + failure), got %d", len(poster.posted))
 	}
 }
 
@@ -347,4 +351,75 @@ func TestProcess_PostCommentError_Transient(t *testing.T) {
 	if result != processor.Transient {
 		t.Fatalf("expected Transient, got %v", result)
 	}
+}
+
+func TestProcess_TransientError_PostsErrorCommentOnce(t *testing.T) {
+	// On the first transient failure, an error comment is posted (in addition
+	// to the "started" comment). On a retry with the same dedup key, the error
+	// comment must NOT be posted again.
+	data := makeEnvelope("assigned", "del-transient")
+	gen := &fakeGenerator{err: errors.New("llm unavailable")}
+	poster := &fakePoster{}
+	p := newProc(gen, &fakePRCreator{}, poster)
+
+	r1 := p.Process(context.Background(), data)
+	if r1 != processor.Transient {
+		t.Fatalf("first: expected Transient, got %v", r1)
+	}
+	// "started" + error notification = 2 comments
+	if len(poster.posted) != 2 {
+		t.Fatalf("first: expected 2 comments (started + error), got %d: %v", len(poster.posted), poster.posted)
+	}
+
+	r2 := p.Process(context.Background(), data)
+	if r2 != processor.Transient {
+		t.Fatalf("second: expected Transient, got %v", r2)
+	}
+	// Retry posts "started" again but NOT the error comment again = 3 total
+	if len(poster.posted) != 3 {
+		t.Fatalf("second: expected 3 total comments (started+error, started), got %d: %v", len(poster.posted), poster.posted)
+	}
+}
+
+func TestProcess_GenerationPermanentError_ContainsErrorMessage(t *testing.T) {
+	data := makeEnvelope("assigned", "del-perm-msg")
+	genErr := fmt.Errorf("cannot access AI model: status 401: %w", domain.ErrPermanent)
+	gen := &fakeGenerator{err: genErr}
+	poster := &fakePoster{}
+	p := newProc(gen, &fakePRCreator{}, poster)
+
+	p.Process(context.Background(), data)
+
+	if len(poster.posted) < 2 {
+		t.Fatalf("expected at least 2 comments, got %d", len(poster.posted))
+	}
+	// The failure comment (second one) should contain the error details.
+	failureComment := poster.posted[1]
+	if !strings.Contains(failureComment, "cannot access AI model") {
+		t.Fatalf("failure comment should contain the error details, got: %s", failureComment)
+	}
+}
+
+func TestNotifyGaveUp_PostsComment(t *testing.T) {
+	data := makeEnvelope("assigned", "del-giveup")
+	poster := &fakePoster{}
+	p := newProc(&fakeGenerator{}, &fakePRCreator{}, poster)
+
+	p.NotifyGaveUp(context.Background(), data)
+
+	if len(poster.posted) != 1 {
+		t.Fatalf("expected 1 comment from NotifyGaveUp, got %d", len(poster.posted))
+	}
+	if poster.posted[0] == "" {
+		t.Fatal("gave-up comment should not be empty")
+	}
+}
+
+func TestNotifyGaveUp_GarbageInput_NoPanic(t *testing.T) {
+	p := newProc(&fakeGenerator{}, &fakePRCreator{}, &fakePoster{})
+
+	// Should not panic on undecodable input.
+	p.NotifyGaveUp(context.Background(), []byte("not json"))
+
+	p.NotifyGaveUp(context.Background(), []byte(`{"delivery_id":"x","event_type":"issues","payload":"not-json"}`))
 }

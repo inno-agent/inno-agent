@@ -480,13 +480,13 @@ func buildSuccessComment(branch string, prIndex int64, reviewer string, result *
 		sb.WriteString("⚠️ Verification did not pass — the change was pushed but its build/tests are not green. Review carefully.\n\n")
 	}
 	if prIndex > 0 {
-		sb.WriteString(fmt.Sprintf("Pull request #%d opened", prIndex))
+		fmt.Fprintf(&sb, "Pull request #%d opened", prIndex)
 		if reviewer != "" {
-			sb.WriteString(fmt.Sprintf(" with @%s as reviewer", reviewer))
+			fmt.Fprintf(&sb, " with @%s as reviewer", reviewer)
 		}
 		sb.WriteString(".\n\n")
 	} else if prErr != nil {
-		sb.WriteString(fmt.Sprintf("⚠️ Pull request creation failed and was not retried: `%s`. Open one manually from branch `%s`.\n\n", prErr.Error(), branch))
+		fmt.Fprintf(&sb, "⚠️ Pull request creation failed and was not retried: `%s`. Open one manually from branch `%s`.\n\n", prErr.Error(), branch)
 	}
 	if result.Summary != "" {
 		sb.WriteString("**Summary:** ")

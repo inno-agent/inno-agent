@@ -220,7 +220,10 @@ func TestLinkPullRequestToIssue_PreservesFieldsAndMergesDependencies(t *testing.
 	deps, _ := gotPatch["dependencies"].([]any)
 	got := map[float64]bool{}
 	for _, d := range deps {
-		got[d.(float64)] = true
+		id, ok := d.(float64)
+		if ok {
+			got[id] = true
+		}
 	}
 	if !got[5] || !got[7] || len(got) != 2 {
 		t.Errorf("dependencies = %v, want [5, 7]", deps)

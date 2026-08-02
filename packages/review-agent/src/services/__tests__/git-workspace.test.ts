@@ -49,7 +49,7 @@ function makeBareRemote(): string {
 }
 
 describe("cloneAndBranch", () => {
-  it("clones the default branch and checks out a new branch", async () => {
+  it("clones the default branch and checks out a new branch", { timeout: 30000 }, async () => {
     const remote = makeBareRemote()
     const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
     try {

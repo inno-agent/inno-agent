@@ -7,6 +7,7 @@ import { sandboxRunIdFromContext } from "../../services/sandbox-run"
 import {
   cloneAndBranch,
   hasUncommittedChanges,
+  hasCommitsAhead,
   commitAll,
   listChangedFiles,
   pushBranch,
@@ -260,14 +261,23 @@ export async function runCodegen(
       if (!result.ok) console.warn(`[codegen] verify failed after repair round ${round + 1}:\n${result.output.slice(0, 2000)}`)
     }
 
-    // ── commit + push ────────────────────────────────────────────────────
-    if (!(await hasUncommittedChanges(exec))) {
+    // ── collect + push ──────────────────────────────────────────────────
+    // The agent commits incrementally via the git_commit tool during the run.
+    // Here we check that SOMETHING changed (committed or uncommitted), commit
+    // any leftover uncommitted changes as a final commit, then push.
+    const committed = await hasCommitsAhead(exec, ctx.defaultBranch)
+    const uncommitted = await hasUncommittedChanges(exec)
+    if (!committed && !uncommitted) {
       // Deterministically pointless — the agent changed nothing. Permanent,
       // not a retry: the /codegen handler maps EmptyDiffError to 422.
       throw new EmptyDiffError()
     }
-    await commitAll(exec, buildCommitMessage(ctx, summary))
-    const changedFiles = await listChangedFiles(exec)
+    // If the agent left files uncommitted (e.g. wrote something but didn't
+    // call git_commit), fold them into a final summary commit.
+    if (uncommitted) {
+      await commitAll(exec, buildCommitMessage(ctx, summary))
+    }
+    const changedFiles = await listChangedFiles(exec, ctx.defaultBranch)
     try {
       await pushBranch(exec, branch)
     } catch (err) {

@@ -52,6 +52,7 @@ function stubEverything(execExit: number, hasChanges = true) {
   } as any)
   vi.spyOn(gitWorkspace, "cloneAndBranch").mockResolvedValue(undefined)
   vi.spyOn(gitWorkspace, "hasUncommittedChanges").mockResolvedValue(hasChanges)
+  vi.spyOn(gitWorkspace, "hasCommitsAhead").mockResolvedValue(hasChanges)
   vi.spyOn(gitWorkspace, "commitAll").mockResolvedValue(undefined)
   vi.spyOn(gitWorkspace, "pushBranch").mockResolvedValue(undefined)
   vi.spyOn(gitWorkspace, "listChangedFiles").mockResolvedValue([{ path: "a.py", status: "A" }])

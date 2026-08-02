@@ -3,6 +3,7 @@ import { orchestratorModel } from "../model"
 import { readSandboxFile } from "../../tools/read-sandbox-file"
 import { writeSandboxFile } from "../../tools/write-sandbox-file"
 import { searchCode } from "../../tools/search-code"
+import { gitCommit } from "../../tools/git-commit"
 import { runCommand } from "../../tools/run-command"
 import { runBuild } from "../../tools/run-build"
 import { runTests } from "../../tools/run-tests"
@@ -28,12 +29,17 @@ You are working inside a sandbox that already contains the repository's files.
 Use your tools to do the work:
 - read_sandbox_file / search_code — understand the existing code before changing it.
 - write_sandbox_file — write your changes to files (full file contents, relative paths).
+- git_commit — stage and commit the current changes. Call this after each distinct
+  logical change to create a separate commit with a descriptive message.
 - run_build / run_tests / run_lint / run_command — check that your changes compile and pass.
 
 Rules:
 - Make the minimal change that resolves the issue. Do not rewrite unrelated code.
 - Prefer editing existing files over creating new ones when the issue fits existing structure.
-- After writing, build and test. If it fails, read the error and fix it.
+- Commit incrementally: after completing each distinct logical change, call git_commit
+  with a clear message (e.g. "feat: add user model", "fix: handle nil pointer in handler",
+  "docs: update API examples"). Do NOT wait until the end to commit everything at once.
+- After writing, build and test. If it fails, read the error, fix it, and commit the fix.
 - When done, reply with a short plain-text summary of what you changed and why. Do NOT
   paste file contents into the reply — the files are already written in the sandbox.`
 
@@ -49,6 +55,7 @@ export const codeGeneratorAgent = new Agent({
     readSandboxFile,
     searchCode,
     writeSandboxFile,
+    gitCommit,
     runCommand,
     runBuild,
     runTests,

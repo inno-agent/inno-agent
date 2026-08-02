@@ -43,6 +43,17 @@ export async function cloneAndBranch(
   }
 }
 
+// hasCommitsAhead checks whether the current branch has any commits beyond the
+// clone point (origin/<baseBranch>). Used after the agent run to distinguish
+// "the agent committed its work incrementally" from "the agent changed nothing".
+export async function hasCommitsAhead(exec: ExecFn, baseBranch: string): Promise<boolean> {
+  const log = await exec(`git log --oneline origin/${JSON.stringify(baseBranch)}..HEAD`)
+  if (log.exitCode !== 0) {
+    throw new Error(`git log failed: ${log.stdout}`)
+  }
+  return log.stdout.trim().length > 0
+}
+
 // hasUncommittedChanges is the real-git replacement for the old
 // collectAddedAndModified length check: true means the agent changed
 // something, false means EmptyDiffError.
@@ -68,11 +79,12 @@ export async function commitAll(exec: ExecFn, message: string): Promise<void> {
   }
 }
 
-// listChangedFiles reports what the single commit just made actually touched,
-// for the issue comment's "Files changed" list. Metadata only (path + git's
-// status letter) — no content, unlike the old Go-side {path, content} contract.
-export async function listChangedFiles(exec: ExecFn): Promise<ChangedFile[]> {
-  const diff = await exec("git --no-pager diff --name-status HEAD~1..HEAD")
+// listChangedFiles reports what the agent's commits touched, for the issue
+// comment's "Files changed" list. Diffs against the clone point
+// (origin/<baseBranch>) so all incremental commits are included, not just the
+// last one. Metadata only (path + git's status letter) — no content.
+export async function listChangedFiles(exec: ExecFn, baseBranch: string): Promise<ChangedFile[]> {
+  const diff = await exec(`git --no-pager diff --name-status origin/${JSON.stringify(baseBranch)}..HEAD`)
   if (diff.exitCode !== 0) {
     throw new Error(`git diff failed: ${diff.stdout}`)
   }

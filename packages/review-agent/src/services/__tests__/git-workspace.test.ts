@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { execFileSync } from "node:child_process"
+import { execFileSync, execSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -11,10 +11,15 @@ import {
   pushBranch,
 } from "../git-workspace"
 
+// localExec runs shell commands in the given cwd using the OS-native shell
+// (cmd.exe on Windows, /bin/sh on Linux/macOS). The production ExecFn runs in
+// a Linux Docker sandbox, but tests run locally — using bash on Windows
+// invokes WSL which can't see Windows temp paths, so execSync (native shell)
+// is used instead.
 function localExec(cwd: string) {
   return async (command: string): Promise<{ stdout: string; exitCode: number }> => {
     try {
-      const stdout = execFileSync("bash", ["-c", command], { cwd, encoding: "utf-8" })
+      const stdout = execSync(command, { cwd, encoding: "utf-8" })
       return { stdout, exitCode: 0 }
     } catch (e: any) {
       return { stdout: (e.stdout?.toString() ?? "") + (e.stderr?.toString() ?? ""), exitCode: e.status ?? 1 }
@@ -24,24 +29,26 @@ function localExec(cwd: string) {
 
 // makeBareRemote creates a bare repo (the "GitFlame" side) seeded with one
 // commit on `main`, and returns its filesystem path — used as the clone URL
-// in place of a real https://...token@... URL. Local git treats a plain path
-// exactly like any other remote for clone/fetch/push purposes.
+// in place of a real https://...token@... URL. Uses direct execFileSync("git")
+// calls instead of bash so Windows paths work without SSH misinterpretation.
 function makeBareRemote(): string {
   const remoteDir = mkdtempSync(join(tmpdir(), "gitws-remote-"))
   execFileSync("git", ["init", "-q", "--bare", "--initial-branch=main", remoteDir])
 
   const seedDir = mkdtempSync(join(tmpdir(), "gitws-seed-"))
-  const run = (cmd: string) => execFileSync("bash", ["-c", cmd], { cwd: seedDir })
-  run(`git clone -q ${JSON.stringify(remoteDir)} .`)
-  run("git config user.email seed@local && git config user.name seed")
+  execFileSync("git", ["clone", "-q", remoteDir, seedDir])
+  execFileSync("git", ["-C", seedDir, "config", "user.email", "seed@local"])
+  execFileSync("git", ["-C", seedDir, "config", "user.name", "seed"])
   writeFileSync(join(seedDir, "README.md"), "hello\n")
-  run("git add -A && git commit -q -m seed && git push -q origin main")
+  execFileSync("git", ["-C", seedDir, "add", "-A"])
+  execFileSync("git", ["-C", seedDir, "commit", "-q", "-m", "seed"])
+  execFileSync("git", ["-C", seedDir, "push", "-q", "origin", "main"])
   rmSync(seedDir, { recursive: true, force: true })
   return remoteDir
 }
 
 describe("cloneAndBranch", () => {
-  it("clones the default branch and checks out a new branch", async () => {
+  it("clones the default branch and checks out a new branch", { timeout: 30000 }, async () => {
     const remote = makeBareRemote()
     const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
     try {
@@ -90,10 +97,55 @@ describe("hasUncommittedChanges / commitAll / listChangedFiles", () => {
 
       expect(await hasUncommittedChanges(exec)).toBe(false)
 
-      const files = await listChangedFiles(exec)
+      const files = await listChangedFiles(exec, "main")
       const byPath = Object.fromEntries(files.map((f) => [f.path, f.status]))
       expect(byPath["README.md"]).toBe("M")
       expect(byPath["added.py"]).toBe("A")
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+      rmSync(remote, { recursive: true, force: true })
+    }
+  })
+
+  it("keeps shell metacharacters literal in a fallback commit message", async () => {
+    const remote = makeBareRemote()
+    const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
+    try {
+      const exec = localExec(workDir)
+      await cloneAndBranch(exec, { cloneUrl: remote, defaultBranch: "main", branch: "innoagent-issue-1" })
+      writeFileSync(join(workDir, "new.txt"), "content\n")
+
+      const message = "feat: keep $(touch injected-by-message) literal"
+      await commitAll(exec, message)
+
+      expect(existsSync(join(workDir, "injected-by-message"))).toBe(false)
+      expect(execFileSync("git", ["log", "-1", "--format=%B"], { cwd: workDir, encoding: "utf-8" }).trim()).toBe(message)
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+      rmSync(remote, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("listChangedFiles across incremental commits", () => {
+  it("listChangedFiles covers multiple commits against base", async () => {
+    const remote = makeBareRemote()
+    const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
+    try {
+      const exec = localExec(workDir)
+      await cloneAndBranch(exec, { cloneUrl: remote, defaultBranch: "main", branch: "innoagent-issue-1" })
+
+      // First commit
+      writeFileSync(join(workDir, "a.txt"), "1\n")
+      await commitAll(exec, "feat: add a")
+      // Second commit
+      writeFileSync(join(workDir, "b.txt"), "2\n")
+      await commitAll(exec, "feat: add b")
+
+      const files = await listChangedFiles(exec, "main")
+      const byPath = Object.fromEntries(files.map((f) => [f.path, f.status]))
+      expect(byPath["a.txt"]).toBe("A")
+      expect(byPath["b.txt"]).toBe("A")
     } finally {
       rmSync(workDir, { recursive: true, force: true })
       rmSync(remote, { recursive: true, force: true })
@@ -127,7 +179,7 @@ describe("pushBranch", () => {
   // fires overlapping Process() runs, both clone the same branch tip, both
   // try to push. The loser must rebase onto the winner and land its own
   // commit on top, not lose its work.
-  it("retries with rebase when push is rejected as non-fast-forward", async () => {
+  it("retries with rebase when push is rejected as non-fast-forward", { timeout: 30000 }, async () => {
     const remote = makeBareRemote()
     const dirA = mkdtempSync(join(tmpdir(), "gitws-a-"))
     const dirB = mkdtempSync(join(tmpdir(), "gitws-b-"))

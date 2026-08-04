@@ -62,17 +62,22 @@ export async function commitAll(exec: ExecFn, message: string): Promise<void> {
   if (add.exitCode !== 0) {
     throw new Error(`git add failed: ${add.stdout}`)
   }
-  const commit = await exec(`git commit -q -m ${JSON.stringify(message)}`)
+  // JSON.stringify is not shell-safe because bash expands $() in double
+  // quotes. Base64 contains no shell metacharacters, so the message reaches
+  // git literally even when it originates from an agent response.
+  const encodedMessage = Buffer.from(message, "utf-8").toString("base64")
+  const commit = await exec(`printf %s ${encodedMessage} | base64 -d | git commit -q -F -`)
   if (commit.exitCode !== 0) {
     throw new Error(`git commit failed: ${commit.stdout}`)
   }
 }
 
-// listChangedFiles reports what the single commit just made actually touched,
-// for the issue comment's "Files changed" list. Metadata only (path + git's
-// status letter) — no content, unlike the old Go-side {path, content} contract.
-export async function listChangedFiles(exec: ExecFn): Promise<ChangedFile[]> {
-  const diff = await exec("git --no-pager diff --name-status HEAD~1..HEAD")
+// listChangedFiles reports what the agent's commits touched, for the issue
+// comment's "Files changed" list. Diffs against the clone point
+// (origin/<baseBranch>) so all incremental commits are included, not just the
+// last one. Metadata only (path + git's status letter) — no content.
+export async function listChangedFiles(exec: ExecFn, baseBranch: string): Promise<ChangedFile[]> {
+  const diff = await exec(`git --no-pager diff --name-status origin/${JSON.stringify(baseBranch)}..HEAD`)
   if (diff.exitCode !== 0) {
     throw new Error(`git diff failed: ${diff.stdout}`)
   }

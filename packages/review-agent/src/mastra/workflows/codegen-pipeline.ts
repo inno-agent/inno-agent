@@ -260,14 +260,22 @@ export async function runCodegen(
       if (!result.ok) console.warn(`[codegen] verify failed after repair round ${round + 1}:\n${result.output.slice(0, 2000)}`)
     }
 
-    // ── commit + push ────────────────────────────────────────────────────
-    if (!(await hasUncommittedChanges(exec))) {
-      // Deterministically pointless — the agent changed nothing. Permanent,
-      // not a retry: the /codegen handler maps EmptyDiffError to 422.
+    // ── collect + push ──────────────────────────────────────────────────
+    // The agent commits incrementally via the git_commit tool during the run.
+    // Commit any leftover uncommitted changes as a final commit, then check
+    // the net diff against the clone point before pushing.
+    const uncommitted = await hasUncommittedChanges(exec)
+    // If the agent left files uncommitted (e.g. wrote something but didn't
+    // call git_commit), fold them into a final summary commit.
+    if (uncommitted) {
+      await commitAll(exec, buildCommitMessage(ctx, summary))
+    }
+    const changedFiles = await listChangedFiles(exec, ctx.defaultBranch)
+    if (changedFiles.length === 0) {
+      // Deterministically pointless — the agent changed nothing overall, or
+      // reverted its earlier commits. The /codegen handler maps this to 422.
       throw new EmptyDiffError()
     }
-    await commitAll(exec, buildCommitMessage(ctx, summary))
-    const changedFiles = await listChangedFiles(exec)
     try {
       await pushBranch(exec, branch)
     } catch (err) {

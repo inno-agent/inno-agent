@@ -54,7 +54,7 @@ function stubEverything(execExit: number, hasChanges = true) {
   vi.spyOn(gitWorkspace, "hasUncommittedChanges").mockResolvedValue(hasChanges)
   vi.spyOn(gitWorkspace, "commitAll").mockResolvedValue(undefined)
   vi.spyOn(gitWorkspace, "pushBranch").mockResolvedValue(undefined)
-  vi.spyOn(gitWorkspace, "listChangedFiles").mockResolvedValue([{ path: "a.py", status: "A" }])
+  vi.spyOn(gitWorkspace, "listChangedFiles").mockResolvedValue(hasChanges ? [{ path: "a.py", status: "A" }] : [])
   vi.spyOn(codeGeneratorAgent, "generate").mockResolvedValue({ text: "did the thing" } as any)
   return { runIds }
 }
@@ -86,6 +86,16 @@ describe("runCodegen", () => {
 
   it("throws EmptyDiffError when the agent changed nothing", async () => {
     stubEverything(0, false)
+
+    await expect(runCodegen(ISSUE, contextWithRun("run-xyz"))).rejects.toBeInstanceOf(
+      gitWorkspace.EmptyDiffError,
+    )
+  })
+
+  it("throws EmptyDiffError when commits leave no net diff", async () => {
+    stubEverything(0)
+    vi.mocked(gitWorkspace.hasUncommittedChanges).mockResolvedValue(false)
+    vi.mocked(gitWorkspace.listChangedFiles).mockResolvedValue([])
 
     await expect(runCodegen(ISSUE, contextWithRun("run-xyz"))).rejects.toBeInstanceOf(
       gitWorkspace.EmptyDiffError,

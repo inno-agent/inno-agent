@@ -6,7 +6,6 @@ import { join } from "node:path"
 import {
   cloneAndBranch,
   hasUncommittedChanges,
-  hasCommitsAhead,
   commitAll,
   listChangedFiles,
   pushBranch,
@@ -107,40 +106,28 @@ describe("hasUncommittedChanges / commitAll / listChangedFiles", () => {
       rmSync(remote, { recursive: true, force: true })
     }
   })
+
+  it("keeps shell metacharacters literal in a fallback commit message", async () => {
+    const remote = makeBareRemote()
+    const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
+    try {
+      const exec = localExec(workDir)
+      await cloneAndBranch(exec, { cloneUrl: remote, defaultBranch: "main", branch: "innoagent-issue-1" })
+      writeFileSync(join(workDir, "new.txt"), "content\n")
+
+      const message = "feat: keep $(touch injected-by-message) literal"
+      await commitAll(exec, message)
+
+      expect(existsSync(join(workDir, "injected-by-message"))).toBe(false)
+      expect(execFileSync("git", ["log", "-1", "--format=%B"], { cwd: workDir, encoding: "utf-8" }).trim()).toBe(message)
+    } finally {
+      rmSync(workDir, { recursive: true, force: true })
+      rmSync(remote, { recursive: true, force: true })
+    }
+  })
 })
 
-describe("hasCommitsAhead", () => {
-  it("returns false right after clone (no commits ahead)", async () => {
-    const remote = makeBareRemote()
-    const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
-    try {
-      const exec = localExec(workDir)
-      await cloneAndBranch(exec, { cloneUrl: remote, defaultBranch: "main", branch: "innoagent-issue-1" })
-
-      expect(await hasCommitsAhead(exec, "main")).toBe(false)
-    } finally {
-      rmSync(workDir, { recursive: true, force: true })
-      rmSync(remote, { recursive: true, force: true })
-    }
-  })
-
-  it("returns true after making a commit", async () => {
-    const remote = makeBareRemote()
-    const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))
-    try {
-      const exec = localExec(workDir)
-      await cloneAndBranch(exec, { cloneUrl: remote, defaultBranch: "main", branch: "innoagent-issue-1" })
-
-      writeFileSync(join(workDir, "new.txt"), "content\n")
-      await commitAll(exec, "feat: add new file")
-
-      expect(await hasCommitsAhead(exec, "main")).toBe(true)
-    } finally {
-      rmSync(workDir, { recursive: true, force: true })
-      rmSync(remote, { recursive: true, force: true })
-    }
-  })
-
+describe("listChangedFiles across incremental commits", () => {
   it("listChangedFiles covers multiple commits against base", async () => {
     const remote = makeBareRemote()
     const workDir = mkdtempSync(join(tmpdir(), "gitws-work-"))

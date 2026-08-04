@@ -43,17 +43,6 @@ export async function cloneAndBranch(
   }
 }
 
-// hasCommitsAhead checks whether the current branch has any commits beyond the
-// clone point (origin/<baseBranch>). Used after the agent run to distinguish
-// "the agent committed its work incrementally" from "the agent changed nothing".
-export async function hasCommitsAhead(exec: ExecFn, baseBranch: string): Promise<boolean> {
-  const log = await exec(`git log --oneline origin/${JSON.stringify(baseBranch)}..HEAD`)
-  if (log.exitCode !== 0) {
-    throw new Error(`git log failed: ${log.stdout}`)
-  }
-  return log.stdout.trim().length > 0
-}
-
 // hasUncommittedChanges is the real-git replacement for the old
 // collectAddedAndModified length check: true means the agent changed
 // something, false means EmptyDiffError.
@@ -73,7 +62,11 @@ export async function commitAll(exec: ExecFn, message: string): Promise<void> {
   if (add.exitCode !== 0) {
     throw new Error(`git add failed: ${add.stdout}`)
   }
-  const commit = await exec(`git commit -q -m ${JSON.stringify(message)}`)
+  // JSON.stringify is not shell-safe because bash expands $() in double
+  // quotes. Base64 contains no shell metacharacters, so the message reaches
+  // git literally even when it originates from an agent response.
+  const encodedMessage = Buffer.from(message, "utf-8").toString("base64")
+  const commit = await exec(`printf %s ${encodedMessage} | base64 -d | git commit -q -F -`)
   if (commit.exitCode !== 0) {
     throw new Error(`git commit failed: ${commit.stdout}`)
   }

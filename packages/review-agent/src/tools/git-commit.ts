@@ -40,9 +40,11 @@ export const gitCommit = createTool({
       return { success: true, committed: false }
     }
 
-    // Commit with the agent-provided message. JSON.stringify produces a
-    // shell-safe double-quoted string, same as commitAll in git-workspace.ts.
-    const commit = await client.exec(runId, `git commit -q -m ${JSON.stringify(message)}`, 30)
+    // Encode the message before interpolating it into the shell command. A
+    // JSON string is not shell-safe because bash still expands $() in double
+    // quotes; base64 contains no shell metacharacters.
+    const encodedMessage = Buffer.from(message, "utf-8").toString("base64")
+    const commit = await client.exec(runId, `printf %s ${encodedMessage} | base64 -d | git commit -q -F -`, 30)
     if (commit.exit_code !== 0) {
       return { success: false, committed: false, error: `git commit failed: ${commit.stderr || commit.stdout}` }
     }

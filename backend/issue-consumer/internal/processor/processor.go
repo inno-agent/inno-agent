@@ -82,8 +82,10 @@ type Processor struct {
 	botUsername   string
 	onboardingURL string
 
-	mu   sync.Mutex
-	seen *boundedSet
+	mu       sync.Mutex
+	seen     *boundedSet
+	started  *boundedSet // dedup keys that already received a started comment
+	notified *boundedSet // dedup keys that already received an error comment
 }
 
 func New(
@@ -101,6 +103,70 @@ func New(
 		botUsername:   botUsername,
 		onboardingURL: onboardingURL,
 		seen:          newBoundedSet(seenCap),
+		started:       newBoundedSet(seenCap),
+		notified:      newBoundedSet(seenCap),
+	}
+}
+
+// postErrorComment posts an error comment to the issue and marks the dedupKey
+// as notified so transient retries don't spam the issue with duplicate messages.
+// Best-effort: a transient posting failure is logged but does not mark the key
+// as notified (so the next retry can try again); a permanent failure is logged
+// and the key is marked to avoid further noise.
+func (p *Processor) postErrorComment(
+	ctx context.Context,
+	ref domain.IssueRef,
+	issueLabel, dedupKey, msg string,
+) {
+	if err := p.poster.PostIssueComment(ctx, ref, msg); err != nil {
+		if errors.Is(err, domain.ErrPermanent) {
+			p.logger.Error("post error comment permanently failed",
+				zap.String("issue", issueLabel), zap.Error(err))
+		} else {
+			p.logger.Warn("post error comment transiently failed; will retry on next attempt",
+				zap.String("issue", issueLabel), zap.Error(err))
+			return // don't mark as notified; next retry will try again
+		}
+	}
+	p.mu.Lock()
+	p.notified.add(dedupKey, seenCap)
+	p.mu.Unlock()
+}
+
+// NotifyGaveUp posts a comment on the issue when the consumer exhausts
+// transient retries (poison message). It re-parses the raw event data to
+// recover the issue ref. Best-effort: failures are logged.
+func (p *Processor) NotifyGaveUp(ctx context.Context, data []byte) {
+	var env event.Envelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		p.logger.Warn("NotifyGaveUp: undecodable envelope", zap.Error(err))
+		return
+	}
+
+	issueEv, err := event.DecodeIssuePayload(env.Payload)
+	if err != nil {
+		p.logger.Warn("NotifyGaveUp: undecodable payload", zap.Error(err))
+		return
+	}
+
+	ref := domain.IssueRef{
+		Owner:         issueEv.RepoOwner(),
+		Repo:          issueEv.RepoName(),
+		Index:         issueEv.IssueIndex(),
+		Assigner:      issueEv.Sender.Name(),
+		Creator:       issueEv.IssueCreator(),
+		Title:         issueEv.Issue.Title,
+		Body:          issueEv.IssueBody(),
+		IssueType:     inferIssueType(issueEv.Issue.Labels),
+		DefaultBranch: issueEv.Repository.DefaultBranch,
+	}
+	issueLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
+
+	msg := "❌ Code generation could not be completed after multiple attempts due to persistent errors. " +
+		"Please try re-assigning the issue or contact support."
+	if err := p.poster.PostIssueComment(ctx, ref, msg); err != nil {
+		p.logger.Error("NotifyGaveUp: failed to post comment",
+			zap.String("issue", issueLabel), zap.Error(err))
 	}
 }
 
@@ -212,6 +278,22 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 	issueLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
 	p.logger.Info("generating code for issue", zap.String("issue", issueLabel), zap.String("assigner", assigner))
 
+	// Post a "started" comment once so retries do not spam the issue.
+	p.mu.Lock()
+	alreadyStarted := p.started.has(dedupKey)
+	p.mu.Unlock()
+	if !alreadyStarted {
+		startedMsg := "🔄 Your code generation request is being processed. I'll post the results shortly."
+		if err := p.poster.PostIssueComment(ctx, ref, startedMsg); err != nil {
+			p.logger.Warn("failed to post 'started' comment; continuing",
+				zap.String("issue", issueLabel), zap.Error(err))
+		} else {
+			p.mu.Lock()
+			p.started.add(dedupKey, seenCap)
+			p.mu.Unlock()
+		}
+	}
+
 	genResult, err := p.generator.Generate(ctx, ref)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotOnboarded) {
@@ -244,6 +326,16 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 			telemetry.IncError("issue-consumer", "generation_permanent")
 			msg := fmt.Sprintf("⚠️ Code generation failed and will not be retried:\n\n```\n%s\n```", err.Error())
 			return p.notifyPermanentFailure(ctx, ref, issueLabel, dedupKey, msg)
+		}
+
+		// Transient failure: notify the user once (not on every retry) that
+		// we're having trouble, then let the consumer retry.
+		p.mu.Lock()
+		alreadyNotified := p.notified.has(dedupKey)
+		p.mu.Unlock()
+		if !alreadyNotified {
+			p.postErrorComment(ctx, ref, issueLabel, dedupKey,
+				"⚠️ Code generation encountered a temporary error. Retrying...")
 		}
 
 		p.logger.Error("generation failed; will retry", zap.Error(err))
@@ -398,13 +490,13 @@ func buildSuccessComment(branch string, prIndex int64, reviewer string, result *
 		sb.WriteString("⚠️ Verification did not pass — the change was pushed but its build/tests are not green. Review carefully.\n\n")
 	}
 	if prIndex > 0 {
-		sb.WriteString(fmt.Sprintf("Pull request #%d opened", prIndex))
+		fmt.Fprintf(&sb, "Pull request #%d opened", prIndex)
 		if reviewer != "" {
-			sb.WriteString(fmt.Sprintf(" with @%s as reviewer", reviewer))
+			fmt.Fprintf(&sb, " with @%s as reviewer", reviewer)
 		}
 		sb.WriteString(".\n\n")
 	} else if prErr != nil {
-		sb.WriteString(fmt.Sprintf("⚠️ Pull request creation failed and was not retried: `%s`. Open one manually from branch `%s`.\n\n", prErr.Error(), branch))
+		fmt.Fprintf(&sb, "⚠️ Pull request creation failed and was not retried: `%s`. Open one manually from branch `%s`.\n\n", prErr.Error(), branch)
 	}
 	if result.Summary != "" {
 		sb.WriteString("**Summary:** ")

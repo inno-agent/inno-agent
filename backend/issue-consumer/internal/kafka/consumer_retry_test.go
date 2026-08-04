@@ -7,7 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/inno-agent/inno-agent/backend/review-consumer/internal/processor"
+	"github.com/segmentio/kafka-go"
+
+	"github.com/inno-agent/inno-agent/backend/issue-consumer/internal/processor"
 )
 
 // shrinkBackoff makes retries instant for tests and restores the originals.
@@ -22,16 +24,23 @@ func newTestConsumer() *Consumer {
 	return &Consumer{logger: zap.NewNop()}
 }
 
+func testMsg() kafka.Message {
+	return kafka.Message{Offset: 1, Partition: 0}
+}
+
 func TestProcessWithRetry_CommitsImmediatelyOnDone(t *testing.T) {
 	shrinkBackoff(t)
 	c := newTestConsumer()
 	processCalls, commits, giveUps := 0, 0, 0
-	c.processWithRetry(
-		context.Background(), 1, 0,
+	cancelled := c.processWithRetry(
+		context.Background(), testMsg(),
 		func() processor.Result { processCalls++; return processor.Done },
 		func() bool { commits++; return false },
 		func() { giveUps++ },
 	)
+	if cancelled {
+		t.Fatal("should not report cancelled on Done")
+	}
 	if processCalls != 1 || commits != 1 || giveUps != 0 {
 		t.Fatalf("Done: processCalls=%d commits=%d giveUps=%d, want 1/1/0", processCalls, commits, giveUps)
 	}
@@ -42,7 +51,7 @@ func TestProcessWithRetry_GivesUpAndCommitsAfterMaxRetries(t *testing.T) {
 	c := newTestConsumer()
 	processCalls, commits, giveUps := 0, 0, 0
 	cancelled := c.processWithRetry(
-		context.Background(), 7, 3,
+		context.Background(), testMsg(),
 		func() processor.Result { processCalls++; return processor.Transient }, // always transient
 		func() bool { commits++; return false },
 		func() { giveUps++ },
@@ -51,8 +60,8 @@ func TestProcessWithRetry_GivesUpAndCommitsAfterMaxRetries(t *testing.T) {
 		t.Fatal("should not report cancelled on poison give-up")
 	}
 	// Loop calls process each iteration; gives up when attempts == max.
-	if processCalls != maxTransientRetries {
-		t.Fatalf("processCalls=%d, want %d", processCalls, maxTransientRetries)
+	if processCalls != maxAttempts {
+		t.Fatalf("processCalls=%d, want %d", processCalls, maxAttempts)
 	}
 	if commits != 1 {
 		t.Fatalf("poison message must be committed exactly once to unblock partition, got %d", commits)
@@ -66,8 +75,8 @@ func TestProcessWithRetry_RecoversBeforeCap(t *testing.T) {
 	shrinkBackoff(t)
 	c := newTestConsumer()
 	processCalls, commits, giveUps := 0, 0, 0
-	c.processWithRetry(
-		context.Background(), 2, 0,
+	cancelled := c.processWithRetry(
+		context.Background(), testMsg(),
 		func() processor.Result {
 			processCalls++
 			if processCalls < 3 {
@@ -78,6 +87,9 @@ func TestProcessWithRetry_RecoversBeforeCap(t *testing.T) {
 		func() bool { commits++; return false },
 		func() { giveUps++ },
 	)
+	if cancelled {
+		t.Fatal("should not report cancelled on recovery")
+	}
 	if processCalls != 3 || commits != 1 || giveUps != 0 {
 		t.Fatalf("recover: processCalls=%d commits=%d giveUps=%d, want 3/1/0", processCalls, commits, giveUps)
 	}
@@ -90,7 +102,7 @@ func TestProcessWithRetry_StopsOnContextCancel(t *testing.T) {
 	cancel()
 	commits, giveUps := 0, 0
 	cancelled := c.processWithRetry(
-		ctx, 1, 0,
+		ctx, testMsg(),
 		func() processor.Result { return processor.Transient },
 		func() bool { commits++; return false },
 		func() { giveUps++ },
@@ -103,5 +115,23 @@ func TestProcessWithRetry_StopsOnContextCancel(t *testing.T) {
 	}
 	if giveUps != 0 {
 		t.Fatalf("should not call giveUp on cancel, got %d", giveUps)
+	}
+}
+
+func TestProcessWithRetry_SkipCommitsWithoutGiveUp(t *testing.T) {
+	shrinkBackoff(t)
+	c := newTestConsumer()
+	processCalls, commits, giveUps := 0, 0, 0
+	cancelled := c.processWithRetry(
+		context.Background(), testMsg(),
+		func() processor.Result { processCalls++; return processor.Skip },
+		func() bool { commits++; return false },
+		func() { giveUps++ },
+	)
+	if cancelled {
+		t.Fatal("should not report cancelled on Skip")
+	}
+	if processCalls != 1 || commits != 1 || giveUps != 0 {
+		t.Fatalf("Skip: processCalls=%d commits=%d giveUps=%d, want 1/1/0", processCalls, commits, giveUps)
 	}
 }

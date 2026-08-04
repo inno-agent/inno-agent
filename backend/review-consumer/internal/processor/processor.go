@@ -73,8 +73,10 @@ type Processor struct {
 	botUsername   string
 	onboardingURL string
 
-	mu   sync.Mutex
-	seen *boundedSet
+	mu       sync.Mutex
+	seen     *boundedSet
+	started  *boundedSet // dedup keys that already received a started comment
+	notified *boundedSet // dedup keys that already received an error comment
 }
 
 func New(
@@ -91,6 +93,67 @@ func New(
 		botUsername:   botUsername,
 		onboardingURL: onboardingURL,
 		seen:          newBoundedSet(seenCap),
+		started:       newBoundedSet(seenCap),
+		notified:      newBoundedSet(seenCap),
+	}
+}
+
+// postErrorComment posts an error comment to the PR and marks the dedupKey as
+// notified so transient retries don't spam the PR with duplicate messages.
+// Best-effort: a transient posting failure is logged but does not mark the key
+// as notified (so the next retry can try again); a permanent failure is logged
+// and the key is marked to avoid further noise.
+func (p *Processor) postErrorComment(
+	ctx context.Context,
+	ref domain.PRRef,
+	prLabel, dedupKey, msg string,
+) {
+	if err := p.poster.PostPRComment(ctx, ref, msg); err != nil {
+		if errors.Is(err, domain.ErrPermanent) {
+			p.logger.Error("post error comment permanently failed",
+				zap.String("pr", prLabel), zap.Error(err))
+		} else {
+			p.logger.Warn("post error comment transiently failed; will retry on next attempt",
+				zap.String("pr", prLabel), zap.Error(err))
+			return // don't mark as notified; next retry will try again
+		}
+	}
+	p.mu.Lock()
+	p.notified.add(dedupKey, seenCap)
+	p.mu.Unlock()
+}
+
+// NotifyGaveUp posts a comment on the PR when the consumer exhausts transient
+// retries (poison message). It re-parses the raw event data to recover the PR
+// ref. Best-effort: failures are logged.
+func (p *Processor) NotifyGaveUp(ctx context.Context, data []byte) {
+	log := logger.FromContextOr(ctx, p.logger)
+
+	var env event.Envelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		log.Warn("NotifyGaveUp: undecodable envelope", zap.Error(err))
+		return
+	}
+
+	var pr event.PullRequestEvent
+	if err := json.Unmarshal(env.Payload, &pr); err != nil {
+		log.Warn("NotifyGaveUp: undecodable payload", zap.Error(err))
+		return
+	}
+
+	ref := domain.PRRef{
+		Owner:   pr.Repository.Owner.Login,
+		Repo:    pr.Repository.Name,
+		Index:   pr.Index(),
+		HeadSHA: pr.PullRequest.Head.SHA,
+	}
+	prLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
+
+	msg := "❌ The review could not be completed after multiple attempts due to persistent errors. " +
+		"Please try re-requesting the review or contact support."
+	if err := p.poster.PostPRComment(ctx, ref, msg); err != nil {
+		log.Error("NotifyGaveUp: failed to post comment",
+			zap.String("pr", prLabel), zap.Error(err))
 	}
 }
 
@@ -159,6 +222,22 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	prLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
 	log.Info("reviewing PR", zap.String("pr", prLabel), zap.String("assigner", assigner))
 
+	// Post a "started" comment once so retries do not spam the PR.
+	p.mu.Lock()
+	alreadyStarted := p.started.has(dedupKey)
+	p.mu.Unlock()
+	if !alreadyStarted {
+		startedMsg := "🔄 Your review request is being processed. I'll post the results shortly."
+		if err := p.poster.PostPRComment(ctx, ref, startedMsg); err != nil {
+			log.Warn("failed to post 'started' comment; continuing",
+				zap.String("pr", prLabel), zap.Error(err))
+		} else {
+			p.mu.Lock()
+			p.started.add(dedupKey, seenCap)
+			p.mu.Unlock()
+		}
+	}
+
 	review, err := p.reviewer.Review(ctx, ref)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotOnboarded) {
@@ -185,10 +264,23 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 		}
 
 		if errors.Is(err, domain.ErrPermanent) {
-			// Permanent failure (e.g. 401/403 from LLM or GitFlame): commit the
-			// offset so the partition advances rather than blocking indefinitely.
+			// Permanent failure (e.g. 401/403 from LLM or GitFlame): post an
+			// error comment so the user knows why, then commit the offset so
+			// the partition advances rather than blocking indefinitely.
+			p.postErrorComment(ctx, ref, prLabel, dedupKey,
+				"❌ The review could not be completed due to a permanent error. Please try re-requesting the review or contact support.")
 			log.Error("review permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
+		}
+
+		// Transient failure: notify the user once (not on every retry) that
+		// we're having trouble, then let the consumer retry.
+		p.mu.Lock()
+		alreadyNotified := p.notified.has(dedupKey)
+		p.mu.Unlock()
+		if !alreadyNotified {
+			p.postErrorComment(ctx, ref, prLabel, dedupKey,
+				"⚠️ The review encountered a temporary error. Retrying...")
 		}
 
 		log.Error("review failed; will retry", zap.Error(err))

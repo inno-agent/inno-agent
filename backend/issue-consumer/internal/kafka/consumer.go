@@ -14,7 +14,8 @@ import (
 	"github.com/inno-agent/inno-agent/backend/pkg/telemetry"
 )
 
-const (
+// Tunables (vars, not consts, so tests can shrink the backoffs).
+var (
 	retryInitial = time.Second
 	retryCap     = 30 * time.Second
 	fetchErrWait = time.Second
@@ -68,58 +69,83 @@ func (c *Consumer) Run(ctx context.Context) error {
 			continue
 		}
 
-		backoff := retryInitial
-		attempts := 0
-		for {
-			c.logIncomingMessage(msg)
+		if c.processWithRetry(
+			ctx, msg,
+			func() processor.Result {
+				c.logIncomingMessage(msg)
+				return c.processor.Process(ctx, msg.Value)
+			},
+			func() bool { return c.commit(ctx, msg) },
+			func() {
+				c.processor.NotifyGaveUp(ctx, msg.Value)
+			},
+		) {
+			return nil
+		}
+	}
+}
 
-			result := c.processor.Process(ctx, msg.Value)
-			if result != processor.Transient {
-				if err := c.reader.CommitMessages(ctx, msg); err != nil {
-					if ctx.Err() != nil {
-						return nil
-					}
-					c.logger.Error("commit failed", zap.Error(err))
-					telemetry.IncConsumerKafkaCommitError()
-				}
-				break
-			}
+// commit commits the message's offset. Returns true if the context was
+// cancelled (caller should stop).
+func (c *Consumer) commit(ctx context.Context, msg kafka.Message) (cancelled bool) {
+	if err := c.reader.CommitMessages(ctx, msg); err != nil {
+		if ctx.Err() != nil {
+			return true
+		}
+		c.logger.Error("commit failed", zap.Error(err))
+		telemetry.IncConsumerKafkaCommitError()
+	}
+	return false
+}
 
-			attempts++
-			if attempts >= maxAttempts {
-				c.logger.Error(
-					"retry exhausted; skipping message",
-					zap.Int("attempts", attempts),
-					zap.Int("partition", msg.Partition),
-					zap.Int64("offset", msg.Offset),
-					zap.ByteString("key", msg.Key),
-				)
-				telemetry.IncError("issue-consumer", "retry_exhausted")
-				if err := c.reader.CommitMessages(ctx, msg); err != nil {
-					if ctx.Err() != nil {
-						return nil
-					}
-					c.logger.Error("commit failed after retry exhausted", zap.Error(err))
-					telemetry.IncConsumerKafkaCommitError()
-				}
-				break
-			}
+// processWithRetry runs process(), retrying Transient results with capped
+// exponential backoff. On a non-transient result, or after maxAttempts
+// (poison message), it commits via commit(). When giving up on poison it
+// calls giveUp() so the user can be notified. Returns true if the context
+// was cancelled. process/commit/giveUp are injected so this is unit-testable
+// without Kafka.
+func (c *Consumer) processWithRetry(
+	ctx context.Context,
+	msg kafka.Message,
+	process func() processor.Result,
+	commit func() bool,
+	giveUp func(),
+) (cancelled bool) {
+	backoff := retryInitial
+	attempts := 0
+	for {
+		if process() != processor.Transient {
+			return commit()
+		}
 
-			telemetry.IncConsumerKafkaRetry()
-			c.logger.Info(
-				"transient result; retrying message",
-				zap.Duration("backoff", backoff),
+		attempts++
+		if attempts >= maxAttempts {
+			c.logger.Error(
+				"retry exhausted; skipping message",
+				zap.Int("attempts", attempts),
+				zap.Int("partition", msg.Partition),
 				zap.Int64("offset", msg.Offset),
+				zap.ByteString("key", msg.Key),
 			)
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(backoff):
-			}
-			backoff *= 2
-			if backoff > retryCap {
-				backoff = retryCap
-			}
+			telemetry.IncError("issue-consumer", "retry_exhausted")
+			giveUp()
+			return commit()
+		}
+
+		telemetry.IncConsumerKafkaRetry()
+		c.logger.Info(
+			"transient result; retrying message",
+			zap.Duration("backoff", backoff),
+			zap.Int64("offset", msg.Offset),
+		)
+		select {
+		case <-ctx.Done():
+			return true
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > retryCap {
+			backoff = retryCap
 		}
 	}
 }

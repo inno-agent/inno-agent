@@ -84,6 +84,7 @@ type Processor struct {
 
 	mu       sync.Mutex
 	seen     *boundedSet
+	started  *boundedSet // dedup keys that already received a started comment
 	notified *boundedSet // dedup keys that already received an error comment
 }
 
@@ -102,6 +103,7 @@ func New(
 		botUsername:   botUsername,
 		onboardingURL: onboardingURL,
 		seen:          newBoundedSet(seenCap),
+		started:       newBoundedSet(seenCap),
 		notified:      newBoundedSet(seenCap),
 	}
 }
@@ -276,12 +278,20 @@ func (p *Processor) Process(ctx context.Context, data []byte) (result Result) {
 	issueLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
 	p.logger.Info("generating code for issue", zap.String("issue", issueLabel), zap.String("assigner", assigner))
 
-	// Post a "started" comment so the user knows code generation is underway.
-	// Best-effort: a failure here is logged but does not block generation.
-	startedMsg := "🔄 Your code generation request is being processed. I'll post the results shortly."
-	if err := p.poster.PostIssueComment(ctx, ref, startedMsg); err != nil {
-		p.logger.Warn("failed to post 'started' comment; continuing",
-			zap.String("issue", issueLabel), zap.Error(err))
+	// Post a "started" comment once so retries do not spam the issue.
+	p.mu.Lock()
+	alreadyStarted := p.started.has(dedupKey)
+	p.mu.Unlock()
+	if !alreadyStarted {
+		startedMsg := "🔄 Your code generation request is being processed. I'll post the results shortly."
+		if err := p.poster.PostIssueComment(ctx, ref, startedMsg); err != nil {
+			p.logger.Warn("failed to post 'started' comment; continuing",
+				zap.String("issue", issueLabel), zap.Error(err))
+		} else {
+			p.mu.Lock()
+			p.started.add(dedupKey, seenCap)
+			p.mu.Unlock()
+		}
 	}
 
 	genResult, err := p.generator.Generate(ctx, ref)

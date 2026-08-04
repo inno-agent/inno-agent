@@ -75,6 +75,7 @@ type Processor struct {
 
 	mu       sync.Mutex
 	seen     *boundedSet
+	started  *boundedSet // dedup keys that already received a started comment
 	notified *boundedSet // dedup keys that already received an error comment
 }
 
@@ -92,6 +93,7 @@ func New(
 		botUsername:   botUsername,
 		onboardingURL: onboardingURL,
 		seen:          newBoundedSet(seenCap),
+		started:       newBoundedSet(seenCap),
 		notified:      newBoundedSet(seenCap),
 	}
 }
@@ -220,12 +222,20 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 	prLabel := fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Index)
 	log.Info("reviewing PR", zap.String("pr", prLabel), zap.String("assigner", assigner))
 
-	// Post a "started" comment so the user knows the review is underway.
-	// Best-effort: a failure here is logged but does not block the review.
-	startedMsg := "🔄 Your review request is being processed. I'll post the results shortly."
-	if err := p.poster.PostPRComment(ctx, ref, startedMsg); err != nil {
-		log.Warn("failed to post 'started' comment; continuing",
-			zap.String("pr", prLabel), zap.Error(err))
+	// Post a "started" comment once so retries do not spam the PR.
+	p.mu.Lock()
+	alreadyStarted := p.started.has(dedupKey)
+	p.mu.Unlock()
+	if !alreadyStarted {
+		startedMsg := "🔄 Your review request is being processed. I'll post the results shortly."
+		if err := p.poster.PostPRComment(ctx, ref, startedMsg); err != nil {
+			log.Warn("failed to post 'started' comment; continuing",
+				zap.String("pr", prLabel), zap.Error(err))
+		} else {
+			p.mu.Lock()
+			p.started.add(dedupKey, seenCap)
+			p.mu.Unlock()
+		}
 	}
 
 	review, err := p.reviewer.Review(ctx, ref)
@@ -258,7 +268,7 @@ func (p *Processor) Process(ctx context.Context, data []byte) Result {
 			// error comment so the user knows why, then commit the offset so
 			// the partition advances rather than blocking indefinitely.
 			p.postErrorComment(ctx, ref, prLabel, dedupKey,
-				fmt.Sprintf("❌ The review could not be completed: %v", err))
+				"❌ The review could not be completed due to a permanent error. Please try re-requesting the review or contact support.")
 			log.Error("review permanently failed; skipping message", zap.String("pr", prLabel), zap.Error(err))
 			return Skip // intentional: Skip-after-permanent-error commits the offset
 		}

@@ -253,9 +253,9 @@ func TestProcess_TransientError_PostsErrorCommentOnce(t *testing.T) {
 	if r2 != processor.Transient {
 		t.Fatalf("second: expected Transient, got %v", r2)
 	}
-	// Retry posts "started" again but NOT the error comment again = 3 total
-	if len(poster.posted) != 3 {
-		t.Fatalf("second: expected 3 total comments (started+error, started), got %d: %v", len(poster.posted), poster.posted)
+	// Retries must not repeat either status notification.
+	if len(poster.posted) != 2 {
+		t.Fatalf("second: expected 2 total comments (started + error), got %d: %v", len(poster.posted), poster.posted)
 	}
 }
 
@@ -300,9 +300,9 @@ func TestProcess_ReviewPermanentError_Skip(t *testing.T) {
 	}
 }
 
-func TestProcess_ReviewPermanentError_ContainsErrorMessage(t *testing.T) {
+func TestProcess_ReviewPermanentError_RedactsUpstreamError(t *testing.T) {
 	data := makeEnvelope("del-550")
-	reviewErr := fmt.Errorf("cannot access AI model: status 401: %w", domain.ErrPermanent)
+	reviewErr := fmt.Errorf("mastra: status 401: api_key=secret: %w", domain.ErrPermanent)
 	reviewer := &fakeReviewer{err: reviewErr}
 	poster := &fakePoster{}
 	p := newProc(reviewer, poster)
@@ -312,8 +312,11 @@ func TestProcess_ReviewPermanentError_ContainsErrorMessage(t *testing.T) {
 		t.Fatalf("expected at least 2 comments, got %d", len(poster.posted))
 	}
 	errorComment := poster.posted[1]
-	if !strings.Contains(errorComment, "cannot access AI model") {
-		t.Fatalf("error comment should contain the error details, got: %s", errorComment)
+	if strings.Contains(errorComment, "api_key=secret") {
+		t.Fatalf("error comment leaked upstream error details: %s", errorComment)
+	}
+	if !strings.Contains(errorComment, "could not be completed") {
+		t.Fatalf("error comment should explain the failure safely, got: %s", errorComment)
 	}
 }
 

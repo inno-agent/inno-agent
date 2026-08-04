@@ -375,9 +375,9 @@ func TestProcess_TransientError_PostsErrorCommentOnce(t *testing.T) {
 	if r2 != processor.Transient {
 		t.Fatalf("second: expected Transient, got %v", r2)
 	}
-	// Retry posts "started" again but NOT the error comment again = 3 total
-	if len(poster.posted) != 3 {
-		t.Fatalf("second: expected 3 total comments (started+error, started), got %d: %v", len(poster.posted), poster.posted)
+	// Retries must not repeat either status notification.
+	if len(poster.posted) != 2 {
+		t.Fatalf("second: expected 2 total comments (started + error), got %d: %v", len(poster.posted), poster.posted)
 	}
 }
 

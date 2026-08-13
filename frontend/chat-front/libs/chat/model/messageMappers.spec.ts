@@ -85,5 +85,18 @@ describe('messageMappers', () => {
                 { type: 'text', text: 'Sorry, an error occurred. Please try again.' },
             ])
         })
+
+        it('replaces existing assistant content with error text', () => {
+            const messages = [
+                { role: 'user' as const, content: [{ type: 'text' as const, text: 'Hi' }] },
+                { role: 'assistant' as const, content: [{ type: 'text' as const, text: 'Partial answer' }] },
+            ]
+            const result = appendAssistantError(messages)
+            expect(result).toHaveLength(2)
+            expect(result[1]).toEqual({
+                role: 'assistant',
+                content: [{ type: 'text', text: 'Sorry, an error occurred. Please try again.' }],
+            })
+        })
     })
 })

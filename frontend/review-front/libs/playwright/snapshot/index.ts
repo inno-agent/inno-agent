@@ -1,0 +1,1 @@
+export { compareSnapshot } from './compareSnapshot';

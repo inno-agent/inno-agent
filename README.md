@@ -59,22 +59,48 @@ docker compose up -d --build
 
 ## 3. Деплой (CD)
 
-Пуш в `main` гонит `.github/workflows/cd.yml`: собирает 8 сервисов, пушит в GHCR
-(`ghcr.io/inno-agent/<service>`), затем джоба `deploy` выполняется прямо на
-self-hosted раннере `agr01`, который живёт на проде: логинится в GHCR через
-встроенный `GITHUB_TOKEN` и гонит `scripts/prod.sh TAG=<sha>`. Публичность
-GHCR-пакетов и SSH-секреты не нужны — раннер и есть прод-хост.
+Пуш в `main` гонит `.github/workflows/cd.yml`: собирает образы, пушит в GHCR
+(`ghcr.io/inno-agent/<service>`), затем джоба `deploy-dev` выполняется на
+self-hosted раннере `agr01` и гонит `scripts/dev.sh TAG=<sha>`. **Prod из
+GitHub Actions не обновляется** — только dev.
 
-`scripts/prod.sh` (идемпотентный, как `dev-setup.sh` для дева):
-генерирует `backend/identity/dev-private-key.pem` (JWT-ключ) и
-самоподписанный TLS-серт в `infrastructure/nginx/certs/` — но только если их
-там ещё нет; дальше пишет `TAG` в `~/.env.innoagent` и гонит
-`docker compose --profile gpu pull && up -d`. Можно гонять и руками на
-раннере (`TAG=latest ./scripts/prod.sh`) для редеплоя без CI.
+Promote dev → prod: авторизованный пользователь заходит на сервер по SSH и
+гонит `./scripts/promote.sh` из каталога деплоя. Скрипт берёт `TAG` из
+`~/.env.innoagent.dev` и деплоит тот же коммит в prod через `scripts/prod.sh`.
+Кто может — решается доступом на сервер, не GitHub.
 
-Ручной запуск через Actions (повтор / rollback): Actions → CD → Run workflow
-→ указать `ref` (ветка, тег или SHA). Воркфлоу пересоберёт и передеплоит
-именно этот коммит.
+### Dev vs prod на одной машине
+
+Два изолированных стека: `innoagent-dev` (CD) и `inno-agent` (prod, как раньше).
+Свои env-файлы, volumes, networks, identity-ключ и TLS-серты.
+
+| | DEV | PROD |
+|---|---|---|
+| Env | `~/.env.innoagent.dev` | `~/.env.innoagent` |
+| Compose | `docker-compose.yml` + `docker-compose.dev.yml` | `docker-compose.yml` |
+| Deploy | `scripts/dev.sh` (CD) | `scripts/promote.sh` → `prod.sh` |
+| GPU profile | нет (remote Ollama) | `--profile gpu` |
+
+Порты dev = prod + 1 на последней цифре:
+
+| Сервис | PROD | DEV |
+|---|---|---|
+| Authentik | `https://<IP>` (443) | `https://<IP>:4443` |
+| Chat | `:9443` | `:9444` |
+| Review | `:8443` | `:8444` |
+| Grafana (localhost) | 3000 | 3001 |
+
+`scripts/dev.sh` (идемпотентный): генерирует
+`backend/identity/dev-private-key.dev.pem` и серт в
+`infrastructure/nginx/certs-dev/` — только если их ещё нет; пишет `TAG` в
+`~/.env.innoagent.dev`; `docker compose pull && up -d` без `--profile gpu`.
+
+`scripts/prod.sh` (идемпотентный): как раньше — ключ в
+`backend/identity/dev-private-key.pem`, серт в `infrastructure/nginx/certs/`,
+`docker compose --profile gpu pull && up -d`.
+
+Ручной dev-деплой через Actions (повтор / rollback): Actions → CD → Run workflow
+→ указать `ref`. Prod — только `./scripts/promote.sh` с сервера.
 
 ### Self-hosted раннер (одноразовая настройка на VPS)
 
@@ -83,22 +109,27 @@ GHCR-пакетов и SSH-секреты не нужны — раннер и е
 - Раннер переиспользует один и тот же рабочий каталог между запусками — это
   и есть каталог деплоя (`docker-compose.yml` там же, где чекаутится репо).
   Checkout деплой-джобы идёт с `clean: false` — специально, чтобы не сносить
-  gitignored рантайм-файлы (`backend/identity/dev-private-key.pem`, `.ollama/`,
-  прод-сертификаты `infrastructure/nginx/certs/*.pem`) при каждом деплое.
-- `backend/identity/dev-private-key.pem` и `infrastructure/nginx/certs/*.pem`
-  руками класть не надо — `prod.sh` сам сгенерит при первом запуске, если их
-  там ещё нет (серт — самоподписанный на `AUTH_DOMAIN` из `~/.env.innoagent`,
-  браузер будет ругаться — осознанно, сервер во внутренней сети).
-- `~/.env.innoagent` (в домашней директории раннера, вне репо) — скопировать
-  руками из `.env.prod`. Полный набор переменных как в `.env.example`, плюс:
+  gitignored рантайм-файлы (`backend/identity/dev-private-key*.pem`, `.ollama/`,
+  сертификаты `infrastructure/nginx/certs*/`) при каждом деплое.
+- Prod runtime-файлы (`dev-private-key.pem`, `certs/*.pem`) — `prod.sh` сам
+  сгенерит при первом запуске, если их ещё нет.
+- Dev runtime-файлы (`dev-private-key.dev.pem`, `certs-dev/*.pem`) — `dev.sh`
+  аналогично.
+- `~/.env.innoagent` (prod) — скопировать руками из `.env.prod`. Полный набор
+  переменных как в `.env.example`, плюс:
   - `OLLAMA_BASE_URL` — прод использует `--profile gpu` (внешний GPU Ollama),
     заполнить реальным адресом (пример закомментирован в `.env.example`).
   - `GRAFANA_ADMIN_PASSWORD` — переопределить дефолтный `admin` из
     `.env.example`.
-  - `TAG` пишет туда сама CD-джоба при каждом деплое, руками не трогать.
-- Grafana (`3000`), Loki (`3100`) и `review-api` (`8001`) забинжены на
-  `127.0.0.1` — наружу не торчат, доступ только через SSH-туннель или с самого
-  хоста.
+  - `TAG` пишет promote/CD, руками не трогать.
+- `~/.env.innoagent.dev` (dev) — копия prod-env с dev-портами в URL:
+  - `AUTH_ISSUER_URL=https://<IP>:4443`
+  - `APP_CALLBACK_URL=https://<IP>:9444/callback`
+  - `REVIEW_CALLBACK_URL=https://<IP>:8444/callback`
+  - `OLLAMA_BASE_URL` — remote GPU (без `--profile gpu` на dev)
+  - `ONBOARDING_URL=https://<IP>:8444` (если используется)
+- Grafana/Loki/review-api на prod: `3000`/`3100`/`8001` на `127.0.0.1`; на
+  dev — `3001`/`3101`/`8002`.
 
 ### Домен на проде: нет домена, нет проброса — только внутренняя сеть
 

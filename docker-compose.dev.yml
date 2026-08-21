@@ -1,0 +1,62 @@
+# Dev stack override — same host as prod, isolated ports/networks/volumes/secrets.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml -p innoagent-dev ...
+#
+# External ports = prod + 1 on the last digit (443→4443, 8443→8444, 9443→9444, …).
+
+networks:
+  innoagent:
+    name: innoagent-dev
+  sandbox-net:
+    name: sandbox-net-dev
+
+secrets:
+  identity_rsa_key:
+    file: ./backend/identity/dev-private-key.dev.pem
+
+services:
+  proxy:
+    ports: !override
+      - "8080:80"
+      - "4443:443"
+      - "8444:8443"
+      - "9444:9443"
+    volumes: !override
+      - ./infrastructure/nginx/templates:/etc/nginx/templates:ro
+      - ./infrastructure/nginx/certs-dev:/etc/nginx/certs:ro
+      - nginx-logs:/var/log/nginx
+
+  review-api:
+    ports: !override
+      - "127.0.0.1:8002:8001"
+
+  jaeger:
+    ports: !override
+      - "127.0.0.1:16687:16686"
+      - "127.0.0.1:4318:4317"
+
+  loki:
+    ports: !override
+      - "127.0.0.1:3101:3100"
+
+  alertmanager:
+    ports: !override
+      - "127.0.0.1:9094:9093"
+
+  prometheus:
+    ports: !override
+      - "127.0.0.1:9091:9090"
+
+  grafana:
+    ports: !override
+      - "127.0.0.1:3001:3000"
+
+#HTTP
+#80
+#8080 → 80
+#Authentik 4443 → 443
+#Review 8444 → 8443
+#Chat 9444 → 9443
+#Grafana
+#3001 → 3000
+#Prometheus
+#9091 → 9090
